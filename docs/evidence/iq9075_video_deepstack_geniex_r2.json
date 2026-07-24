@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-07-24T18:17:03Z",
+  "status": {
+    "full_deepstack_paired_frame_npu_execution": "pass",
+    "free_form_near_miss_quality": "fail",
+    "free_form_shelf_collision_quality": "fail",
+    "multiple_choice_near_miss_quality": "fail",
+    "multiple_choice_shelf_collision_quality": "rejected_position_bias",
+    "rubric_correct_video_prediction": "not_demonstrated"
+  },
+  "claim": {
+    "proven": "One two-frame Qwen3-VL temporal patch executed through the W4A16 vision context, all three DeepStack feature routes, the visual-position mask, and all four W4/FP16 text contexts on the IQ-9075 NPU through GenieX and QAIRT QnnHtp.",
+    "not_proven": [
+      "native MP4, WebM, or camera-stream ingestion",
+      "the full upstream multi-pair video and timestamp-aware MRoPE path",
+      "a rubric-correct prediction on either warehouse scenario",
+      "numerical equivalence to the upstream BF16 model",
+      "fitness for warehouse safety or other production decisions"
+    ]
+  },
+  "input_semantics": {
+    "description": "Two distinct, ordered RGB frames are fused by temporal_patch_size=2 into one T=1 Qwen3-VL vision grid and supplied to the lower-level GenieX PixelData API.",
+    "scope_name": "paired-frame temporal patch",
+    "is_native_encoded_video": false,
+    "is_full_qwen_video_semantics": false,
+    "frames_per_temporal_patch": 2,
+    "pixel_values_shape": [
+      1024,
+      1536
+    ],
+    "pixel_serialization": "float32 little-endian raw",
+    "grid_thw": [
+      1,
+      32,
+      32
+    ],
+    "visual_tokens": 256,
+    "context_tokens": 512,
+    "limitation": "This run has one temporal grid record and no native container decoding, multi-pair timestamp records, or full video-token path."
+  },
+  "source": {
+    "benchmark_id": "nvidia_sdg_warehouse_card_previews_v1",
+    "dataset": "nvidia/PhysicalAI-WorldModel-Synthetic-Warehouse-Operations-Scenes",
+    "dataset_revision": "d5b88d3abcf659f304a107f4336b71b4e2159133",
+    "license": "OpenMDW-1.1",
+    "generator": "NVIDIA Isaac Sim with Isaac Replicator Object and Isaac Replicator Agent",
+    "manifest": "benchmarks/nvidia_sdg_warehouse/benchmark.json"
+  },
+  "target": {
+    "board": "Qualcomm Dragonwing IQ-9075 EVK (QCS9075)",
+    "host_architecture": "aarch64",
+    "runtime": "QAIRT 2.45.0.260326",
+    "backend": "QnnHtp",
+    "dsp_arch": "v73",
+    "runner": "integrations/geniex_raw_video/raw_video_deepstack_runner.cpp",
+    "runner_exit_status": "zero for all five recorded runs"
+  },
+  "software_revisions": {
+    "geniex": "ab9e904fe21a01673840495309f3471dd6980d10",
+    "geniex_qairt_submodule": "f00a37cd50645456c8fbf0eaf179fa59640fd5bf",
+    "geniex_proc_submodule": "2ec6abcac6db8473fa26ea2f882f99652723cc7b",
+    "toolchain_image": "docker.io/qualcomm/geniex-toolchain-linux:v0.0.1@sha256:694ca209accd73859ae889a689f5c9df3f8f202074c55c57641f69150b794a8f",
+    "project_patch": "integrations/geniex_raw_video/patches/0001-deepstack-inputs-are-special.patch"
+  },
+  "bundle": {
+    "text_quantization": "W4 weights with FP16 activations",
+    "vision_quantization": "W4A16",
+    "deepstack_levels": 3,
+    "visual_position_mask": true,
+    "contexts": {
+      "vision_encoder.bin": {
+        "bytes": 422621184,
+        "sha256": "872e4e951feb448f1f60b694b5ec1113f6ecd4788608a0bd4c40579e0a855d60"
+      },
+      "part1_of_4.bin": {
+        "bytes": 181407744,
+        "sha256": "7a59e6c83456cc93de4c84b9dbeb3acb9ef78b93c3f88eadfd33405eeded0d81"
+      },
+      "part2_of_4.bin": {
+        "bytes": 181145600,
+        "sha256": "f797ef8ab4219851e90d44d83b3a5731f254d6345fdd334edc12d96c05881358"
+      },
+      "part3_of_4.bin": {
+        "bytes": 181145600,
+        "sha256": "4c7a7e895d4ebbc7a27ffe5c42ccae660dd3bf0bbd8d70bc9b5fdb468e6cd772"
+      },
+      "part4_of_4.bin": {
+        "bytes": 495808512,
+        "sha256": "6d37b752d39ace353646817195789887c2c34fb689e295c179d3470e9680eabb"
+      }
+    },
+    "part1_qai_hub_export": {
+      "ar128_compile_job_id": "jp43r8l85",
+      "ar128_compiled_model_id": "mno2pexpq",
+      "ar1_compile_job_id": "jpxxomk3p",
+      "ar1_compiled_model_id": "mqvw2x5ln",
+      "link_job_id": "j5m8x4ndp",
+      "linked_model_id": "mnj67lgdq",
+      "export_zip_sha256": "64c858a448088ff835af8d889ed669e7f6fd5c5b1787e8cc6afd262673ce8f82"
+    }
+  },
+  "free_form_cases": [
+    {
+      "id": "predict_near_miss",
+      "execution_status": "pass",
+      "quality_status": "fail",
+      "pair_tensor_sha256": "2a1a949cecda76db7d627fe5f25f93024c3fe6f809d682c1b9a65b276ddb06ee",
+      "expected_event": "A forklift and worker converge; the worker moves aside and contact is narrowly avoided, but there is an immediate collision risk.",
+      "answer": "The forklier will likely continue walking toward the forklift, which is still in motion and could be at risk of collision.",
+      "quality_reason": "The answer notices motion and possible collision risk, but does not predict the staged worker dodge and narrowly avoided collision required by the strict future-event rubric.",
+      "metrics": {
+        "prompt_tokens": 305,
+        "generated_tokens": 27,
+        "ttft_vision_and_prefill_ms": 648.4,
+        "decode_tokens_per_second": 16.60,
+        "process_exit_code": 0
+      },
+      "omitted_log_sha256": "7fe64d5ea12a56ca1f51e751455988aa76000eee4374f631ab1e8c73b739f183"
+    },
+    {
+      "id": "predict_shelf_collision",
+      "execution_status": "pass",
+      "quality_status": "fail",
+      "pair_tensor_sha256": "62211082d48dbaaebdd80b0fa603e2748b4782a054f18b9cc1263153f4f7e31b",
+      "expected_event": "The approaching forklift contacts the storage shelf, risking a knock-over and falling items.",
+      "answer": "The forklier will likely continue to push the forklier, which is at risk of falling.",
+      "quality_reason": "The answer is not a coherent description of the scene and does not identify the shelf or predict the staged forklift-shelf collision.",
+      "metrics": {
+        "prompt_tokens": 304,
+        "generated_tokens": 21,
+        "ttft_vision_and_prefill_ms": 648.2,
+        "decode_tokens_per_second": 16.26,
+        "process_exit_code": 0
+      },
+      "omitted_log_sha256": "74f728e4e27dfa3fd87b32f93dd78ebbbd84bd792afe9923942858b8e54b6b61"
+    }
+  ],
+  "multiple_choice_controls": [
+    {
+      "id": "near_miss_fixed_options",
+      "execution_status": "pass",
+      "quality_status": "fail",
+      "pair_tensor_sha256": "2a1a949cecda76db7d627fe5f25f93024c3fe6f809d682c1b9a65b276ddb06ee",
+      "correct_choice": "B",
+      "answer": "C",
+      "metrics": {
+        "prompt_tokens": 336,
+        "generated_tokens": 1,
+        "ttft_vision_and_prefill_ms": 656.5,
+        "decode_tokens_per_second": 0.00,
+        "process_exit_code": 0
+      },
+      "omitted_log_sha256": "cabd0527dcc76cebaa06d43b01d4af75c10451897d9cd305e0110a5e12d0a35a"
+    },
+    {
+      "id": "shelf_collision_fixed_options",
+      "execution_status": "pass",
+      "quality_status": "apparent_pass_rejected_by_control",
+      "pair_tensor_sha256": "62211082d48dbaaebdd80b0fa603e2748b4782a054f18b9cc1263153f4f7e31b",
+      "correct_choice": "A",
+      "answer": "A",
+      "metrics": {
+        "prompt_tokens": 330,
+        "generated_tokens": 1,
+        "ttft_vision_and_prefill_ms": 646.7,
+        "decode_tokens_per_second": 0.00,
+        "process_exit_code": 0
+      },
+      "omitted_log_sha256": "ec905285da228553b9fdff0a295a04864c6f0f378897d5b9a77c9b2ab40b7007"
+    },
+    {
+      "id": "shelf_collision_shuffled_options",
+      "execution_status": "pass",
+      "quality_status": "fail_position_bias",
+      "pair_tensor_sha256": "62211082d48dbaaebdd80b0fa603e2748b4782a054f18b9cc1263153f4f7e31b",
+      "control": "The same frames and event choices were used, but the correct collision answer moved from A to B.",
+      "correct_choice": "B",
+      "answer": "A",
+      "metrics": {
+        "prompt_tokens": 330,
+        "generated_tokens": 1,
+        "ttft_vision_and_prefill_ms": 646.4,
+        "decode_tokens_per_second": 0.00,
+        "process_exit_code": 0
+      },
+      "omitted_log_sha256": "560e0555d47b06dc210b866648ad4d4547ab8147aa16cd1f62e731ac700463c7"
+    }
+  ],
+  "interpretation": "The restored DeepStack and visual-position-mask route initializes and executes quickly and deterministically enough to record, but it does not produce a rubric-correct warehouse prediction. The shelf multiple-choice A result is rejected because the model remains on A after the correct event is moved to B, which is evidence of answer-position bias rather than grounded scene understanding."
+}

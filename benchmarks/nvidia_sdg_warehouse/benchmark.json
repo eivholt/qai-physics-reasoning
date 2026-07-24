@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "nvidia_sdg_warehouse_card_previews_v1",
+  "source": {
+    "owner": "NVIDIA Corporation",
+    "repo_id": "nvidia/PhysicalAI-WorldModel-Synthetic-Warehouse-Operations-Scenes",
+    "dataset_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-WorldModel-Synthetic-Warehouse-Operations-Scenes",
+    "revision": "d5b88d3abcf659f304a107f4336b71b4e2159133",
+    "version": "v1.0",
+    "license": "OpenMDW-1.1",
+    "license_url": "https://openmdw.ai/license/",
+    "generation": "NVIDIA Isaac Sim with Isaac Replicator Object and Isaac Replicator Agent",
+    "ground_truth_note": "The dataset card defines the four staged scenarios and states that simulator annotations are deterministic. This lightweight package uses only dataset-card preview media; it does not claim access to the per-frame annotations in the multi-terabyte shards."
+  },
+  "preview_layout": {
+    "description": "Each animated WebP is a horizontal concatenation of five synchronized modalities.",
+    "width": 1920,
+    "height": 216,
+    "panel_width": 384,
+    "panel_height": 216,
+    "panels_left_to_right": [
+      "rgb",
+      "depth",
+      "instance_segmentation",
+      "shaded_segmentation",
+      "canny_edges"
+    ],
+    "rgb_crop_xyxy": [
+      0,
+      0,
+      384,
+      216
+    ]
+  },
+  "assets": [
+    {
+      "id": "near_miss_clip",
+      "kind": "preview_clip",
+      "relative_path": "assets/clip_nearmiss.webp",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-WorldModel-Synthetic-Warehouse-Operations-Scenes/resolve/d5b88d3abcf659f304a107f4336b71b4e2159133/assets/clip_nearmiss.webp",
+      "sha256": "b586ef6e6f2446d4d10b6a207f4ad27e862879e32911cfb04375a67604da2f02",
+      "size_bytes": 3523694,
+      "frame_count": 150,
+      "documented_scenario_duration_seconds": 10,
+      "assumed_preview_fps": 15.0
+    },
+    {
+      "id": "collision_clip",
+      "kind": "preview_clip",
+      "relative_path": "assets/clip_forklift_collision.webp",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-WorldModel-Synthetic-Warehouse-Operations-Scenes/resolve/d5b88d3abcf659f304a107f4336b71b4e2159133/assets/clip_forklift_collision.webp",
+      "sha256": "373d3a6a3e34dedb49ae4897810810269dafe82add36d111427b47aaa06d4b05",
+      "size_bytes": 5139904,
+      "frame_count": 226,
+      "documented_scenario_duration_seconds": 15,
+      "assumed_preview_fps": 15.0666666667
+    },
+    {
+      "id": "fire_clip",
+      "kind": "preview_clip",
+      "relative_path": "assets/clip_fire.webp",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-WorldModel-Synthetic-Warehouse-Operations-Scenes/resolve/d5b88d3abcf659f304a107f4336b71b4e2159133/assets/clip_fire.webp",
+      "sha256": "dd782755b866b4d490b6a124f64bf21bed3aaeae6cba9b5ab9694ccf93d16eeb",
+      "size_bytes": 8211140,
+      "frame_count": 139,
+      "documented_scenario_duration_seconds": 10,
+      "assumed_preview_fps": 13.9
+    },
+    {
+      "id": "box_pickup_clip",
+      "kind": "preview_clip",
+      "relative_path": "assets/clip_box_pickup.webp",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-WorldModel-Synthetic-Warehouse-Operations-Scenes/resolve/d5b88d3abcf659f304a107f4336b71b4e2159133/assets/clip_box_pickup.webp",
+      "sha256": "1f9a8950ea3e679db95c83b5f3954a77fbc36574c147ef0ad738c336f1559643",
+      "size_bytes": 5933568,
+      "frame_count": 210,
+      "documented_scenario_duration_seconds": 15,
+      "assumed_preview_fps": 14.0
+    },
+    {
+      "id": "near_miss_still",
+      "kind": "scenario_still",
+      "relative_path": "assets/scenario_nearmiss.jpg",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-WorldModel-Synthetic-Warehouse-Operations-Scenes/resolve/d5b88d3abcf659f304a107f4336b71b4e2159133/assets/scenario_nearmiss.jpg",
+      "sha256": "d98d137687280b559181496521c0630e1a99ca2645a4bc5433ecef726b84d36f",
+      "size_bytes": 126859
+    },
+    {
+      "id": "collision_still",
+      "kind": "scenario_still",
+      "relative_path": "assets/scenario_collision.jpg",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-WorldModel-Synthetic-Warehouse-Operations-Scenes/resolve/d5b88d3abcf659f304a107f4336b71b4e2159133/assets/scenario_collision.jpg",
+      "sha256": "c563dc0e80330648503efed841b9ec29eb7fd9fe300e6849c725122396feaebc",
+      "size_bytes": 206897
+    },
+    {
+      "id": "fire_still",
+      "kind": "scenario_still",
+      "relative_path": "assets/scenario_fire.jpg",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-WorldModel-Synthetic-Warehouse-Operations-Scenes/resolve/d5b88d3abcf659f304a107f4336b71b4e2159133/assets/scenario_fire.jpg",
+      "sha256": "e273d6d0109e66bb8aed8da32df06c729bca8db7991077d24edc4c363c809520",
+      "size_bytes": 328681
+    },
+    {
+      "id": "box_pickup_still",
+      "kind": "scenario_still",
+      "relative_path": "assets/scenario_box_pickup.jpg",
+      "source_url": "https://huggingface.co/datasets/nvidia/PhysicalAI-WorldModel-Synthetic-Warehouse-Operations-Scenes/resolve/d5b88d3abcf659f304a107f4336b71b4e2159133/assets/scenario_box_pickup.jpg",
+      "sha256": "2edd43981172fb4dbedf27d7dcb92f3950ecf7f9af89c3657997cfcbbf22ea3e",
+      "size_bytes": 233724
+    }
+  ],
+  "classification_cases": [
+    {
+      "id": "classify_near_miss",
+      "clip_asset_id": "near_miss_clip",
+      "still_asset_id": "near_miss_still",
+      "expected_label": "forklift_human_near_miss",
+      "is_safety_incident": true,
+      "ground_truth_basis": "The official dataset card names and describes this staged scenario."
+    },
+    {
+      "id": "classify_collision",
+      "clip_asset_id": "collision_clip",
+      "still_asset_id": "collision_still",
+      "expected_label": "forklift_shelf_collision",
+      "is_safety_incident": true,
+      "ground_truth_basis": "The official dataset card states that the forklift impacts the shelf."
+    },
+    {
+      "id": "classify_fire_evacuation",
+      "clip_asset_id": "fire_clip",
+      "still_asset_id": "fire_still",
+      "expected_label": "warehouse_fire_and_evacuation",
+      "is_safety_incident": true,
+      "ground_truth_basis": "The official dataset card states that a fire ignites and workers evacuate."
+    },
+    {
+      "id": "classify_routine_box_pickup",
+      "clip_asset_id": "box_pickup_clip",
+      "still_asset_id": "box_pickup_still",
+      "expected_label": "routine_box_pickup",
+      "is_safety_incident": false,
+      "negative_control": true,
+      "ground_truth_basis": "The official dataset card explicitly presents box pickup as routine non-incident coverage."
+    }
+  ],
+  "prediction_cases": [
+    {
+      "id": "predict_near_miss",
+      "clip_asset_id": "near_miss_clip",
+      "rgb_frame_indices": [
+        30,
+        45
+      ],
+      "assumed_times_seconds": [
+        2.0,
+        3.0
+      ],
+      "prompt": "What is most likely to happen next, and is there an immediate safety risk? Answer in one short sentence.",
+      "expected": {
+        "event_label": "forklift_human_near_miss",
+        "immediate_safety_risk": true,
+        "required_concepts_any": [
+          "forklift and worker are on converging paths",
+          "risk of the forklift striking the worker",
+          "worker needs to move or dodge"
+        ],
+        "outcome_concepts_any": [
+          "worker dodges",
+          "near miss",
+          "collision is narrowly avoided"
+        ],
+        "must_not_assert": [
+          "the forklift definitely strikes the worker",
+          "there is no safety risk"
+        ]
+      },
+      "timing_basis": "Heuristic only: the preview has 150 frames and the dataset card documents a 10-second scenario, so this package assumes about 15 preview fps. Manual preview inspection places closest approach around frame 60. These are not shard-level simulator timestamps."
+    },
+    {
+      "id": "predict_shelf_collision",
+      "clip_asset_id": "collision_clip",
+      "rgb_frame_indices": [
+        66,
+        88
+      ],
+      "assumed_times_seconds": [
+        4.38,
+        5.84
+      ],
+      "prompt": "What is most likely to happen next, and what object is at risk? Answer in one short sentence.",
+      "expected": {
+        "event_label": "forklift_shelf_collision",
+        "immediate_safety_risk": true,
+        "required_concepts_any": [
+          "forklift is approaching the shelf",
+          "forklift is likely to collide with the shelf",
+          "shelf or stored objects may be knocked over"
+        ],
+        "outcome_concepts_any": [
+          "forklift impacts the shelf",
+          "shelf is knocked over",
+          "debris falls"
+        ],
+        "must_not_assert": [
+          "this is routine safe driving",
+          "the forklift is moving away from the shelf"
+        ]
+      },
+      "timing_basis": "Heuristic only: the preview has 226 frames and the dataset card documents a 15-second scenario, so this package assumes about 15.07 preview fps. Frames 66 and 88 were selected conservatively before the visually apparent impact around frames 110-132. These are not shard-level simulator timestamps."
+    }
+  ]
+}

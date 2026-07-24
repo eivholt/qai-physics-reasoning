@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-07-24T15:15:59.5451327Z",
+  "status": {
+    "paired_frame_npu_execution": "pass",
+    "near_miss_quality": "fail",
+    "shelf_collision_quality": "fail",
+    "bf16_near_miss_hazard_recognition": "pass",
+    "bf16_near_miss_predictive_outcome": "fail"
+  },
+  "claim": {
+    "proven": "Two distinct video frames can be packed as one native Qwen3-VL temporal patch and executed by the Cosmos vision and text contexts through QnnHtp on the IQ-9075 EVK.",
+    "not_proven": [
+      "native MP4 decoding or ingestion by Genie",
+      "more than one temporal patch with the current CL512 bundle",
+      "benchmark-quality predictions from the current hybrid artifact",
+      "the full upstream deepstack and visual-position-mask path"
+    ]
+  },
+  "source": {
+    "benchmark_id": "nvidia_sdg_warehouse_card_previews_v1",
+    "dataset": "nvidia/PhysicalAI-WorldModel-Synthetic-Warehouse-Operations-Scenes",
+    "dataset_revision": "d5b88d3abcf659f304a107f4336b71b4e2159133",
+    "license": "OpenMDW-1.1",
+    "generator": "NVIDIA Isaac Sim with Isaac Replicator Object and Isaac Replicator Agent",
+    "manifest": "benchmarks/nvidia_sdg_warehouse/benchmark.json"
+  },
+  "preparation": {
+    "script": "scripts/prepare_video_npu_inputs.py",
+    "script_sha256_at_run": "2c09adaf12ae7a6bfa6a3dc90e98c11ccb5121e0e4aa4f9add607304bd3de452",
+    "current_hardened_script_sha256": "657439107da0738ca56a0a36e4f0691fdcded6cda40e73ca606e80e87a4ed4fe",
+    "frames_per_temporal_patch": 2,
+    "frame_resize": [
+      512,
+      512
+    ],
+    "pixel_values_shape": [
+      1024,
+      1536
+    ],
+    "video_grid_thw": [
+      1,
+      32,
+      32
+    ],
+    "pixel_serialization": "float32 little-endian raw",
+    "visual_tokens_per_patch": 256,
+    "bundle_context_tokens": 512
+  },
+  "target": {
+    "board": "Qualcomm Dragonwing IQ-9075 EVK (QCS9075)",
+    "host_architecture": "aarch64",
+    "runtime": "QAIRT 2.45.0.260326",
+    "genie": "1.17.0",
+    "backend": "QnnHtp",
+    "dsp_arch": "v73",
+    "deployment": "/home/ubuntu/cosmos_reason2_2b_w4_fp16_hybrid_r1",
+    "bundle_evidence": "docs/evidence/iq9075_npu_smoke_r1.json"
+  },
+  "cases": [
+    {
+      "id": "predict_near_miss",
+      "execution_status": "pass",
+      "quality_status": "fail",
+      "frames": [
+        {
+          "preview_frame": 30,
+          "assumed_time_seconds": 2.0,
+          "png_sha256_at_run": "b784d1e5ac808783d5972eb70fb48a5f749c8e81a81ae0a6aa51eed7a8af6677",
+          "decoded_rgb_sha256": "df438e7098ef226cd0205d3d2427d499f74b73d7407c38cad2e94b0cd47c98d4"
+        },
+        {
+          "preview_frame": 45,
+          "assumed_time_seconds": 3.0,
+          "png_sha256_at_run": "431dac27076a1597cd54e1ae1df71df05b70b69bb671d390a2f3ff923bb2fe7d",
+          "decoded_rgb_sha256": "b6572ecabf140fb26bc968bca46f9f0b56886a9ee97f3bb6140362329bdc5c8d"
+        }
+      ],
+      "pair_timestamp_seconds": 2.5,
+      "pair_tensor_sha256": "2a1a949cecda76db7d627fe5f25f93024c3fe6f809d682c1b9a65b276ddb06ee",
+      "prompt_tokens": {
+        "text": 49,
+        "visual": 256,
+        "total": 305,
+        "remaining": 207
+      },
+      "question": "What is most likely to happen next, and is there an immediate safety risk? Answer in one short sentence.",
+      "expected_event": "A forklift and worker converge; the worker dodges and contact is narrowly avoided, but there is an immediate collision risk.",
+      "answer": "No, there is a moving forklift and a forkl near the person; the person is likely to step between the two.",
+      "quality_reason": "The answer reacts to a moving forklift and person, but invents a second forklift, does not clearly identify the immediate risk, and does not predict the staged dodge/near-miss.",
+      "wall_seconds": 4.25,
+      "context_initializations": 2,
+      "remote_artifacts": {
+        "manifest_sha256": "60fa8d1fc5c0d29867fae9d2eae685be7aef53dfab087f47b2de4998b7cf6a7c",
+        "script_sha256": "1c8e58175dd9ea9f9860175295ac77828a6b06d510cf3a52ecb92125a8e828f9",
+        "log_sha256": "7a76e67411b5292b1e85bb2819b72b03517a635e6b5299dd28574e29cc25d912",
+        "timing_sha256": "cb2e76c4672d87352db143ebd3e20a0d559150da64b10fa99ed4d88af8a8dcae"
+      }
+    },
+    {
+      "id": "predict_shelf_collision",
+      "execution_status": "pass",
+      "quality_status": "fail",
+      "frames": [
+        {
+          "preview_frame": 66,
+          "assumed_time_seconds": 4.38,
+          "png_sha256_at_run": "e7e3ebe48cb6cb2840b5d1faef569f1d9b957b4718b1e1377055fe45e8631fa6",
+          "decoded_rgb_sha256": "c259a287a649b101e7aa52870cd3fd8267a537ff4c95094973c189e42f3bd42c"
+        },
+        {
+          "preview_frame": 88,
+          "assumed_time_seconds": 5.84,
+          "png_sha256_at_run": "73ddaf62d543207081712e0ca7d23b8746f54723ce353a5dd3ebe071499bb372",
+          "decoded_rgb_sha256": "d4cc72d99b1e0b1925d2e2f5a792ec552436aa1e0b7fbbd6c57b9d2e4d72f030"
+        }
+      ],
+      "pair_timestamp_seconds": 5.11,
+      "pair_tensor_sha256": "62211082d48dbaaebdd80b0fa603e2748b4782a054f18b9cc1263153f4f7e31b",
+      "prompt_tokens": {
+        "text": 48,
+        "visual": 256,
+        "total": 304,
+        "remaining": 208
+      },
+      "question": "What is most likely to happen next, and what object is at risk? Answer in one short sentence.",
+      "expected_event": "The approaching forklift collides with the storage shelf, risking a knock-over and falling debris.",
+      "answer": "After the forklier is in the process of moving the forklift and the car is moving away, the forklier will move back to the forkl after the forkl is in the space.",
+      "quality_reason": "The answer does not identify the shelf or predict the staged collision and is linguistically incoherent.",
+      "wall_seconds": 5.02,
+      "context_initializations": 2,
+      "remote_artifacts": {
+        "manifest_sha256": "b7f807f3a47f4b39382576139eb49fc5e0b7a247fa8f274cc4fb65f1741f16e8",
+        "script_sha256": "46b950a4075dc9cc3ad78808789a81408622df713a2167c451bff9d8c7b4fed3",
+        "log_sha256": "39e63fc12502fbedc842aafa83641d35defd3ac636f7e93b6e877f914a15a5ef",
+        "timing_sha256": "3bf51bcb3fa2964166ccb1bddca92668f3198c7c96162cc9eaec3d13ad8bfe1e"
+      }
+    }
+  ],
+  "bf16_reference": {
+    "case_id": "predict_near_miss",
+    "checkpoint": "$HOME/models/Cosmos-Reason2-2B",
+    "hardware": "NVIDIA GeForce RTX 5090",
+    "driver": "610.62",
+    "precision": "bfloat16",
+    "transformers": "5.7.0",
+    "prompt_tokens": 305,
+    "max_new_tokens": 64,
+    "sampling": "greedy",
+    "model_load_seconds": 2.058,
+    "generation_seconds": 4.185,
+    "peak_allocated_gpu_gib": 4.615,
+    "answer": "The forklift will likely stop suddenly, posing a risk of collision or injury to the worker nearby.",
+    "hazard_recognition_status": "pass",
+    "predictive_outcome_status": "fail",
+    "quality_reason": "The answer correctly identifies the forklift-worker collision/injury risk, but predicts that the forklift stops rather than the staged worker dodge/near-miss and therefore does not satisfy the strict future-outcome rubric."
+  },
+  "interpretation": "The paired-frame plumbing and NPU execution work. The BF16 comparison shows that the selected frames contain enough information for a useful hazard answer and is materially better than the NPU output, but neither path predicts the exact staged future outcome. The next iteration should restore deepstack and visual-position-mask inputs and evaluate a longer-context, smaller-vision-token profile."
+}

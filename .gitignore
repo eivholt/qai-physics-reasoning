@@ -149,6 +149,8 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+!.env.example
 .envrc
 .venv
 env/
@@ -216,3 +218,25 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Model downloads, quantization outputs, and deployable binaries
+/artifacts/
+/checkpoints/
+/exports/
+/logs/
+/models/
+/.codex_diag*
+*.safetensors
+*.onnx
+*.data
+*.encodings
+*.bin
+*.gguf
+*.zip
+*.raw
+
+# Local credentials and signing material
+*.pem
+*.key
+*.p12
+credentials.json

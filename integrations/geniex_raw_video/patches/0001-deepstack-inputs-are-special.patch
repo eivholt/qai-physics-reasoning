@@ -1,0 +1,18 @@
+diff --git a/core/src/llm/llm_utils.cpp b/core/src/llm/llm_utils.cpp
+index 5719daa..e851d5d 100644
+--- a/core/src/llm/llm_utils.cpp
++++ b/core/src/llm/llm_utils.cpp
+@@ -27,6 +27,12 @@ bool isSpecialTensor(const std::string& name) {
+         "position_ids",
+         "position_ids_cos",
+         "position_ids_sin",
++        "visual_pos_masks",
+     };
+-    return kNamed.count(name) > 0 || isKVTensor(name);
++    // Qwen3-VL's DeepStack features are auxiliary inputs to the first text
++    // shard, not inter-shard hidden state. Treat every numbered level as
++    // special so graph/metadata inference cannot select one as in_state_name
++    // if a compiler changes QNN tensor ordering.
++    const bool is_deepstack = name.rfind("deepstack_visual_embeds_", 0) == 0;
++    return kNamed.count(name) > 0 || is_deepstack || isKVTensor(name);
+ }

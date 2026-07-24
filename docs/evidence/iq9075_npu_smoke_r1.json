@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-07-24T14:38:56.681905+00:00",
+  "status": "pass",
+  "collector": {
+    "path": "scripts/collect_evk_npu_evidence.py",
+    "sha256": "0d7533f879ee284d1b587b96046c02c6fde233c57d475272f110b2f3d18eb6c0"
+  },
+  "claim": {
+    "model": "nvidia/Cosmos-Reason2-2B",
+    "target": "Qualcomm Dragonwing IQ-9075 EVK (QCS9075)",
+    "accelerator": "Hexagon v73 through QAIRT QnnHtp and FastRPC",
+    "proven_modes": [
+      "text generation",
+      "single-image-conditioned text generation"
+    ],
+    "not_claimed": [
+      "official NVIDIA or Qualcomm certification",
+      "full upstream numerical equivalence",
+      "production model quality",
+      "native MP4 ingestion",
+      "CPU-free end-to-end execution"
+    ]
+  },
+  "host": {
+    "machine": "aarch64",
+    "platform": "Linux-6.8.0-1077-qcom-aarch64-with-glibc2.39"
+  },
+  "runtime": {
+    "qairt_home": "/opt/qairt/2.45.0.260326",
+    "qairt_version": "2.45.0.260326",
+    "target": "aarch64-oe-linux-gcc11.2",
+    "backend": "QnnHtp",
+    "dsp_arch": "v73",
+    "fastrpc_device": "/dev/fastrpc-cdsp",
+    "fastrpc_read_write": true,
+    "required_libraries": [
+      "libGenie.so",
+      "libQnnHtp.so",
+      "libQnnHtpV73Stub.so",
+      "hexagon-v73/unsigned/libQnnHtpV73Skel.so"
+    ]
+  },
+  "bundle": {
+    "deployment_path": "/home/ubuntu/cosmos_reason2_2b_w4_fp16_hybrid_r1",
+    "context_length": 512,
+    "precision": {
+      "vision": "original W4A16",
+      "text": "W4 weights with floating activations"
+    },
+    "compatibility_mode": {
+      "qairt_245": true,
+      "deepstack_inputs": false,
+      "visual_position_mask_inputs": false
+    },
+    "contexts": {
+      "vision_encoder.bin": {
+        "bytes": 422621184,
+        "sha256": "872e4e951feb448f1f60b694b5ec1113f6ecd4788608a0bd4c40579e0a855d60",
+        "compile_job": "jgo861ddp",
+        "link_job": "j579rjnrg",
+        "target_model": "mngx5gv5q"
+      },
+      "part1_of_4.bin": {
+        "bytes": 181178368,
+        "sha256": "4fa761e87a754f259ec9f25cc7ab4293d01f208b7c8bbc2614b19016d2c19619",
+        "link_job": "jprw31875",
+        "target_model": "mno2p6jvq",
+        "graph_order": [
+          "ar128_cl512_1_of_4",
+          "ar1_cl512_1_of_4"
+        ]
+      },
+      "part2_of_4.bin": {
+        "bytes": 181145600,
+        "sha256": "f797ef8ab4219851e90d44d83b3a5731f254d6345fdd334edc12d96c05881358",
+        "link_job": "jgjqnkzv5",
+        "target_model": "mm60gk9vm",
+        "graph_order": [
+          "ar128_cl512_2_of_4",
+          "ar1_cl512_2_of_4"
+        ]
+      },
+      "part3_of_4.bin": {
+        "bytes": 181145600,
+        "sha256": "4c7a7e895d4ebbc7a27ffe5c42ccae660dd3bf0bbd8d70bc9b5fdb468e6cd772",
+        "link_job": "jpeym4eo5",
+        "target_model": "mq3lg676q",
+        "graph_order": [
+          "ar128_cl512_3_of_4",
+          "ar1_cl512_3_of_4"
+        ]
+      },
+      "part4_of_4.bin": {
+        "bytes": 495808512,
+        "sha256": "6d37b752d39ace353646817195789887c2c34fb689e295c179d3470e9680eabb",
+        "link_job": "jgzndvoog",
+        "target_model": "mno2p69vq",
+        "graph_order": [
+          "ar128_cl512_4_of_4",
+          "ar1_cl512_4_of_4"
+        ]
+      }
+    }
+  },
+  "text_smoke": {
+    "status": "pass",
+    "context_initializations": 1,
+    "prompt_tokens": 38,
+    "prompt_tokens_per_second": 288.68359375,
+    "time_to_first_token_ms": 131.634,
+    "generated_tokens": 41,
+    "generation_tokens_per_second": 18.177520751953125,
+    "answer": "The ball will be seen falling and spinning rapidly to the left, following a curved parabolic path and a dark surface. It will be a dark black, likely made of rubber or rubber-like material.",
+    "log_sha256": "eb105cc47acaf0255b629b39d64a6fd11d900c4b469b46be73d280dd2f1e4230",
+    "profile_sha256": "61fe18135bc939126a5f86944070c85f4252f7e87d764258293ec6aeebdc1182"
+  },
+  "vision_smoke": {
+    "status": "pass",
+    "context_initializations": 2,
+    "bound_vision_inputs": 5,
+    "expected_content_match": "dog",
+    "observed_summary": "A white fluffy dog on green grass.",
+    "log_sha256": "1f436165e99e1ad0324b62cb75d7c117f37a96d721971c0989312fd09f8f1dd8"
+  },
+  "warning": "Bundle metadata records compiler build 2.45.0.260326154327 while the EVK runtime reports the compatible 2.45.0.260326 family."
+}

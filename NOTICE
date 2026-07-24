@@ -1,0 +1,7 @@
+Licensed by NVIDIA Corporation under the NVIDIA Open Model License
+
+Built on NVIDIA Cosmos
+
+This repository contains deployment adapter code only. The NVIDIA model
+weights are not redistributed here. Users must obtain the weights under the
+terms published with nvidia/Cosmos-Reason2-2B.

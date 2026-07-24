@@ -1,0 +1,43 @@
+name: Cosmos-Reason2-2B
+id: cosmos_reason2_2b
+status: unpublished
+status_reason: https://github.com/eivholt/qai-physics-reasoning
+headline: Experimental physical-AI reasoning VLM deployment for Qualcomm IQ-9075.
+domain: Generative AI
+description: NVIDIA Cosmos Reason 2 is a Qwen3-VL-2B-based vision-language model for physical common-sense and embodied reasoning.
+use_case: Text Generation
+tags:
+- llm
+- vlm
+- generative-ai
+research_paper: https://arxiv.org/abs/2503.15558
+research_paper_title: "Cosmos-Reason1: From Physical Common Sense To Embodied Reasoning"
+license: https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license
+source_repo: https://huggingface.co/nvidia/Cosmos-Reason2-2B
+technical_details:
+  Model architecture: Qwen3-VL-2B with a ViT vision encoder and dense transformer text decoder.
+  Number of parameters: 2438696960
+applicable_scenarios:
+- Physical AI reasoning
+- Visual question answering
+- Robot planning research
+related_models:
+- qwen3_vl_2b_instruct
+- qwen3_vl_4b_instruct
+form_factors:
+- IoT
+has_static_banner: false
+has_animated_banner: false
+license_type: commercial
+dataset: []
+restrict_model_sharing: true
+model_type_llm: true
+llm_details:
+  call_to_action: View Readme
+  geniex_llamacpp_compatible: true
+  genie_compatible: true
+runtime_technical_details:
+  geniex_qairt:
+    Input sequence length for Prompt Processor: '128'
+    Context lengths: '512, 1024, 2048, 4096'
+    Minimum QNN SDK version required: 2.45.0
