@@ -137,28 +137,96 @@ def select_assets(
     ]
 
 
-def _prediction_cases(
+def _paired_frame_cases(
     manifest: dict[str, Any], case_ids: Iterable[str]
 ) -> list[dict[str, Any]]:
-    available = {case["id"]: case for case in manifest["prediction_cases"]}
+    cases = [
+        *manifest["prediction_cases"],
+        *manifest.get("observation_cases", []),
+        *manifest.get("video_cases", []),
+    ]
+    available = {case["id"]: case for case in cases}
+    if len(available) != len(cases):
+        raise ValueError("Paired-frame case ids must be unique")
     requested = list(case_ids)
     if not requested:
         return list(available.values())
     unknown = sorted(set(requested) - available.keys())
     if unknown:
         raise ValueError(
-            f"Unknown prediction case(s): {', '.join(unknown)}; "
+            f"Unknown paired-frame case(s): {', '.join(unknown)}; "
             f"choose from {', '.join(available)}"
         )
     return [available[case_id] for case_id in requested]
 
 
+def _case_frame_indices(case: dict[str, Any]) -> list[int]:
+    """Return one case's ordered RGB frames, flattening temporal pairs."""
+
+    temporal_pairs = case.get("temporal_pairs")
+    if temporal_pairs is None:
+        values = case.get("rgb_frame_indices")
+        if not isinstance(values, list) or not values:
+            raise ValueError(
+                f"{case.get('id', '<unknown>')}: rgb_frame_indices must be "
+                "a non-empty list"
+            )
+        if not all(
+            isinstance(value, int) and not isinstance(value, bool)
+            for value in values
+        ):
+            raise ValueError(
+                f"{case.get('id', '<unknown>')}: frame indices must be integers"
+            )
+        return list(values)
+
+    if "rgb_frame_indices" in case:
+        raise ValueError(
+            f"{case.get('id', '<unknown>')}: define temporal_pairs or "
+            "rgb_frame_indices, not both"
+        )
+    if not isinstance(temporal_pairs, list) or not temporal_pairs:
+        raise ValueError(
+            f"{case.get('id', '<unknown>')}: temporal_pairs must be a "
+            "non-empty list"
+        )
+
+    indices: list[int] = []
+    for pair_index, pair in enumerate(temporal_pairs):
+        if not isinstance(pair, dict):
+            raise ValueError(
+                f"{case.get('id', '<unknown>')}: temporal_pairs[{pair_index}] "
+                "must be an object"
+            )
+        values = pair.get("frame_indices")
+        if (
+            not isinstance(values, list)
+            or len(values) != 2
+            or not all(
+                isinstance(value, int) and not isinstance(value, bool)
+                for value in values
+            )
+        ):
+            raise ValueError(
+                f"{case.get('id', '<unknown>')}: temporal_pairs[{pair_index}] "
+                "must contain exactly two integer frame_indices"
+            )
+        indices.extend(values)
+
+    if any(second <= first for first, second in zip(indices, indices[1:])):
+        raise ValueError(
+            f"{case.get('id', '<unknown>')}: temporal-pair frame indices "
+            "must be strictly increasing"
+        )
+    return indices
+
+
 def _safe_case_id(value: Any) -> str:
     if not isinstance(value, str) or not value:
-        raise ValueError("Prediction case id must be a non-empty string")
+        raise ValueError("Paired-frame case id must be a non-empty string")
     if value in {".", ".."} or "/" in value or "\\" in value:
         raise ValueError(
-            f"Unsafe prediction case id (must be one path component): {value!r}"
+            f"Unsafe paired-frame case id (must be one path component): {value!r}"
         )
     return value
 
@@ -184,7 +252,7 @@ def extract_rgb_frames(
     source = _destination(output_dir, asset["relative_path"])
     validate_asset(source, asset)
 
-    indices = [int(index) for index in case["rgb_frame_indices"]]
+    indices = _case_frame_indices(case)
     if not indices or min(indices) < 0:
         raise ValueError(f"{case['id']}: frame indices must be non-negative")
 
@@ -242,7 +310,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--case",
         action="append",
         default=[],
-        help="prediction case to extract; repeatable (default: all cases)",
+        help="paired-frame case to extract; repeatable (default: all cases)",
     )
     parser.add_argument(
         "--force",
@@ -255,7 +323,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     manifest = load_manifest(args.manifest)
-    cases = _prediction_cases(manifest, args.case) if args.extract_rgb else []
+    cases = _paired_frame_cases(manifest, args.case) if args.extract_rgb else []
     required = [case["clip_asset_id"] for case in cases]
 
     for asset in select_assets(

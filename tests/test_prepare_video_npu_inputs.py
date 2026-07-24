@@ -12,6 +12,10 @@ from scripts.prepare_video_npu_inputs import (
     EXPECTED_GRID_THW,
     EXPECTED_PIXEL_SHAPE,
     FLOAT32_BYTES,
+    NATIVE_RESIZE_MODE,
+    STATIC_RESIZE_FALLBACK_MODE,
+    TEXT_DECODE_AR,
+    TEXT_PREFILL_AR,
     prepare_video_npu_inputs,
 )
 
@@ -67,24 +71,39 @@ class _FakeVideoProcessor:
         *,
         pixel_shape: tuple[int, ...] = EXPECTED_PIXEL_SHAPE,
         grid: tuple[int, ...] = EXPECTED_GRID_THW,
+        native_pixel_shape: tuple[int, ...] | None = None,
+        native_grid: tuple[int, ...] | None = None,
     ) -> None:
         self.pixel_shape = pixel_shape
         self.grid = grid
+        self.native_pixel_shape = native_pixel_shape
+        self.native_grid = native_grid
         self.calls: list[dict[str, object]] = []
 
     def __call__(self, **kwargs: object) -> dict[str, _FakeTensor]:
         self.calls.append(kwargs)
         call_number = len(self.calls)
-        byte_count = math.prod(self.pixel_shape) * FLOAT32_BYTES
+        uses_static_fallback = kwargs.get("do_resize") is False
+        pixel_shape = (
+            self.pixel_shape
+            if uses_static_fallback or self.native_pixel_shape is None
+            else self.native_pixel_shape
+        )
+        grid = (
+            self.grid
+            if uses_static_fallback or self.native_grid is None
+            else self.native_grid
+        )
+        byte_count = math.prod(pixel_shape) * FLOAT32_BYTES
         payload = bytes([call_number]) * byte_count
         return {
             "pixel_values_videos": _FakeTensor(
-                self.pixel_shape,
+                pixel_shape,
                 payload=payload,
             ),
             "video_grid_thw": _FakeTensor(
                 (1, 3),
-                values=[list(self.grid)],
+                values=[list(grid)],
             ),
         }
 
@@ -100,22 +119,47 @@ def _write_sparse(path: Path, size: int) -> None:
         handle.truncate(size)
 
 
-def _write_bundle(bundle: Path, *, context_size: int) -> None:
+def _write_bundle(
+    bundle: Path,
+    *,
+    context_size: int,
+    image_height: int = 512,
+    image_width: int = 512,
+) -> None:
     bundle.mkdir()
     sample_inputs = bundle / "sample_inputs"
     sample_inputs.mkdir()
+    patch_size = 16
+    merge_size = 2
+    grid_height = image_height // patch_size
+    grid_width = image_width // patch_size
+    patches = grid_height * grid_width
+    visual_tokens = patches // (merge_size**2)
+    pixel_shape = [patches, 3 * 2 * patch_size * patch_size]
+    ancillary_specs = {
+        "position_ids_cos.raw": (patches, 32),
+        "position_ids_sin.raw": (patches, 32),
+        "window_attention_mask.raw": (1, patches, patches),
+        "full_attention_mask.raw": (1, patches, patches),
+    }
     metadata = {
         "model_files": {
             "vision_encoder.bin": {
                 "inputs": {
-                    "pixel_values": {"shape": [1024, 1536]},
-                    "position_ids_cos": {"shape": [1024, 32]},
-                    "position_ids_sin": {"shape": [1024, 32]},
-                    "window_attention_mask": {"shape": [1, 1024, 1024]},
-                    "full_attention_mask": {"shape": [1, 1024, 1024]},
+                    "pixel_values": {"shape": pixel_shape},
+                    "position_ids_cos": {"shape": [patches, 32]},
+                    "position_ids_sin": {"shape": [patches, 32]},
+                    "window_attention_mask": {
+                        "shape": [1, patches, patches]
+                    },
+                    "full_attention_mask": {
+                        "shape": [1, patches, patches]
+                    },
                 },
                 "outputs": {
-                    "image_features": {"shape": [256, 2048]},
+                    "image_features": {
+                        "shape": [visual_tokens, 2048]
+                    },
                 },
             },
             **{
@@ -131,11 +175,11 @@ def _write_bundle(bundle: Path, *, context_size: int) -> None:
         },
         "genie": {
             "vision_preprocessing": {
-                "image_width": 512,
-                "image_height": 512,
-                "patch_size": 16,
+                "image_width": image_width,
+                "image_height": image_height,
+                "patch_size": patch_size,
                 "temporal_patch_size": 2,
-                "spatial_merge_size": 2,
+                "spatial_merge_size": merge_size,
             }
         },
     }
@@ -148,8 +192,24 @@ def _write_bundle(bundle: Path, *, context_size: int) -> None:
     (bundle / "text-generator.json").write_text(
         json.dumps(text_generator), encoding="utf-8"
     )
-    for filename in ("img-enc-htp.json", "text-encoder.json"):
-        (bundle / filename).write_text("{}", encoding="utf-8")
+    (bundle / "img-enc-htp.json").write_text(
+        json.dumps(
+            {
+                "image-encoder": {
+                    "engine": {
+                        "model": {
+                            "vision-param": {
+                                "height": grid_height,
+                                "width": grid_width,
+                            }
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (bundle / "text-encoder.json").write_text("{}", encoding="utf-8")
     (bundle / "htp_backend_ext_config.json").write_text(
         "{}", encoding="utf-8"
     )
@@ -158,7 +218,7 @@ def _write_bundle(bundle: Path, *, context_size: int) -> None:
         (bundle / f"part{index}_of_4.bin").write_bytes(
             f"text-part-{index}".encode()
         )
-    for filename, shape in ANCILLARY_SPECS.items():
+    for filename, shape in ancillary_specs.items():
         _write_sparse(
             sample_inputs / filename,
             math.prod(shape) * FLOAT32_BYTES,
@@ -191,7 +251,7 @@ def _write_processor_dir(root: Path) -> Path:
 
 
 class PrepareVideoNpuInputsTests(unittest.TestCase):
-    def test_prepares_one_pair_for_cl512_and_resizes_before_packing(self) -> None:
+    def test_prepares_one_pair_with_native_processor_resize(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             bundle = root / "bundle"
@@ -200,9 +260,12 @@ class PrepareVideoNpuInputsTests(unittest.TestCase):
             frames = _write_frames(root, 2)
             video_processor = _FakeVideoProcessor()
             processor = _FakeProcessor(video_processor)
-            loaded_sizes: list[tuple[int, int]] = []
+            loaded_sizes: list[tuple[int, int] | None] = []
 
-            def frame_loader(path: Path, size: tuple[int, int]) -> str:
+            def frame_loader(
+                path: Path,
+                size: tuple[int, int] | None,
+            ) -> str:
                 loaded_sizes.append(size)
                 return path.name
 
@@ -217,10 +280,10 @@ class PrepareVideoNpuInputsTests(unittest.TestCase):
                 frame_loader=frame_loader,
             )
 
-            self.assertEqual(loaded_sizes, [(512, 512), (512, 512)])
+            self.assertEqual(loaded_sizes, [None, None])
             self.assertEqual(len(video_processor.calls), 1)
             call = video_processor.calls[0]
-            self.assertFalse(call["do_resize"])
+            self.assertNotIn("do_resize", call)
             self.assertFalse(call["do_sample_frames"])
             manifest = json.loads(
                 (output / "video_npu_manifest.json").read_text(encoding="utf-8")
@@ -228,6 +291,21 @@ class PrepareVideoNpuInputsTests(unittest.TestCase):
             self.assertEqual(manifest["context_budget"]["text_tokens"], 10)
             self.assertEqual(manifest["context_budget"]["visual_tokens"], 256)
             self.assertEqual(manifest["context_budget"]["prompt_tokens"], 266)
+            self.assertEqual(
+                manifest["bundle"]["text_runtime_contract"],
+                {
+                    "prefill_ar": TEXT_PREFILL_AR,
+                    "decode_ar": TEXT_DECODE_AR,
+                    "prefill_kv_capacity": 384,
+                    "max_safe_prompt_tokens": 384,
+                },
+            )
+            self.assertEqual(
+                manifest["context_budget"]["prefill_safe_limit"], 384
+            )
+            self.assertEqual(
+                manifest["context_budget"]["remaining_prefill_capacity"], 118
+            )
             self.assertEqual(manifest["pairs"][0]["pair_timestamp_text"], "0.1")
             self.assertEqual(
                 manifest["frames"][0]["sha256"],
@@ -235,6 +313,14 @@ class PrepareVideoNpuInputsTests(unittest.TestCase):
             )
             self.assertFalse(
                 manifest["processor"]["trust_remote_code"]
+            )
+            self.assertEqual(
+                manifest["processor"]["resize_mode"],
+                NATIVE_RESIZE_MODE,
+            )
+            self.assertEqual(
+                manifest["pairs"][0]["resize_mode"],
+                NATIVE_RESIZE_MODE,
             )
             self.assertIn(
                 "vision_encoder.bin", manifest["bundle"]["files"]
@@ -261,6 +347,61 @@ class PrepareVideoNpuInputsTests(unittest.TestCase):
                     (output / "sample_inputs" / filename).read_bytes(),
                     (bundle / "sample_inputs" / filename).read_bytes(),
                 )
+
+    def test_falls_back_to_explicit_resize_for_static_square_graph(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            bundle = root / "bundle"
+            _write_bundle(bundle, context_size=512)
+            processor_path = _write_processor_dir(root)
+            frames = _write_frames(root, 2)
+            video_processor = _FakeVideoProcessor(
+                native_pixel_shape=(336, 1536),
+                native_grid=(1, 14, 24),
+            )
+            processor = _FakeProcessor(video_processor)
+            loaded_sizes: list[tuple[int, int] | None] = []
+
+            def frame_loader(
+                path: Path,
+                size: tuple[int, int] | None,
+            ) -> str:
+                loaded_sizes.append(size)
+                return path.name
+
+            output = bundle / "video_inputs" / "fallback"
+            prepare_video_npu_inputs(
+                bundle,
+                processor_path,
+                output,
+                frames,
+                [0.0, 0.25],
+                processor_loader=lambda _: processor,
+                frame_loader=frame_loader,
+            )
+
+            self.assertEqual(
+                loaded_sizes,
+                [None, None, (512, 512), (512, 512)],
+            )
+            self.assertEqual(len(video_processor.calls), 2)
+            self.assertNotIn("do_resize", video_processor.calls[0])
+            self.assertFalse(video_processor.calls[1]["do_resize"])
+            manifest = json.loads(
+                (output / "video_npu_manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                manifest["processor"]["resize_mode"],
+                STATIC_RESIZE_FALLBACK_MODE,
+            )
+            self.assertEqual(
+                manifest["processor"]["pair_resize_modes"],
+                [STATIC_RESIZE_FALLBACK_MODE],
+            )
+            self.assertEqual(
+                manifest["pairs"][0]["resize_mode"],
+                STATIC_RESIZE_FALLBACK_MODE,
+            )
 
     def test_prepares_two_pairs_for_future_cl1024(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -307,6 +448,75 @@ class PrepareVideoNpuInputsTests(unittest.TestCase):
                 2,
             )
 
+    def test_prepares_four_aspect_preserving_pairs_for_cl512(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            bundle = root / "bundle"
+            _write_bundle(
+                bundle,
+                context_size=512,
+                image_height=224,
+                image_width=384,
+            )
+            processor_path = _write_processor_dir(root)
+            frames = _write_frames(root, 8)
+            video_processor = _FakeVideoProcessor(
+                pixel_shape=(336, 1536),
+                grid=(1, 14, 24),
+            )
+            processor = _FakeProcessor(video_processor)
+            loaded_sizes: list[tuple[int, int] | None] = []
+
+            def frame_loader(
+                path: Path,
+                size: tuple[int, int] | None,
+            ) -> str:
+                loaded_sizes.append(size)
+                return path.name
+
+            output = bundle / "video_inputs" / "four_aspect_pairs"
+            prepare_video_npu_inputs(
+                bundle,
+                processor_path,
+                output,
+                frames,
+                [index * 0.25 for index in range(8)],
+                processor_loader=lambda _: processor,
+                frame_loader=frame_loader,
+            )
+
+            self.assertEqual(loaded_sizes, [None] * 8)
+            self.assertEqual(len(video_processor.calls), 4)
+            manifest = json.loads(
+                (output / "video_npu_manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                manifest["graph_contract"],
+                {
+                    "frames_per_pair": 2,
+                    "image_size": [384, 224],
+                    "pixel_values_shape": [336, 1536],
+                    "grid_thw": [1, 14, 24],
+                    "image_features_shape": [84, 2048],
+                    "visual_tokens_per_pair": 84,
+                },
+            )
+            self.assertEqual(manifest["context_budget"]["text_tokens"], 25)
+            self.assertEqual(manifest["context_budget"]["visual_tokens"], 336)
+            self.assertEqual(manifest["context_budget"]["prompt_tokens"], 361)
+            self.assertEqual(
+                manifest["context_budget"]["remaining_prefill_capacity"], 23
+            )
+            self.assertEqual(len(manifest["pairs"]), 4)
+            self.assertEqual(
+                manifest["processor"]["resize_mode"],
+                NATIVE_RESIZE_MODE,
+            )
+            self.assertEqual(
+                (output / "sample_inputs" / "pair_003_pixel_values.raw").stat().st_size,
+                336 * 1536 * FLOAT32_BYTES,
+            )
+
     def test_rejects_two_512_pairs_before_packing_for_cl512(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -317,7 +527,9 @@ class PrepareVideoNpuInputsTests(unittest.TestCase):
             video_processor = _FakeVideoProcessor()
             output = bundle / "video_inputs" / "overflow"
 
-            with self.assertRaisesRegex(ValueError, "exceeds bundle context"):
+            with self.assertRaisesRegex(
+                ValueError, "exceeds the safe GenieX prefill cache"
+            ):
                 prepare_video_npu_inputs(
                     bundle,
                     processor_path,
@@ -325,6 +537,53 @@ class PrepareVideoNpuInputsTests(unittest.TestCase):
                     frames,
                     [0.0, 0.25, 0.5, 0.75],
                     processor_loader=lambda _: _FakeProcessor(video_processor),
+                    frame_loader=lambda path, size: path,
+                )
+
+            self.assertEqual(video_processor.calls, [])
+            self.assertFalse(output.exists())
+
+    def test_rejects_prompt_above_cl_minus_ar_before_packing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            bundle = root / "bundle"
+            _write_bundle(
+                bundle,
+                context_size=512,
+                image_height=224,
+                image_width=384,
+            )
+            processor_path = _write_processor_dir(root)
+            frames = _write_frames(root, 8)
+            video_processor = _FakeVideoProcessor(
+                pixel_shape=(336, 1536),
+                grid=(1, 14, 24),
+            )
+            processor = _FakeProcessor(video_processor)
+
+            class _WideTokenizer:
+                def encode(
+                    self, text: str, *, add_special_tokens: bool
+                ) -> list[int]:
+                    if add_special_tokens:
+                        raise AssertionError(
+                            "video text must not add implicit special tokens"
+                        )
+                    return list(range(11))
+
+            processor.tokenizer = _WideTokenizer()
+            output = bundle / "video_inputs" / "unsafe_prefill"
+            with self.assertRaisesRegex(
+                ValueError,
+                r"AR128/CL512 permits at most 384 prompt tokens",
+            ):
+                prepare_video_npu_inputs(
+                    bundle,
+                    processor_path,
+                    output,
+                    frames,
+                    [index * 0.25 for index in range(8)],
+                    processor_loader=lambda _: processor,
                     frame_loader=lambda path, size: path,
                 )
 

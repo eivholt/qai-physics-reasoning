@@ -43,16 +43,26 @@ sampling, or split-buffer binding.
 The deployed solution replaces only the four text contexts with W4-weight,
 FP16-activation contexts and retains the original W4A16 vision context. That
 hybrid generates coherent text and image-conditioned text through `QnnHtp`.
-The clean physical-board bundle is
-`/home/ubuntu/cosmos_reason2_2b_w4_fp16_hybrid_r1`.
+It remains the legacy image/text bring-up baseline.
 
-Remaining failure points include:
+The video-parity audit found four additional issues and resolved their
+implementation side:
 
-1. Accuracy of the quantized/compatibility vision path, especially on
-   temporal reasoning.
-2. The omitted deep-stack vision features and auxiliary visual-mask inputs.
-3. Context pressure from 256 visual tokens per 512 × 512 temporal patch.
-4. QAIRT compiler/runtime version skew in future toolchain upgrades.
+1. Preserve the learned bias when adapting Qwen3-VL's Conv3d temporal patch
+   projection to Conv2d. The earlier adapter silently dropped all 1024 bias
+   values.
+2. Retain `visual_pos_masks` and `deepstack_visual_embeds_0..2` in text part 1
+   and bind them through the lower GenieX `PixelData` API.
+3. Pass original RGB frames through native Hugging Face video preprocessing
+   and use `<|video_pad|>` in the text sequence.
+4. Use a 224 × 384 graph that yields 84 tokens per pair and calibrate from
+   distinct warehouse frame pairs.
+
+Those fixes eliminate known structural and input mismatches; they do not make
+the current integer vision graph numerically equivalent to BF16. The executed
+graph's paired calibration still used the older explicit-resize fallback, and
+strict free-form accuracy remains weak. Native-aligned integer and
+mixed-precision checkpoints require a new authorized compile and NPU run.
 
 The board has both QAIRT 2.45.0.260326 and 2.47.0.260601. QAI Hub Workbench
 currently offers 2.45 as its default compiler and 2.48 as latest, but not
@@ -71,48 +81,65 @@ The implemented bridge uses Qwen3-VL's native temporal patch representation:
 
 ```text
 decode and sample outside Genie
-  -> pair two ordered 512 × 512 frames
-  -> Hugging Face Qwen3-VL video processor
-  -> pixel tensor [1024, 1536], grid [1, 32, 32]
-  -> W4A16 vision context on QnnHtp
-  -> 256 visual tokens
-  -> timestamp + interleaved MRoPE visual record
+  -> group ordered RGB frames into temporal pairs
+  -> native Hugging Face Qwen3-VL video processor at 224 × 384
+  -> one pixel tensor [336, 1536], grid [1, 14, 24], per pair
+  -> bias-corrected W8/A16 vision context on QnnHtp
+  -> 84 primary + 3 × 84 DeepStack features per pair
+  -> <|video_pad|> span + timestamped interleaved MRoPE record per pair
+  -> visual_pos_masks + full-interface text part 1
   -> W4/FP16 text contexts on QnnHtp
 ```
 
-Legacy Genie can repeat the text/vision append sequence, so the design scales
-to multiple temporal patches without changing the orchestration model.
-However, the current CL512 graph fits only one pair: the measured near-miss
-prompt consumes 305 tokens and leaves 207. CL2048 text contexts can hold four
-current pairs, while a future 256 × 256 vision profile would reduce each pair
-to 64 tokens.
+The project runner now interleaves multiple temporal pairs. The limiting
+factor is not only CL512: its AR128 prefill graph can safely transfer at most
+`CL - AR = 384` prompt tokens into the AR1 decode cache. Measured four-pair
+prompts total 408 and 413 tokens and corrupt the NPU decode, while three-pair
+prompts span 313–360 in the current benchmark and remain coherent.
+Preparation, packaging, and runtime guards now enforce 384.
 
-Two NVIDIA Isaac Sim warehouse prediction cases confirm that one temporal
-patch reaches the NPU: both processes exit 0 and initialize the vision and
-text contexts through `QnnHtp`. Both answers fail the semantic rubric. The
-same near-miss input produces a materially better BF16 CUDA hazard answer,
-although BF16 also misses the exact staged dodge outcome. This establishes an
-additional quality loss in the current NPU artifact without claiming a full
-predictive pass. See
+The initial r3 controlled test used one answer set for a barrier video and a
+routine-pickup video, then shuffled the same choices. BF16 GPU and NPU both
+answered `A`, `C`, `B`, `A`, but that narrow 4/4 result did not generalize.
+The stronger r4 control covers four scenes and four choices: BF16 GPU scores
+7/8, NPU scores 4/8, and exact answers agree in 5/8 cases. Near-miss
+avoidance remains robust in both label orders, while box pickup is
+order-sensitive on NPU. Both strict three-pair free-form rubrics still fail,
+so broad video-reasoning parity remains unsolved. See
 [`video_npu.md`](video_npu.md)
 and
-[`iq9075_video_smoke_r1.json`](evidence/iq9075_video_smoke_r1.json).
+[`iq9075_video_aspect_native_parity_r3.json`](evidence/iq9075_video_aspect_native_parity_r3.json)
+and
+[`iq9075_video_four_scene_parity_r4.json`](evidence/iq9075_video_four_scene_parity_r4.json).
+
+Host QuantSim ablation further identifies block-23 activation quantization as
+the dominant measured late-stage vision error. A mixed W8/A16 graph with that
+block's activations in FP16 raises primary-output cosine similarity against
+the corrected adapted BF16 reference from 0.950431 to 0.991453. This candidate
+has not been uploaded, compiled, or run on the NPU; those steps require
+explicit Qualcomm AI Hub upload authorization.
 
 ## Bring-up order
 
-1. Run the public GGUF on the EVK CPU to validate model/tokenizer/projector.
-2. Quantize a 512-context W4A16 checkpoint with reduced calibration samples.
-3. Apply the QAIRT 2.45 interface transform.
-4. Convert activation encodings to FP16 while preserving calibrated weights.
-5. Run a bounded host QuantSim smoke.
-6. With explicit authorization for the Qualcomm AI Hub upload, export four
-   text parts plus the vision encoder for IQ-9075.
-7. Run a deterministic text-only prompt with `genie-t2t-run`.
-8. Run the bundled sample image through `genie-app`.
-9. Pack one two-frame temporal patch and run the pinned Isaac Sim prediction
-   cases.
-10. Repeat quantization/export at 2048 context and test a 256 × 256 vision
-    profile after the smoke bundle is stable.
+1. Run the public GGUF on the EVK CPU to validate model, tokenizer, and
+   projector independently.
+2. Quantize the split text tower and establish coherent W4/FP16 text contexts.
+3. Preserve the learned temporal patch-projection bias and select the
+   224 × 384 vision profile.
+4. Prepare distinct, frame-disjoint temporal calibration pairs with the same
+   native Hugging Face preprocessing used by inference.
+5. Run host BF16 and QuantSim numeric comparisons for the primary and all
+   three DeepStack outputs.
+6. With explicit authorization for the Qualcomm AI Hub upload, export the
+   vision encoder and full-interface text part 1 for IQ-9075.
+7. Assemble the pinned GenieX bundle and verify shapes, hashes, graph order,
+   pad token, and the AR128/CL512 safe prefill limit.
+8. Run exact-input one-pair GPU/NPU comparisons, then three-pair
+   cross-scene/order controls.
+9. Keep four-pair CL512 prompts blocked when they exceed 384; use a
+   longer-context text export before retrying them.
+10. Treat the mixed block-23-FP16 graph as a new candidate requiring its own
+    compile, physical-board run, and scored comparison.
 
 ## NPU proof
 
@@ -129,8 +156,16 @@ Functional proof and quality proof are separate:
 - A coherent response to a static smoke input proves only that specific
   image-conditioned path.
 - A paired-frame exit 0 proves temporal-patch plumbing, not useful video
-  reasoning. Benchmark answers must be scored against known outcomes and an
-  upstream BF16 reference.
+  reasoning. Exact pixel/prompt parity narrows the diagnosis but is still not
+  an accuracy result.
+- A controlled pass must change correctly with both video and answer ordering.
+  The narrow r3 control does so in 4/4 GPU/NPU cases, but the expanded r4
+  control scores GPU 7/8, NPU 4/8, with 5/8 exact answer parity. This is
+  stronger evidence than a single matching label and also shows that broad
+  parity has not been reached.
+- Free-form benchmark answers must still be scored against known outcomes and
+  an upstream BF16 reference. Current three-pair free-form cases fail on both
+  GPU and NPU.
 
 The sanitized evidence is in
 [`docs/evidence`](evidence/README.md).

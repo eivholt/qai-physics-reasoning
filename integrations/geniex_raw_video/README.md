@@ -1,35 +1,46 @@
 # Full-DeepStack raw-video runner for GenieX
 
-This overlay is the smallest path from an already-packed 512 × 512
-Qwen3-VL temporal tensor to Qualcomm GenieX's QAIRT VLM runtime. It does not
-decode a video container. Use `scripts/prepare_video_npu_inputs.py` first to
-pack exactly two extracted frames into one float32 `[1024, 1536]` tensor.
+This overlay connects already-packed Qwen3-VL temporal tensors to Qualcomm
+GenieX's QAIRT VLM runtime. It does not decode a video container. Use
+`scripts/prepare_video_npu_inputs.py` first to pack exactly `2N` extracted
+frames into `N` temporal-pair tensors.
 
-The standalone runner inserts exactly 256 `<|image_pad|>` tokens between the
-prepared prefix and suffix, supplies grid `[1, 32, 32]`, and calls GenieX's
-Qwen3-VL model directly. GenieX runs the vision context, reads
-`image_features` plus `deepstack_visual_embeds_0..2`, constructs the
-`visual_pos_masks` input, and feeds the full first text shard.
+Shapes are derived from the bundle metadata rather than hardcoded. The
+current IQ-9075 profile is 224 × 384: every pair is one float32
+`[336, 1536]` tensor with grid `[1, 14, 24]` and produces 84 primary visual
+features plus three 84-row DeepStack outputs. The runner inserts exactly 84
+`<|video_pad|>` tokens per pair, calls GenieX's Qwen3-VL model directly,
+constructs `visual_pos_masks`, and feeds the full first text shard.
 
-The two frames are one temporal patch. Because
-`temporal_patch_size = 2`, their compiled vision grid has temporal extent
-`T = 1`; the 256 visual tokens are arranged as `1 × 16 × 16` after spatial
-merge. Motion within the pair is encoded by the vision tower. The text model's
-Qwen3-VL MRoPE receives one temporal/height/width grid and uses stride
-interleaving with section `[24, 20, 20]`. Treating the two frames as two
-separate MRoPE images would be a different input contract and is rejected.
+Each two-frame pair is one temporal patch. Because
+`temporal_patch_size = 2`, its compiled vision grid has temporal extent
+`T = 1`; the 84 visual tokens are arranged as `1 × 7 × 12` after spatial
+merge. Motion within a pair is encoded by the vision tower. For multiple
+pairs, the runner interleaves one increasing timestamp and one
+temporal/height/width MRoPE record per pair, using section `[24, 20, 20]`.
+Treating the frames as independent MRoPE images is a different contract and
+is rejected.
+
+The deployed text graphs use AR128 prefill and AR1 decode at CL512. GenieX
+v0.3.16 can safely transfer at most `CL - AR = 384` prompt tokens into the
+decode cache. The preparer, package verifier, and runner all enforce this
+limit. Three current pairs fit; measured four-pair prompts of 408 and 413 do
+not.
 
 ## Measured result
 
-The runner has executed the full-DeepStack CL512 bundle on a physical
-IQ-9075 through `QnnHtp`: HTP v73 was detected, vision plus prefill TTFT was
-about 648 ms, and multi-token decoding reached 16.3–16.6 tok/s. Both
-free-form NVIDIA Isaac Sim warehouse forecasts still failed their strict
-future-event rubrics. A shelf multiple-choice answer that initially matched
-the correct option failed after the options were shuffled, exposing a
-position bias. The result therefore proves the paired-frame NPU path, not
-robust video prediction. See the
-[sanitized r2 evidence](../../docs/evidence/iq9075_video_deepstack_geniex_r2.json).
+The runner has executed the bias-corrected 224 × 384 full-DeepStack CL512
+bundle on a physical IQ-9075 through `QnnHtp`, with HTP v73 detected. The
+strongest result uses three temporal pairs and the same answer set for two
+videos, then shuffles that set. BF16 GPU and NPU both answer `A`, `C`, `B`,
+`A` across the barrier-normal, barrier-shuffled, box-normal, and box-shuffled
+cases. NPU vision-plus-prefill TTFT is 730.5–745.8 ms.
+
+This 4/4 controlled result changes with both scene and option position, so it
+is evidence of video-conditioned NPU behavior rather than a fixed answer.
+It is not a general accuracy claim: a separate tailored barrier choice and
+both strict three-pair free-form rubrics fail. See the
+[sanitized r3 evidence](../../docs/evidence/iq9075_video_aspect_native_parity_r3.json).
 
 ## Why the small GenieX patch is required
 
@@ -65,19 +76,21 @@ bash scripts/geniex_raw_video.sh build \
 
 bash scripts/geniex_raw_video.sh package \
   --bundle /path/to/full-deepstack-cl512-bundle \
-  --video-input-dir /path/to/existing/one-pair-video-input \
+  --video-input-dir /path/to/existing/video-input \
   --package-dir /path/to/new/run-package
+
+EVK_TARGET="ubuntu@<EVK IP>"
 
 bash scripts/geniex_raw_video.sh deploy \
   --build-dir /path/to/new/geniex-raw-video-build \
   --package-dir /path/to/new/run-package \
-  --evk ubuntu@<EVK-IP> \
-  --remote-root /home/ubuntu/cosmos-geniex-deepstack-test-r1
+  --evk "$EVK_TARGET" \
+  --remote-root /path/to/new/remote-run
 
 bash scripts/geniex_raw_video.sh run \
-  --evk ubuntu@<EVK-IP> \
-  --remote-root /home/ubuntu/cosmos-geniex-deepstack-test-r1 \
-  --bundle /home/ubuntu/cosmos-reason2-full-deepstack-cl512-r1 \
+  --evk "$EVK_TARGET" \
+  --remote-root /path/to/new/remote-run \
+  --bundle /path/to/remote/full-deepstack-cl512-bundle \
   --max-tokens 64 \
   --verbose
 ```
@@ -86,9 +99,10 @@ bash scripts/geniex_raw_video.sh run \
 SHA-256 and shape/config checks on the EVK before launching the NPU binary.
 It rejects compatibility bundles with removed text-side DeepStack inputs,
 changed model-context binaries, path traversal, wrong token layout, and
-prompt plus generation lengths over CL512. This hash-bound manifest is not a
-digital signature, and it does not authenticate the runner, shared libraries,
-Python launcher, or HTP runtime; retain their build provenance separately.
+prompts above the metadata-derived safe prefill limit. This hash-bound manifest
+is not a digital signature, and it does not authenticate the runner, shared
+libraries, Python launcher, or HTP runtime; retain their build provenance
+separately.
 
 The deploy command deliberately does not copy the multi-gigabyte model bundle
 and refuses to overwrite an existing remote run directory.

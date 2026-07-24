@@ -15,6 +15,27 @@ num_samples="${NUM_SAMPLES:-20}"
 veg_num_samples="${VEG_NUM_SAMPLES:-100}"
 image_height="${IMAGE_HEIGHT:-512}"
 image_width="${IMAGE_WIDTH:-512}"
+paired_calibration_manifest="${VEG_PAIRED_CALIBRATION_MANIFEST:-}"
+paired_calibration_args=()
+if [[ -n "${paired_calibration_manifest}" ]]; then
+  paired_calibration_args=(
+    --veg-paired-calibration-manifest
+    "$(realpath "${paired_calibration_manifest}")"
+  )
+fi
+fp16_last_block_activations="${VEG_FP16_LAST_BLOCK_ACTIVATIONS:-0}"
+fp16_last_block_args=()
+case "${fp16_last_block_activations,,}" in
+  1|true|yes)
+    fp16_last_block_args=(--veg-fp16-last-block-activations)
+    ;;
+  0|false|no)
+    ;;
+  *)
+    echo "VEG_FP16_LAST_BLOCK_ACTIVATIONS must be 0/1, false/true, or no/yes" >&2
+    exit 2
+    ;;
+esac
 
 source "${HOME}/miniconda3/etc/profile.d/conda.sh"
 conda activate "${env_name}"
@@ -31,6 +52,8 @@ python -m qai_hub_models.models.cosmos_reason2_2b.quantize \
   --veg-num-samples "${veg_num_samples}" \
   --image-size "${image_height}" "${image_width}" \
   --precision w4a16 \
+  "${paired_calibration_args[@]}" \
+  "${fp16_last_block_args[@]}" \
   --output-dir "${output_dir}"
 
 python "$(dirname "${BASH_SOURCE[0]}")/finalize_checkpoint.py" \

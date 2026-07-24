@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Prepare paired video-frame inputs for the legacy Cosmos Genie NPU pipeline.
 
-The deployed Qwen3-VL vision graph consumes one temporal patch at a time:
-exactly two frames, represented by a static ``[1024, 1536]`` tensor.  This
-tool packs any even number of pre-extracted frames into such pairs, surrounds
-each pair with the timestamped Qwen3-VL text layout, and emits a complete
-``genie-app`` script that repeatedly invokes the same NPU vision context.
+The deployed Qwen3-VL vision graph consumes one temporal patch at a time.
+This tool derives the static image size, patch grid, packed tensor shape and
+visual-token count from the selected bundle, packs any even number of
+pre-extracted frames into pairs, surrounds each pair with the timestamped
+Qwen3-VL text layout, and emits a complete ``genie-app`` script.
 
 Video decoding is intentionally out of scope.  Supply already extracted frame
 files and their source-video timestamps.  Run the generated script with the
@@ -26,12 +26,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
+# Keep direct ``python scripts/...`` execution and package imports working.
+try:
+    from scripts.vision_profile import FLOAT32_BYTES, VisionProfile
+except ModuleNotFoundError:  # pragma: no cover - direct script execution
+    from vision_profile import FLOAT32_BYTES, VisionProfile
+
+# Backwards-compatible names for callers/tests describing the original
+# 512-square profile. Runtime validation derives the active shapes from the
+# target bundle instead of using these constants.
 EXPECTED_PIXEL_SHAPE = (1024, 1536)
 EXPECTED_GRID_THW = (1, 32, 32)
 EXPECTED_IMAGE_SIZE = (512, 512)
 EXPECTED_VISUAL_OUTPUT_SHAPE = (256, 2048)
 VISUAL_TOKENS_PER_PAIR = 256
-FLOAT32_BYTES = 4
+NATIVE_RESIZE_MODE = "hf_native"
+STATIC_RESIZE_FALLBACK_MODE = "explicit_static_fallback"
+# The deployed text contexts are compiled as AR128 prefill plus AR1 decode
+# graphs. GenieX v0.3.16 stores prefill history in a CL-AR cache and cannot
+# safely transition a prompt longer than that cache to the AR1 graph.
+TEXT_PREFILL_AR = 128
+TEXT_DECODE_AR = 1
 
 ANCILLARY_SPECS: dict[str, tuple[int, ...]] = {
     "position_ids_cos.raw": (1024, 32),
@@ -79,13 +94,33 @@ class PackedPair:
     pixel_values: bytes
     shape: tuple[int, ...]
     grid_thw: tuple[int, ...]
+    resize_mode: str
 
 
 @dataclass(frozen=True)
 class BundleContract:
     context_size: int
-    image_width: int
-    image_height: int
+    vision: VisionProfile
+
+    @property
+    def prefill_kv_capacity(self) -> int:
+        return self.context_size - TEXT_PREFILL_AR
+
+    def text_runtime_contract(self) -> dict[str, int]:
+        return {
+            "prefill_ar": TEXT_PREFILL_AR,
+            "decode_ar": TEXT_DECODE_AR,
+            "prefill_kv_capacity": self.prefill_kv_capacity,
+            "max_safe_prompt_tokens": self.prefill_kv_capacity,
+        }
+
+    @property
+    def image_width(self) -> int:
+        return self.vision.image_width
+
+    @property
+    def image_height(self) -> int:
+        return self.vision.image_height
 
 
 def sha256_file(path: Path) -> str:
@@ -151,50 +186,17 @@ def _validate_bundle(bundle: Path) -> BundleContract:
             f"{context_size}"
         )
 
-    expected_inputs = {
-        "pixel_values": EXPECTED_PIXEL_SHAPE,
-        "position_ids_cos": ANCILLARY_SPECS["position_ids_cos.raw"],
-        "position_ids_sin": ANCILLARY_SPECS["position_ids_sin.raw"],
-        "window_attention_mask": ANCILLARY_SPECS[
-            "window_attention_mask.raw"
-        ],
-        "full_attention_mask": ANCILLARY_SPECS["full_attention_mask.raw"],
-    }
-    for name, expected in expected_inputs.items():
-        actual = _shape_from_metadata(vision_inputs, name, "vision input")
-        if actual != expected:
-            raise ValueError(
-                f"Unsupported vision input shape for {name}: {actual}; "
-                f"expected {expected}"
-            )
-
-    output_shape = _shape_from_metadata(
-        vision_outputs, "image_features", "vision output"
-    )
-    if output_shape != EXPECTED_VISUAL_OUTPUT_SHAPE:
+    # VisionProfile validates preprocessing, all five graph inputs, the
+    # post-merge output shape, and every present DeepStack output together.
+    # This accepts both the proven 512-square graph and aspect-preserving
+    # profiles such as 224x384 without weakening shape checks.
+    profile = VisionProfile.from_metadata(metadata)
+    profile.validate_img_encoder_config(bundle / "img-enc-htp.json")
+    if context_size <= TEXT_PREFILL_AR:
         raise ValueError(
-            f"Unsupported image_features shape: {output_shape}; "
-            f"expected {EXPECTED_VISUAL_OUTPUT_SHAPE}"
+            "text-generator.json context size must exceed the fixed "
+            f"AR{TEXT_PREFILL_AR} prefill width"
         )
-
-    expected_preprocessing = {
-        "image_width": EXPECTED_IMAGE_SIZE[0],
-        "image_height": EXPECTED_IMAGE_SIZE[1],
-        "patch_size": 16,
-        "temporal_patch_size": 2,
-        "spatial_merge_size": 2,
-    }
-    mismatches = {
-        key: (preprocessing.get(key), expected)
-        for key, expected in expected_preprocessing.items()
-        if preprocessing.get(key) != expected
-    }
-    if mismatches:
-        raise ValueError(
-            f"Unsupported bundle vision preprocessing values: {mismatches}"
-        )
-    if context_size <= 0:
-        raise ValueError("text-generator.json context size must be positive")
 
     expected_cache_length = context_size - 1
     for filename in CONTEXT_BINARY_FILES[1:]:
@@ -220,22 +222,11 @@ def _validate_bundle(bundle: Path) -> BundleContract:
                 f"{expected_cache_length} for context {context_size}"
             )
 
-    sample_inputs = bundle / "sample_inputs"
-    for filename, shape in ANCILLARY_SPECS.items():
-        path = sample_inputs / filename
-        if not path.is_file():
-            raise ValueError(f"Bundle is missing ancillary tensor: {path}")
-        expected_size = math.prod(shape) * FLOAT32_BYTES
-        if path.stat().st_size != expected_size:
-            raise ValueError(
-                f"Ancillary tensor {filename} has {path.stat().st_size} bytes; "
-                f"expected {expected_size}"
-            )
+    profile.validate_ancillary_files(bundle / "sample_inputs")
 
     return BundleContract(
         context_size=context_size,
-        image_width=int(preprocessing["image_width"]),
-        image_height=int(preprocessing["image_height"]),
+        vision=profile,
     )
 
 
@@ -281,7 +272,10 @@ def _load_local_processor(processor_path: Path) -> Any:
     )
 
 
-def _load_frame(path: Path, image_size: tuple[int, int]) -> Any:
+def _load_frame(
+    path: Path,
+    image_size: tuple[int, int] | None,
+) -> Any:
     try:
         from PIL import Image
     except ImportError as exc:
@@ -289,6 +283,8 @@ def _load_frame(path: Path, image_size: tuple[int, int]) -> Any:
 
     with Image.open(path) as source:
         rgb = source.convert("RGB")
+        if image_size is None:
+            return rgb.copy()
         resampling = getattr(Image, "Resampling", Image)
         return rgb.resize(image_size, resample=resampling.BICUBIC).copy()
 
@@ -334,29 +330,67 @@ def _grid_tuple(value: Any) -> tuple[int, ...]:
         raise ValueError(f"Invalid video grid values: {rows!r}") from exc
 
 
-def _pack_pair(
-    processor: Any,
-    frame_paths: Sequence[Path],
-    image_size: tuple[int, int],
-    frame_loader: Callable[[Path, tuple[int, int]], Any],
+def _packed_pair_from_output(
+    output: Any,
+    *,
+    resize_mode: str,
 ) -> PackedPair:
-    frames = [frame_loader(path, image_size) for path in frame_paths]
-    try:
-        output = processor.video_processor(
-            videos=[frames],
-            do_resize=False,
-            do_sample_frames=False,
-            return_tensors="pt",
-        )
-    except AttributeError as exc:
-        raise ValueError("Local processor has no Qwen3-VL video_processor") from exc
-
     pixel_values = _mapping_value(output, "pixel_values_videos")
     grid = _mapping_value(output, "video_grid_thw")
     return PackedPair(
         pixel_values=_tensor_to_float32_bytes(pixel_values),
         shape=_tensor_shape(pixel_values),
         grid_thw=_grid_tuple(grid),
+        resize_mode=resize_mode,
+    )
+
+
+def _pack_pair(
+    processor: Any,
+    frame_paths: Sequence[Path],
+    profile: VisionProfile,
+    frame_loader: Callable[[Path, tuple[int, int] | None], Any],
+) -> PackedPair:
+    """Use upstream HF resizing when it produces the compiled graph geometry.
+
+    Qwen3-VL's native path resizes the original tensor frames with torchvision
+    before normalization. Pre-resizing uint8 images with Pillow produces a
+    measurably different tensor even when the final dimensions are identical.
+    Legacy fixed-square graphs still need an explicit resize when native
+    aspect-preserving preprocessing selects another grid.
+    """
+
+    original_frames = [frame_loader(path, None) for path in frame_paths]
+    try:
+        native_output = processor.video_processor(
+            videos=[original_frames],
+            do_sample_frames=False,
+            return_tensors="pt",
+        )
+    except AttributeError as exc:
+        raise ValueError("Local processor has no Qwen3-VL video_processor") from exc
+    native = _packed_pair_from_output(
+        native_output,
+        resize_mode=NATIVE_RESIZE_MODE,
+    )
+    if (
+        native.shape == profile.pixel_shape
+        and native.grid_thw == profile.grid_thw
+    ):
+        return native
+
+    resized_frames = [
+        frame_loader(path, profile.image_size) for path in frame_paths
+    ]
+    fallback_output = processor.video_processor(
+        videos=[resized_frames],
+        do_resize=False,
+        do_sample_frames=False,
+        return_tensors="pt",
+    )
+    return _packed_pair_from_output(
+        fallback_output,
+        resize_mode=STATIC_RESIZE_FALLBACK_MODE,
     )
 
 
@@ -514,7 +548,9 @@ def prepare_video_npu_inputs(
     system_prompt: str = "You are a helpful assistant.",
     reserve_generation_tokens: int = 1,
     processor_loader: Callable[[Path], Any] = _load_local_processor,
-    frame_loader: Callable[[Path, tuple[int, int]], Any] = _load_frame,
+    frame_loader: Callable[
+        [Path, tuple[int, int] | None], Any
+    ] = _load_frame,
 ) -> Path:
     """Prepare paired raw inputs, text chunks, script, and provenance manifest."""
 
@@ -561,16 +597,24 @@ def prepare_video_npu_inputs(
     }
     text_tokens = sum(chunk_token_counts.values())
     pair_count = len(pair_timestamps)
-    visual_tokens = pair_count * VISUAL_TOKENS_PER_PAIR
+    visual_tokens = pair_count * contract.vision.visual_tokens
     prompt_tokens = text_tokens + visual_tokens
     required_tokens = prompt_tokens + reserve_generation_tokens
+    if prompt_tokens > contract.prefill_kv_capacity:
+        raise ValueError(
+            "Video prompt exceeds the safe GenieX prefill cache: "
+            f"{text_tokens} text + {visual_tokens} visual = {prompt_tokens}, "
+            f"but AR{TEXT_PREFILL_AR}/CL{contract.context_size} permits at "
+            f"most {contract.prefill_kv_capacity} prompt tokens. Reduce the "
+            "pair count or use a larger compiled text context."
+        )
     if required_tokens > contract.context_size:
         raise ValueError(
             "Video prompt exceeds bundle context: "
             f"{text_tokens} text + {visual_tokens} visual + "
             f"{reserve_generation_tokens} reserved generation = {required_tokens}, "
-            f"context is {contract.context_size}. Current CL512 supports one "
-            "512x512 frame pair; use a larger text context for multiple pairs."
+            f"context is {contract.context_size}. Reduce the pair count or "
+            "use a larger text context."
         )
 
     output_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -583,7 +627,9 @@ def prepare_video_npu_inputs(
         input_dir.mkdir(parents=True)
 
         ancillary_manifest: dict[str, Any] = {}
-        for filename in ANCILLARY_SPECS:
+        for filename, ancillary_shape in (
+            contract.vision.ancillary_shapes.items()
+        ):
             source = bundle / "sample_inputs" / filename
             destination = input_dir / filename
             shutil.copy2(source, destination)
@@ -593,30 +639,31 @@ def prepare_video_npu_inputs(
                 "output": f"sample_inputs/{filename}",
                 "output_sha256": sha256_file(destination),
                 "bytes": destination.stat().st_size,
-                "shape": list(ANCILLARY_SPECS[filename]),
+                "shape": list(ancillary_shape),
                 "serialization": "float32 little-endian raw",
             }
 
         pairs_manifest: list[dict[str, Any]] = []
-        expected_pixel_bytes = math.prod(EXPECTED_PIXEL_SHAPE) * FLOAT32_BYTES
+        pair_resize_modes: list[str] = []
+        expected_pixel_bytes = contract.vision.pixel_bytes
         for pair_index in range(pair_count):
             first = pair_index * 2
             pair_frames = frames[first : first + 2]
             packed = _pack_pair(
                 processor,
                 pair_frames,
-                (contract.image_width, contract.image_height),
+                contract.vision,
                 frame_loader,
             )
-            if packed.shape != EXPECTED_PIXEL_SHAPE:
+            if packed.shape != contract.vision.pixel_shape:
                 raise ValueError(
                     f"Pair {pair_index} processor shape {packed.shape}; "
-                    f"expected {EXPECTED_PIXEL_SHAPE}"
+                    f"expected {contract.vision.pixel_shape}"
                 )
-            if packed.grid_thw != EXPECTED_GRID_THW:
+            if packed.grid_thw != contract.vision.grid_thw:
                 raise ValueError(
                     f"Pair {pair_index} grid {packed.grid_thw}; "
-                    f"expected {EXPECTED_GRID_THW}"
+                    f"expected {contract.vision.grid_thw}"
                 )
             if len(packed.pixel_values) != expected_pixel_bytes:
                 raise ValueError(
@@ -627,6 +674,7 @@ def prepare_video_npu_inputs(
             filename = f"pair_{pair_index:03d}_pixel_values.raw"
             pixel_path = input_dir / filename
             pixel_path.write_bytes(packed.pixel_values)
+            pair_resize_modes.append(packed.resize_mode)
             pairs_manifest.append(
                 {
                     "pair_index": pair_index,
@@ -636,6 +684,7 @@ def prepare_video_npu_inputs(
                     ],
                     "pair_timestamp_seconds": pair_timestamps[pair_index],
                     "pair_timestamp_text": f"{pair_timestamps[pair_index]:.1f}",
+                    "resize_mode": packed.resize_mode,
                     "pixel_values": {
                         "file": f"sample_inputs/{filename}",
                         "sha256": sha256_file(pixel_path),
@@ -710,12 +759,22 @@ def prepare_video_npu_inputs(
                 "metadata_sha256": sha256_file(bundle / "metadata.json"),
                 "genie_config_sha256": sha256_file(bundle / "genie_config.json"),
                 "context_size": contract.context_size,
+                "text_runtime_contract": contract.text_runtime_contract(),
                 "files": bundle_files,
             },
             "processor": {
                 "path": str(processor_path),
                 "local_files_only": True,
                 "trust_remote_code": False,
+                "resize_policy": (
+                    "hf_native_then_explicit_static_fallback"
+                ),
+                "resize_mode": (
+                    pair_resize_modes[0]
+                    if len(set(pair_resize_modes)) == 1
+                    else "mixed"
+                ),
+                "pair_resize_modes": pair_resize_modes,
                 "files": processor_files,
                 "library_versions": {
                     "transformers": _distribution_version("transformers"),
@@ -724,19 +783,18 @@ def prepare_video_npu_inputs(
                 },
             },
             "graph_contract": {
-                "frames_per_pair": 2,
-                "image_size": [contract.image_width, contract.image_height],
-                "pixel_values_shape": list(EXPECTED_PIXEL_SHAPE),
-                "grid_thw": list(EXPECTED_GRID_THW),
-                "image_features_shape": list(EXPECTED_VISUAL_OUTPUT_SHAPE),
-                "visual_tokens_per_pair": VISUAL_TOKENS_PER_PAIR,
+                **contract.vision.as_manifest_contract(),
             },
             "context_budget": {
                 "context_size": contract.context_size,
+                "prefill_safe_limit": contract.prefill_kv_capacity,
                 "text_tokens": text_tokens,
                 "visual_tokens": visual_tokens,
-                "visual_tokens_per_pair": VISUAL_TOKENS_PER_PAIR,
+                "visual_tokens_per_pair": contract.vision.visual_tokens,
                 "prompt_tokens": prompt_tokens,
+                "remaining_prefill_capacity": (
+                    contract.prefill_kv_capacity - prompt_tokens
+                ),
                 "reserved_generation_tokens": reserve_generation_tokens,
                 "remaining_after_prompt": contract.context_size - prompt_tokens,
             },

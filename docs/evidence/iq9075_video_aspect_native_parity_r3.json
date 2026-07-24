@@ -1,0 +1,304 @@
+{
+  "schema_version": 1,
+  "report_id": "iq9075_video_aspect_native_parity_r3",
+  "created_date": "2026-07-24",
+  "model": "nvidia/Cosmos-Reason2-2B",
+  "target": {
+    "board": "Dragonwing IQ-9075 EVK",
+    "accelerator_backend": "QnnHtp",
+    "htp_arch": "v73",
+    "runtime_family": "QAIRT 2.45"
+  },
+  "runner_sha256": "9b78e9bb02c3fd3b5fda0a74efea91400d92d8ac0b2ff8ce34474e66a84c8e68",
+  "executed_bundle_context_sha256": {
+    "vision_encoder.bin": "7af8418bb61e2581fc862ce2aabf320ab3f3bfae0a7c5400e7d43b7d386028bd",
+    "part1_of_4.bin": "7a59e6c83456cc93de4c84b9dbeb3acb9ef78b93c3f88eadfd33405eeded0d81",
+    "part2_of_4.bin": "f797ef8ab4219851e90d44d83b3a5731f254d6345fdd334edc12d96c05881358",
+    "part3_of_4.bin": "4c7a7e895d4ebbc7a27ffe5c42ccae660dd3bf0bbd8d70bc9b5fdb468e6cd772",
+    "part4_of_4.bin": "6d37b752d39ace353646817195789887c2c34fb689e295c179d3470e9680eabb"
+  },
+  "scope": {
+    "summary": "Sanitized GPU-versus-NPU evidence for native-aspect paired-frame and multi-pair warehouse tests.",
+    "not_claimed": [
+      "native encoded-video or camera-stream ingestion",
+      "production or safety-qualified accuracy",
+      "vendor certification",
+      "an NPU result for the mixed block-23-FP16 vision candidate"
+    ]
+  },
+  "correctness_fixes": {
+    "temporal_patch_projection_bias": {
+      "finding": "The Qwen3-VL Conv3d patch projection has a learned bias, but the earlier Conv2d adaptation constructed the replacement with bias disabled.",
+      "fix": "Preserve and restore the learned 1024-element bias when adapting the temporal patch projection.",
+      "proof_boundary": "The corrected export removes a real adapter error; it does not by itself prove task accuracy."
+    },
+    "preprocessing_and_prompt_tokens": {
+      "pixel_preprocessing": "Pass the original RGB frames through the native Hugging Face Qwen3-VL video processor rather than manually resizing and disabling processor resize.",
+      "multimodal_pad_token": "<|video_pad|>",
+      "gpu_npu_pixel_bytes_match": true,
+      "gpu_npu_prompt_construction_match": true,
+      "proof_boundary": "These checks eliminate known input-side differences; remaining answer differences are downstream of the matched inputs."
+    }
+  },
+  "vision_profile": {
+    "image_size_height_width": [
+      224,
+      384
+    ],
+    "frames_per_temporal_pair": 2,
+    "pixel_values_shape_per_pair": [
+      336,
+      1536
+    ],
+    "video_grid_thw_per_pair": [
+      1,
+      14,
+      24
+    ],
+    "visual_tokens_per_pair": 84,
+    "executed_vision_precision": "W8/A16 integer",
+    "vision_output_shapes": {
+      "image_features": [
+        84,
+        2048
+      ],
+      "deepstack_visual_embeds_0": [
+        84,
+        2048
+      ],
+      "deepstack_visual_embeds_1": [
+        84,
+        2048
+      ],
+      "deepstack_visual_embeds_2": [
+        84,
+        2048
+      ]
+    },
+    "calibration": {
+      "source": "20 distinct warehouse motion frame pairs",
+      "manifest_sha256": "c8992b32dd866081e265a2fb55268907e318ca219dea374ec03725a17ad0f3d9",
+      "duplicated_still_frames": false,
+      "executed_bundle_preprocessing": "explicit_static_fallback",
+      "byte_aligned_with_native_inference_preprocessing": false,
+      "next_integer_checkpoint": "Native-HF-preprocessing-aligned checkpoint exists locally but has not been uploaded, compiled, or run on the NPU."
+    }
+  },
+  "host_gpu_evidence": {
+    "three_pair_summary_sha256": "fdb0e46c8fef27dbb1ba76bc1c869d45a7167024321e5f4a2bf853975ce640cf",
+    "precision": "BF16",
+    "sampling": "greedy"
+  },
+  "text_runtime_limit": {
+    "context_length": 512,
+    "prefill_ar": 128,
+    "decode_ar": 1,
+    "prefill_kv_capacity": 384,
+    "maximum_safe_prompt_tokens": 384,
+    "explanation": "The GenieX v0.3.16 text runtime keeps CL minus AR tokens in its prefill KV layout. A prompt above 384 cannot be safely transferred from the final AR128 prefill block into the AR1 decode cache.",
+    "current_guard": "Input preparation, package verification, and the C++ runner reject prompts above 384."
+  },
+  "one_pair_exact_input_comparison": {
+    "gate_definition": "Count only strict test units that the BF16 GPU reference passes. The shelf normal/shuffled choice pair is one atomic order-control unit.",
+    "gpu_correct_gate_units": 5,
+    "npu_passed_gate_units": 0,
+    "cases": [
+      {
+        "gate": "shelf_collision_freeform",
+        "pixel_values_sha256": "7ec9cf3602c8701ae522071b2f04d4c29e982fd86c4b65ced5ada1772824fd05",
+        "gpu_answer": "The forklift will collide with the yellow and black striped object, which is at risk of being damaged or displaced.",
+        "npu_answer": "The forklier will likely continue to push the forklift, which is at risk of tipping over.",
+        "npu_prompt_tokens": 132,
+        "npu_ttft_ms": 389.3,
+        "strict_npu_pass": false
+      },
+      {
+        "gate": "near_miss_fixed_choice",
+        "pixel_values_sha256": "4156c0b11fdb855a8e8537da02d5a84651d99a42b37e4f00cea8b4dca2f7f178",
+        "expected": "B",
+        "gpu_answer": "B",
+        "npu_answer": "C",
+        "npu_prompt_tokens": 164,
+        "npu_ttft_ms": 389.0,
+        "strict_npu_pass": false
+      },
+      {
+        "gate": "shelf_collision_choice_order_control",
+        "pixel_values_sha256": "7ec9cf3602c8701ae522071b2f04d4c29e982fd86c4b65ced5ada1772824fd05",
+        "normal_order": {
+          "expected": "A",
+          "gpu_answer": "A",
+          "npu_answer": "B",
+          "npu_prompt_tokens": 158,
+          "npu_ttft_ms": 382.7
+        },
+        "shuffled_order": {
+          "expected": "B",
+          "gpu_answer": "B",
+          "npu_answer": "A",
+          "npu_prompt_tokens": 158,
+          "npu_ttft_ms": 383.2
+        },
+        "strict_npu_pass": false
+      },
+      {
+        "gate": "observed_near_miss_avoidance",
+        "pixel_values_sha256": "1af703bd38d2d0d47a2f306647d520557a07664602036556323199391001397c",
+        "gpu_answer": "The worker steps back and then forward to avoid the forklift.",
+        "npu_answer": "The worker continues to run and jump over the forklift.",
+        "npu_prompt_tokens": 131,
+        "npu_ttft_ms": 384.6,
+        "strict_npu_pass": false
+      },
+      {
+        "gate": "routine_box_pickup_freeform",
+        "pixel_values_sha256": "f915e4c9384e74706b71c10bfda79dd3d47e3289c821a347e0ceb3f6eb63d594",
+        "gpu_answer": "The worker is walking forward, carrying a small box in his right hand, and there is no collision or accident.",
+        "npu_answer": "The worker is walking and carrying a box.",
+        "npu_prompt_tokens": 134,
+        "npu_ttft_ms": 387.5,
+        "strict_npu_pass": false,
+        "reason": "The answer identifies the action but omits the required explicit non-incident statement."
+      }
+    ]
+  },
+  "multi_pair_comparison": {
+    "four_pair_diagnostic": {
+      "pairs": 4,
+      "visual_tokens": 336,
+      "npu_results": [
+        {
+          "case": "barrier_knockdown",
+          "prompt_tokens": 413,
+          "output_quality": "corrupted"
+        },
+        {
+          "case": "routine_box_pickup",
+          "prompt_tokens": 408,
+          "output_quality": "corrupted"
+        }
+      ],
+      "cause": "Both prompts exceed the AR128/CL512 safe prefill limit of 384 tokens.",
+      "bf16_gpu_results": [
+        {
+          "case": "barrier_knockdown",
+          "answer": "The safety marker is lifted off the ground by the forklift as it moves forward.",
+          "strict_pass": false
+        },
+        {
+          "case": "routine_box_pickup",
+          "answer": "The worker completes the action of standing up, and no collision or accident occurs.",
+          "strict_pass": false
+        }
+      ],
+      "interpretation": "The NPU corruption is a runtime-capacity failure, while the BF16 GPU also fails the two strict free-form event rubrics."
+    },
+    "three_pair_safe_workaround": {
+      "pairs": 3,
+      "visual_tokens": 252,
+      "prompt_token_range": [
+        316,
+        348
+      ],
+      "outputs_coherent": true,
+      "shared_cross_scene_order_control": {
+        "method": "Use the same answer set for both videos, then shuffle it identically. This tests whether the answer changes with both scene content and option position.",
+        "npu_max_new_tokens": 64,
+        "all_pair_pixel_hashes_match_gpu_and_npu": true,
+        "passed": 4,
+        "total": 4,
+        "results": [
+          {
+            "case": "barrier_knockdown_normal_order",
+            "expected": "A",
+            "gpu_answer": "A",
+            "npu_answer": "A",
+            "prompt_tokens": 344,
+            "npu_ttft_ms": 730.5,
+            "pass": true
+          },
+          {
+            "case": "barrier_knockdown_shuffled_order",
+            "expected": "C",
+            "gpu_answer": "C",
+            "npu_answer": "C",
+            "prompt_tokens": 344,
+            "npu_ttft_ms": 739.8,
+            "pass": true
+          },
+          {
+            "case": "routine_box_pickup_normal_order",
+            "expected": "B",
+            "gpu_answer": "B",
+            "npu_answer": "B",
+            "prompt_tokens": 341,
+            "npu_ttft_ms": 745.8,
+            "pass": true
+          },
+          {
+            "case": "routine_box_pickup_shuffled_order",
+            "expected": "A",
+            "gpu_answer": "A",
+            "npu_answer": "A",
+            "prompt_tokens": 341,
+            "npu_ttft_ms": 736.0,
+            "pass": true
+          }
+        ],
+        "interpretation": "The NPU matches BF16 GPU in all four controls and changes its answer with both the video and option ordering. This rules out a fixed-position answer and a scene-insensitive policy for this controlled test."
+      },
+      "tailored_choice_results": [
+        {
+          "case": "routine_box_pickup_normal_order",
+          "expected": "B",
+          "gpu_answer": "B",
+          "npu_answer": "B",
+          "pass": true
+        },
+        {
+          "case": "routine_box_pickup_shuffled_order",
+          "expected": "A",
+          "gpu_answer": "A",
+          "npu_answer": "A",
+          "pass": true
+        },
+        {
+          "case": "barrier_knockdown",
+          "expected": "B",
+          "gpu_answer": "B",
+          "npu_answer": "A",
+          "pass": false
+        }
+      ],
+      "freeform_results": [
+        {
+          "case": "routine_box_pickup",
+          "npu_answer": "The worker stands up and moves away from the forklier, completing the action without any collision or accident.",
+          "strict_pass": false,
+          "reason": "It states the non-incident outcome but does not identify picking up or holding the box."
+        },
+        {
+          "case": "barrier_knockdown",
+          "npu_answer": "The safety marker is attached to the forklift and is pushed by the forklift's movement.",
+          "strict_pass": false,
+          "reason": "It mentions the marker and forklift contact but does not state that the marker is knocked down."
+        }
+      ],
+      "interpretation": "Three pairs avoid the prefill corruption. The shared cross-scene/order control is the strongest current result at 4/4 GPU/NPU agreement; the separate tailored barrier choice and both strict free-form rubrics still fail."
+    }
+  },
+  "host_vision_numeric_diagnosis": {
+    "input": "exact native-aspect near-miss temporal pair",
+    "reference": "corrected adapted BF16 vision encoder",
+    "metric": "global cosine similarity of image_features",
+    "full_integer_w8a16": 0.950431,
+    "mixed_w8a16_block23_fp16_activations": 0.991453,
+    "diagnosis": "Activation quantization in the final vision-transformer block is the dominant measured late-stage error; keeping its 36 activation quantizers in FLOAT16 materially improves host numeric parity.",
+    "scope": "Host QuantSim only",
+    "qualcomm_ai_hub_upload_authorized": false,
+    "npu_compile_status": "pending explicit upload authorization",
+    "npu_run_status": "not run",
+    "npu_quality_claim": "none"
+  },
+  "verdict": "The corrected aspect/native-input path executes on the IQ-9075 NPU and supports coherent three-pair inference. Its strongest controlled result is 4/4 GPU/NPU agreement on a shared cross-scene, shuffled-order test, showing that answers respond to both video content and label position. Current strict free-form accuracy remains inadequate, the executed calibration preprocessing is not byte-aligned with inference, and the stronger native-aligned mixed-vision candidate still requires an authorized compile and physical-board run."
+}

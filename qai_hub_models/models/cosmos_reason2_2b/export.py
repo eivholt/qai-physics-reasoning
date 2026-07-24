@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import warnings
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
@@ -21,6 +22,11 @@ from .model import (
     DEFAULT_EXPORT_CONTEXT_LENGTHS,
     FULL_EXPORT_CONTEXT_LENGTHS,
     Cosmos_Reason2_2B_PartBase,
+)
+from .vision_profile import (
+    DEFAULT_VISION_PROFILE,
+    CosmosVisionProfile,
+    configure_cosmos_vision_profile,
 )
 
 SUPPORTED_PRECISION_RUNTIMES: dict[Precision, list[TargetRuntime]] = {
@@ -43,6 +49,81 @@ EXPORT_COMPONENTS = (
     "part4_of_4",
 )
 export_model = resolve_export_model(MODEL_ID)
+
+
+def _checkpoint_vision_profile(
+    checkpoint: str | Path | None,
+) -> CosmosVisionProfile | None:
+    """Read an optional non-default image size from quantization provenance."""
+
+    if checkpoint is None or (
+        isinstance(checkpoint, str) and checkpoint.startswith("DEFAULT")
+    ):
+        return None
+    args_path = Path(str(checkpoint)).expanduser() / "args.json"
+    if not args_path.is_file():
+        return None
+    try:
+        payload = json.loads(args_path.read_text(encoding="utf-8"))
+        recorded_size = payload.get("image_size")
+    except (OSError, json.JSONDecodeError, AttributeError) as exc:
+        raise ValueError(
+            f"Cannot read checkpoint vision profile from {args_path}"
+        ) from exc
+    # Older 512-square checkpoints predate image_size provenance.
+    if recorded_size is None:
+        return None
+    if not isinstance(recorded_size, list) or len(recorded_size) != 2:
+        raise ValueError(
+            f"Checkpoint image_size in {args_path} must be [HEIGHT, WIDTH]"
+        )
+    try:
+        return CosmosVisionProfile(
+            int(recorded_size[0]),
+            int(recorded_size[1]),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Checkpoint image_size in {args_path} is invalid: "
+            f"{recorded_size!r}"
+        ) from exc
+
+
+def _resolve_export_vision_profile(
+    checkpoint: str | Path | None,
+    requested_image_size: list[int] | tuple[int, int] | None,
+) -> CosmosVisionProfile:
+    """Resolve one graph geometry and reject checkpoint/CLI disagreement."""
+
+    recorded = _checkpoint_vision_profile(checkpoint)
+    if requested_image_size is None:
+        return recorded or DEFAULT_VISION_PROFILE
+    if len(requested_image_size) != 2:
+        raise ValueError("--image-size must contain HEIGHT and WIDTH")
+    try:
+        requested = CosmosVisionProfile(
+            int(requested_image_size[0]),
+            int(requested_image_size[1]),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Invalid --image-size: {requested_image_size!r}"
+        ) from exc
+    if recorded is not None and (
+        requested.image_height,
+        requested.image_width,
+    ) != (
+        recorded.image_height,
+        recorded.image_width,
+    ):
+        raise ValueError(
+            "Explicit --image-size "
+            f"{requested.image_height} {requested.image_width} conflicts "
+            "with checkpoint args.json image_size "
+            f"{recorded.image_height} {recorded.image_width}. Use the "
+            "checkpoint geometry or quantize a matching vision encoder."
+        )
+    return requested
 
 
 @contextmanager
@@ -199,6 +280,20 @@ def build_parser(cli_mode: bool = False) -> argparse.ArgumentParser:
             "link a replacement vision context without resubmitting text."
         ),
     )
+    parser.add_argument(
+        "--image-size",
+        nargs=2,
+        type=int,
+        metavar=("HEIGHT", "WIDTH"),
+        default=None,
+        help=(
+            "Static vision graph size. When omitted, use image_size from the "
+            "checkpoint's args.json, or 512 512 for legacy/default "
+            "checkpoints. An explicit value must match recorded checkpoint "
+            "provenance. For the aspect-preserving warehouse profile use "
+            "'--image-size 224 384'."
+        ),
+    )
     return parser
 
 
@@ -220,6 +315,21 @@ def main(args: argparse.Namespace | None = None) -> None:
         export_args = vars(args).copy()
         full_context_matrix = bool(
             export_args.pop("full_context_matrix", False)
+        )
+        requested_image_size = export_args.pop("image_size")
+        profile = _resolve_export_vision_profile(
+            checkpoint,
+            requested_image_size,
+        )
+        profile = configure_cosmos_vision_profile(
+            profile.image_height,
+            profile.image_width,
+        )
+        print(
+            "Vision profile: "
+            f"{profile.image_height}x{profile.image_width}, "
+            f"grid {profile.grid_thw}, "
+            f"{profile.visual_tokens} visual tokens"
         )
         Cosmos_Reason2_2B_PartBase.export_context_lengths = list(
             FULL_EXPORT_CONTEXT_LENGTHS

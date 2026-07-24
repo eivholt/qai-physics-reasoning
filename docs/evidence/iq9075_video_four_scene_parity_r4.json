@@ -1,0 +1,505 @@
+{
+  "schema_version": 1,
+  "report_id": "iq9075_video_four_scene_parity_r4",
+  "created_date": "2026-07-24",
+  "model": "nvidia/Cosmos-Reason2-2B",
+  "extends": {
+    "report_id": "iq9075_video_aspect_native_parity_r3",
+    "relationship": "This report expands the r3 three-pair choice test from two scenes and three choices to four scenes and four choices. It does not alter the r3 measurements."
+  },
+  "target": {
+    "board": "Dragonwing IQ-9075 EVK",
+    "accelerator_backend": "QnnHtp",
+    "htp_arch": "v73",
+    "runtime_family": "QAIRT 2.45"
+  },
+  "runner_sha256": "9b78e9bb02c3fd3b5fda0a74efea91400d92d8ac0b2ff8ce34474e66a84c8e68",
+  "executed_bundle_context_sha256": {
+    "vision_encoder.bin": "7af8418bb61e2581fc862ce2aabf320ab3f3bfae0a7c5400e7d43b7d386028bd",
+    "part1_of_4.bin": "7a59e6c83456cc93de4c84b9dbeb3acb9ef78b93c3f88eadfd33405eeded0d81",
+    "part2_of_4.bin": "f797ef8ab4219851e90d44d83b3a5731f254d6345fdd334edc12d96c05881358",
+    "part3_of_4.bin": "4c7a7e895d4ebbc7a27ffe5c42ccae660dd3bf0bbd8d70bc9b5fdb468e6cd772",
+    "part4_of_4.bin": "6d37b752d39ace353646817195789887c2c34fb689e295c179d3470e9680eabb"
+  },
+  "scope": {
+    "summary": "Sanitized exact-input BF16 GPU versus IQ-9075 NPU evidence for eight order-controlled, three-pair warehouse-video choices.",
+    "response_scoring": "Exact expected choice letter. All GPU and NPU answers in this report are single-letter outputs; no rationale quality is claimed.",
+    "not_claimed": [
+      "native encoded-video or camera-stream ingestion",
+      "broad free-form video understanding",
+      "production or safety-qualified accuracy",
+      "vendor certification",
+      "an NPU result for the mixed block-23-FP16 vision candidate"
+    ]
+  },
+  "benchmark": {
+    "id": "nvidia_sdg_warehouse_card_previews_v1",
+    "file": "benchmarks/nvidia_sdg_warehouse/benchmark.json",
+    "current_sha256": "f1151de82aa39d62522f692ec9d8f55d657eb371fac06a6a775efedb3c78e9a0",
+    "primary_run_sha256": "83fae0a19566a6a007f3da33803ae9f28f8d7962bf62956a6433ae885b21d552",
+    "compact_diagnostic_run_sha256": "676c5dbff4a89904ec22293c183b1d5fbe350d0eeddb4e60804e30c9e03c1667",
+    "box_near_pairwise_diagnostic_run_sha256": "f1151de82aa39d62522f692ec9d8f55d657eb371fac06a6a775efedb3c78e9a0",
+    "manifest_evolution": "The compact and focused pairwise probes were appended after the primary run. The four scene definitions, frames, pixel preprocessing, and primary prompt definitions are unchanged.",
+    "source_revision": "d5b88d3abcf659f304a107f4336b71b4e2159133",
+    "profile_id": "cosmos_qwen3vl_224x384_cl512_three_pair_v1",
+    "pairs_per_case": 3,
+    "frames_per_pair": 2,
+    "visual_tokens_per_pair": 84,
+    "visual_tokens_per_case": 252,
+    "maximum_safe_prompt_tokens": 384,
+    "normal_choices": {
+      "A": "a forklift pushes a striped safety marker",
+      "B": "a worker safely picks up a box",
+      "C": "a worker dodges an approaching forklift",
+      "D": "two workers run out of warehouse aisles"
+    },
+    "shuffled_choices": {
+      "A": "two workers run out of warehouse aisles",
+      "B": "a worker dodges an approaching forklift",
+      "C": "a forklift pushes a striped safety marker",
+      "D": "a worker safely picks up a box"
+    },
+    "fire_case_scoring_boundary": "The fire-scenario case scores only the directly visible motion of two workers leaving their earlier aisle positions. Identifying the official warehouse-fire cause is not required because the fire is tiny or occluded in the preview RGB panel."
+  },
+  "host_gpu_evidence": {
+    "precision": "BF16",
+    "sampling": "greedy",
+    "primary_run_id": "gpu-four-scene-r4",
+    "primary_summary_file": "summary.json",
+    "primary_summary_sha256": "3ddb05b888126c75836c9cf098f63b45b951ac1f662f80a4f24326c4fb013c65",
+    "compact_diagnostic_run_id": "gpu-four-scene-compact-r5",
+    "compact_diagnostic_summary_file": "summary.json",
+    "compact_diagnostic_summary_sha256": "e762c7ea6c4412528a2b6599102c5cb6c697afd500865d67f15273ed0b305e63",
+    "box_near_pairwise_run_id": "gpu-box-near-pairwise-r6",
+    "box_near_pairwise_summary_file": "summary.json",
+    "box_near_pairwise_summary_sha256": "96c6d268db071ff3c7bf853e293fd9fa85c8b49f1c16bea562c832adf548ff95"
+  },
+  "input_parity": {
+    "native_hugging_face_video_preprocessing": true,
+    "gpu_npu_prompt_token_counts_match_for_all_cases": true,
+    "gpu_npu_packed_pixel_bytes_match_for_all_cases": true,
+    "method": "For each scene, concatenating the NPU package's three ordered pair tensors produces the exact SHA-256 recorded for the GPU pixel_values tensor. Normal and shuffled probes reuse the same pixels.",
+    "scenes": [
+      {
+        "case_id": "video_barrier_knockdown_4fps",
+        "prompt_tokens_normal_and_shuffled": 360,
+        "combined_pixel_values_sha256": "099e4d355870459b061b730f4bea9f6ce55da35b3d3bdd1645ba241d4445dc36",
+        "ordered_pair_pixel_values_sha256": [
+          "0c0c30f8fe7414e1ab2b9b45a9ee67ee1ac7ffa7577f32a79756453ccb96fa91",
+          "d631dcdc4dd9ead4085a9ae1ffedee8cfd41bdeba4cbc9fef26d92026d5a1e4a",
+          "91fd572efb522933cbabf03c24c55ce009cf8e5d8f85cbd83fac2a4b57c443ab"
+        ]
+      },
+      {
+        "case_id": "video_routine_box_pickup_4fps",
+        "prompt_tokens_normal_and_shuffled": 357,
+        "combined_pixel_values_sha256": "3130375c8002176f1951a370269c5f4109bf1c4981f415e99e1497e0e2c6b35b",
+        "ordered_pair_pixel_values_sha256": [
+          "13fc8dda48d754b3aeeb3152b4b9b2e19deef1dc1aea8afd99c8061b0414f043",
+          "7a9b5422f17ca40aff7ff219cfddca8ee146790d944dddbeadef20675b03ca98",
+          "7a7d9f8d3277e7077c145002021fed3bd28b81f2d78dcc0eef3183d22632c45b"
+        ]
+      },
+      {
+        "case_id": "video_near_miss_avoidance_4fps",
+        "prompt_tokens_normal_and_shuffled": 357,
+        "combined_pixel_values_sha256": "6dea85eb9523790bc04ea675acb51be82539aca4e5f44f255f2c09da275e7303",
+        "ordered_pair_pixel_values_sha256": [
+          "a5246dab2040f618dd9744f73431bc1cf9067aa0098a1d31763c030a8427875e",
+          "9a81cee5d283e59a7d440a9a52f48276c31757b2dfbea6e59f170273374bc49e",
+          "539e03ca03f780f248fbcad0b2744c7c301a776f4fde3d612d09098d97546b68"
+        ]
+      },
+      {
+        "case_id": "video_fire_evacuation_4fps",
+        "prompt_tokens_normal_and_shuffled": 357,
+        "combined_pixel_values_sha256": "8c94266251c99bcf1ef3f238afae4bc6440abf3186ad4e5afb055407236893ab",
+        "ordered_pair_pixel_values_sha256": [
+          "16a30023f585d6d1ac7e79791213156c9e9266cc8e2efb1c2e968885b48c2304",
+          "cb01f1367718233f2afb97f7635c30169a259614625f85a184c6389940a38207",
+          "883e134aa6a9e1012a209e0200455fb21de95c12ae98183f9cfe539e536063a1"
+        ]
+      }
+    ]
+  },
+  "results": [
+    {
+      "case_id": "video_barrier_knockdown_4fps",
+      "prompt_id": "four_scene_event_choice",
+      "expected": "A",
+      "gpu_answer": "A",
+      "npu_answer": "A",
+      "gpu_pass": true,
+      "npu_pass": true,
+      "exact_answer_parity": true,
+      "prompt_tokens_gpu_and_npu": 360,
+      "gpu_seconds": 0.0828117446899414,
+      "npu_ttft_ms": 743.5,
+      "gpu_result_sha256": "41ca9022593225571f48e5deb347ffb9291890c88c636c2929c71b14ea53fbcd",
+      "npu_package_manifest_sha256": "a666909fda1a1a7a7a053ff717e88e881f275b78d6a450ace0435b71fea42e2e",
+      "npu_verbose_log_sha256": "d80ff0f9c1e16ac87537ee6aa9b44e6801c62d10a4423924818d87b9d2a3aab0"
+    },
+    {
+      "case_id": "video_barrier_knockdown_4fps",
+      "prompt_id": "four_scene_event_choice_shuffled",
+      "expected": "C",
+      "gpu_answer": "C",
+      "npu_answer": "B",
+      "gpu_pass": true,
+      "npu_pass": false,
+      "exact_answer_parity": false,
+      "prompt_tokens_gpu_and_npu": 360,
+      "gpu_seconds": 0.059286495208740235,
+      "npu_ttft_ms": 733.9,
+      "gpu_result_sha256": "d209cc68e35166893857dc3f96a9163be3abb3ff3d9b51df27cadb283a242ddd",
+      "npu_package_manifest_sha256": "4dea045dae358b622af4d1c23d9bd6a7a5809b122c3b095f62f481c312269376",
+      "npu_verbose_log_sha256": "36cb4de8e7bca2b2196a6ec62fee9c254e289897b38f8022ba46a41ef309b00b"
+    },
+    {
+      "case_id": "video_routine_box_pickup_4fps",
+      "prompt_id": "four_scene_event_choice",
+      "expected": "B",
+      "gpu_answer": "B",
+      "npu_answer": "C",
+      "gpu_pass": true,
+      "npu_pass": false,
+      "exact_answer_parity": false,
+      "prompt_tokens_gpu_and_npu": 357,
+      "gpu_seconds": 0.05993817520141602,
+      "npu_ttft_ms": 731.3,
+      "gpu_result_sha256": "da6b89aca2323d703fbf0822023530356936e07a5b74b3f1d7d6c7330db6554c",
+      "npu_package_manifest_sha256": "e04192e3754ed7b1bc06febae10dd63c49efa9aee4e9005b2d50c42a16e1c8ba",
+      "npu_verbose_log_sha256": "dbd443927fc08381da3c612f1ef821911e0123465afb18359a232f0b18ea38d6"
+    },
+    {
+      "case_id": "video_routine_box_pickup_4fps",
+      "prompt_id": "four_scene_event_choice_shuffled",
+      "expected": "D",
+      "gpu_answer": "D",
+      "npu_answer": "B",
+      "gpu_pass": true,
+      "npu_pass": false,
+      "exact_answer_parity": false,
+      "prompt_tokens_gpu_and_npu": 357,
+      "gpu_seconds": 0.05867660903930664,
+      "npu_ttft_ms": 742.9,
+      "gpu_result_sha256": "f8cc80de726eff2346540858ed60afb6f48fc12b97b914ec2232cfcb342f4ef8",
+      "npu_package_manifest_sha256": "7dbca6d0e415ca34a199a7870f33bc22b6ecf03feb057f8dd65f06adf3210d55",
+      "npu_verbose_log_sha256": "197a205899b5442d9846855c9cbc91b5de025dec3368fb2be6a41697c95dd886"
+    },
+    {
+      "case_id": "video_near_miss_avoidance_4fps",
+      "prompt_id": "four_scene_event_choice",
+      "expected": "C",
+      "gpu_answer": "C",
+      "npu_answer": "C",
+      "gpu_pass": true,
+      "npu_pass": true,
+      "exact_answer_parity": true,
+      "prompt_tokens_gpu_and_npu": 357,
+      "gpu_seconds": 0.05952272033691406,
+      "npu_ttft_ms": 750.7,
+      "gpu_result_sha256": "7bf6e8b626a8a85dff83d32531fad7d2dbb9d6cfcdce0e9a28924b91b000402a",
+      "npu_package_manifest_sha256": "8da795182eed9e3a208698197f1f0a8fad8ea7d069a57af22e8e63c659aea033",
+      "npu_verbose_log_sha256": "a0ae9625c0656fc66e85198d7566a2854a4605ae83035c134f9edbc4cd632aaf"
+    },
+    {
+      "case_id": "video_near_miss_avoidance_4fps",
+      "prompt_id": "four_scene_event_choice_shuffled",
+      "expected": "B",
+      "gpu_answer": "B",
+      "npu_answer": "B",
+      "gpu_pass": true,
+      "npu_pass": true,
+      "exact_answer_parity": true,
+      "prompt_tokens_gpu_and_npu": 357,
+      "gpu_seconds": 0.05840591812133789,
+      "npu_ttft_ms": 740.8,
+      "gpu_result_sha256": "fe874eab6d583870394ad635a3a1248b4c0b9efad2fde26b0877af7f9c199b1e",
+      "npu_package_manifest_sha256": "0a448def9295930564ca52d65e041cf1012475ee017592e8773bfc0003929ffa",
+      "npu_verbose_log_sha256": "9f926ad037fd7229a5ce0f6dacd3aea241decd19b668e8089e3f069f03504567"
+    },
+    {
+      "case_id": "video_fire_evacuation_4fps",
+      "prompt_id": "four_scene_event_choice",
+      "expected": "D",
+      "gpu_answer": "C",
+      "npu_answer": "C",
+      "gpu_pass": false,
+      "npu_pass": false,
+      "exact_answer_parity": true,
+      "prompt_tokens_gpu_and_npu": 357,
+      "gpu_seconds": 0.058769279479980466,
+      "npu_ttft_ms": 744.7,
+      "gpu_result_sha256": "da03f8a9aa8a7c6997e3f294da6ea69e8712b9ff5cf1662976cabc062da1fc95",
+      "npu_package_manifest_sha256": "9b9e4baac17a7757eefd3defe57fb5ddfc0328e75d324b0ad7b0e492eb84f031",
+      "npu_verbose_log_sha256": "4af9727c7cbf1eb7db184a3b4f53e4a060d247ab6feaaad210a15813cd474dab"
+    },
+    {
+      "case_id": "video_fire_evacuation_4fps",
+      "prompt_id": "four_scene_event_choice_shuffled",
+      "expected": "A",
+      "gpu_answer": "A",
+      "npu_answer": "A",
+      "gpu_pass": true,
+      "npu_pass": true,
+      "exact_answer_parity": true,
+      "prompt_tokens_gpu_and_npu": 357,
+      "gpu_seconds": 0.11761840057373046,
+      "npu_ttft_ms": 732.0,
+      "gpu_result_sha256": "6bc53ea5068fe6f0c42d2900ca515a1c06313a7d07a443779df826034e086094",
+      "npu_package_manifest_sha256": "6f11f960fbc389278a5f14f87130533ecf40fca458b4c005f1d822b083972a3c",
+      "npu_verbose_log_sha256": "9c26b1fa8e799cdd3f405b0e7e649ca6d038d9e97f5c9b8c931ec31276017546"
+    }
+  ],
+  "assessment": {
+    "all_four_scenes": {
+      "gpu_passed": 7,
+      "npu_passed": 4,
+      "total": 8,
+      "exact_gpu_npu_answer_parity": 5
+    },
+    "first_three_unambiguous_scenes": {
+      "description": "Marker knockdown, routine box pickup, and near-miss avoidance; the more visually ambiguous fire-scenario clip is excluded.",
+      "gpu_passed": 6,
+      "npu_passed": 3,
+      "total": 6,
+      "exact_gpu_npu_answer_parity": 3
+    },
+    "near_miss_scene": {
+      "gpu_passed": 2,
+      "npu_passed": 2,
+      "total": 2,
+      "exact_gpu_npu_answer_parity": 2,
+      "interpretation": "The NPU correctly follows the near-miss event as its expected label moves from C to B. This is the most robust realistic positive result in the expanded suite."
+    },
+    "fire_motion_scene": {
+      "gpu_passed": 1,
+      "npu_passed": 1,
+      "total": 2,
+      "exact_gpu_npu_answer_parity": 2,
+      "interpretation": "GPU and NPU agree in both orders, but both select the near-miss label in normal order. Parity on an incorrect answer is not accuracy."
+    }
+  },
+  "prompt_compression_diagnostic": {
+    "purpose": "Test whether shorter option wording and 25 fewer prompt tokens close the GPU/NPU quality gap.",
+    "normal_prompt": "Choose the event. Answer one letter only: A) marker knocked down; B) box pickup; C) forklift near miss; D) two workers running from aisles.",
+    "shuffled_prompt": "Choose the event. Answer one letter only: A) two workers running from aisles; B) forklift near miss; C) marker knocked down; D) box pickup.",
+    "same_scene_pixels_as_primary_suite": true,
+    "gpu_npu_prompt_token_counts_match_for_all_cases": true,
+    "assessment": {
+      "gpu_passed": 5,
+      "npu_passed": 4,
+      "total": 8,
+      "exact_gpu_npu_answer_parity": 5
+    },
+    "results": [
+      {
+        "case_id": "video_barrier_knockdown_4fps",
+        "prompt_id": "four_scene_compact_choice",
+        "expected": "A",
+        "gpu_answer": "C",
+        "npu_answer": "C",
+        "gpu_pass": false,
+        "npu_pass": false,
+        "exact_answer_parity": true,
+        "prompt_tokens_gpu_and_npu": 335,
+        "gpu_seconds": 0.11445423889160156,
+        "npu_ttft_ms": 733.6,
+        "gpu_result_sha256": "f3b12ccd367286ae3840105341bc3d84fb9894f1c61199dc9af3246f0d653a1b",
+        "npu_package_manifest_sha256": "ecfec92302ec5b92fd9c0dcfc74d7f794e69815dc54e8ce52e39e0ba92f7b812",
+        "npu_verbose_log_sha256": "c44e6e6a7c92709579815f801d09059a149aa2da4716fd8a3a1d9d07fdec44bb"
+      },
+      {
+        "case_id": "video_barrier_knockdown_4fps",
+        "prompt_id": "four_scene_compact_choice_shuffled",
+        "expected": "C",
+        "gpu_answer": "B",
+        "npu_answer": "B",
+        "gpu_pass": false,
+        "npu_pass": false,
+        "exact_answer_parity": true,
+        "prompt_tokens_gpu_and_npu": 335,
+        "gpu_seconds": 0.06057932662963867,
+        "npu_ttft_ms": 733.8,
+        "gpu_result_sha256": "0d95f4e45debef4fd5ea1eb47eee1542e3411afab3c1e728cbc5851d26628476",
+        "npu_package_manifest_sha256": "136dc30e930672a0aaba5c68a2706ca8cff22fc2fd0ea13ddcbedfe7fd9b99d8",
+        "npu_verbose_log_sha256": "d2ab94fa40a418b6f52f7ca41f8891572ef990d04f1dd325a76b4bef636fd885"
+      },
+      {
+        "case_id": "video_routine_box_pickup_4fps",
+        "prompt_id": "four_scene_compact_choice",
+        "expected": "B",
+        "gpu_answer": "B",
+        "npu_answer": "C",
+        "gpu_pass": true,
+        "npu_pass": false,
+        "exact_answer_parity": false,
+        "prompt_tokens_gpu_and_npu": 332,
+        "gpu_seconds": 0.060451038360595705,
+        "npu_ttft_ms": 741.8,
+        "gpu_result_sha256": "01777ae3d9ecbfa553a84b8d4aa93a30fb42d10636583b946410bc21a89b3892",
+        "npu_package_manifest_sha256": "ba622662a9e270cdf8161930daa1f158abed3805d089634852ce95afd84d7fd3",
+        "npu_verbose_log_sha256": "573193aa4e42fab656a7919943c8bf143fb6d2239e6bbfcd9d02a0aa5fd0565e"
+      },
+      {
+        "case_id": "video_routine_box_pickup_4fps",
+        "prompt_id": "four_scene_compact_choice_shuffled",
+        "expected": "D",
+        "gpu_answer": "D",
+        "npu_answer": "B",
+        "gpu_pass": true,
+        "npu_pass": false,
+        "exact_answer_parity": false,
+        "prompt_tokens_gpu_and_npu": 332,
+        "gpu_seconds": 0.05859977722167969,
+        "npu_ttft_ms": 739.4,
+        "gpu_result_sha256": "1e7b784b88673b6c06515f0934468ff41b5cc95002db8ee72d6d867c3b665001",
+        "npu_package_manifest_sha256": "ee928afc83f9707dfc76e980368e171f03945eeae1d58960030e616eea69c5e9",
+        "npu_verbose_log_sha256": "c5d6ddbf043aeb19e6d3f85e6532cab1a116ba36faf6456a8ecd81801cf1ad97"
+      },
+      {
+        "case_id": "video_near_miss_avoidance_4fps",
+        "prompt_id": "four_scene_compact_choice",
+        "expected": "C",
+        "gpu_answer": "C",
+        "npu_answer": "C",
+        "gpu_pass": true,
+        "npu_pass": true,
+        "exact_answer_parity": true,
+        "prompt_tokens_gpu_and_npu": 332,
+        "gpu_seconds": 0.0577061767578125,
+        "npu_ttft_ms": 739.7,
+        "gpu_result_sha256": "0e7d97077fd313b87a8eec2c04a2ff0c4a06aeab6a68685509d297b9ab925779",
+        "npu_package_manifest_sha256": "6c1b995640f05c88b3374ddfbd01680fc3b1e5709803da5cfb3788a5935ca33c",
+        "npu_verbose_log_sha256": "6d39df1311a1b4533df252f9ef3284108a8aed0ae0e722ed38be858d4def4d50"
+      },
+      {
+        "case_id": "video_near_miss_avoidance_4fps",
+        "prompt_id": "four_scene_compact_choice_shuffled",
+        "expected": "B",
+        "gpu_answer": "B",
+        "npu_answer": "B",
+        "gpu_pass": true,
+        "npu_pass": true,
+        "exact_answer_parity": true,
+        "prompt_tokens_gpu_and_npu": 332,
+        "gpu_seconds": 0.056758049011230466,
+        "npu_ttft_ms": 731.1,
+        "gpu_result_sha256": "3d35499b6e5991130796092fc837213c467b4299b683046829f56bd983a0e579",
+        "npu_package_manifest_sha256": "c3a3b2588efdcdb9a71a39d847deecf9036bde50326cf40773d1cd8b05cf4fac",
+        "npu_verbose_log_sha256": "c41ece3f3bf14b4dca1a1baa4a9c4df10b7b858a7542f8278ed3af849aae42e1"
+      },
+      {
+        "case_id": "video_fire_evacuation_4fps",
+        "prompt_id": "four_scene_compact_choice",
+        "expected": "D",
+        "gpu_answer": "B",
+        "npu_answer": "D",
+        "gpu_pass": false,
+        "npu_pass": true,
+        "exact_answer_parity": false,
+        "prompt_tokens_gpu_and_npu": 332,
+        "gpu_seconds": 0.05710988616943359,
+        "npu_ttft_ms": 732.6,
+        "gpu_result_sha256": "32105a97c34a7a57fedc9561bedb316b19026a8f4da99ddea21a51d87f0d5689",
+        "npu_package_manifest_sha256": "cd49ffbe5af31c8a3f7f1c0a8ae8b9804c8578e5e640e1d14fe1c90200471e8d",
+        "npu_verbose_log_sha256": "49bbd6da2c6cca6c9f207225247b04ca4133ca26204f36a3cd352a21345344c8"
+      },
+      {
+        "case_id": "video_fire_evacuation_4fps",
+        "prompt_id": "four_scene_compact_choice_shuffled",
+        "expected": "A",
+        "gpu_answer": "A",
+        "npu_answer": "A",
+        "gpu_pass": true,
+        "npu_pass": true,
+        "exact_answer_parity": true,
+        "prompt_tokens_gpu_and_npu": 332,
+        "gpu_seconds": 0.05784569549560547,
+        "npu_ttft_ms": 734.3,
+        "gpu_result_sha256": "2af0631ceb0fb3ee75c8dba78c5e6255126a7e7733849d654257a4bc2d5c3f8f",
+        "npu_package_manifest_sha256": "f8348e2c9e6e8b7ad9eab7559369547e0a8528eb09c35f028d294acf5160158d",
+        "npu_verbose_log_sha256": "e59da4cb28f2a36cf73051284278c41f717807cd56eb75c2ba53e55253d289a1"
+      }
+    ],
+    "interpretation": "Shortening each prompt by 25 tokens does not close the gap: GPU drops from 7/8 to 5/8, NPU remains 4/8, and exact parity remains 5/8. Errors move on the marker and fire scenes, while both box-pickup orders remain persistent NPU-only failures against correct GPU answers. Prompt verbosity is therefore not a sufficient explanation."
+  },
+  "box_near_pairwise_diagnostic": {
+    "purpose": "Separate the persistent box-versus-near-miss confusion from the marker and worker-motion distractors.",
+    "normal_prompt": "Which event is shown? Answer one letter only: A) a worker safely picks up a box; B) a worker dodges an approaching forklift.",
+    "shuffled_prompt": "Which event is shown? Answer one letter only: A) a worker dodges an approaching forklift; B) a worker safely picks up a box.",
+    "same_scene_pixels_as_primary_suite": true,
+    "gpu_npu_prompt_tokens": 327,
+    "assessment": {
+      "gpu_passed": 4,
+      "npu_passed": 3,
+      "total": 4,
+      "exact_gpu_npu_answer_parity": 3
+    },
+    "results": [
+      {
+        "case_id": "video_routine_box_pickup_4fps",
+        "prompt_id": "box_near_pairwise_choice",
+        "expected": "A",
+        "gpu_answer": "A",
+        "npu_answer": "A",
+        "gpu_pass": true,
+        "npu_pass": true,
+        "exact_answer_parity": true,
+        "gpu_seconds": 0.13875164794921874,
+        "npu_ttft_ms": 741.9,
+        "gpu_result_sha256": "eeeb305b2fb91998e2f880c538a7f5db293bbb55e59a7b99bf633f175e9d510d",
+        "npu_package_manifest_sha256": "f5901ff2380030fe3d85d5d79395266b303144f24b5312ff8c03614ac9043664",
+        "npu_verbose_log_sha256": "9a3a86a8d1af462896a7c2c9547d9ef37bf21d474f0879ce6240a8ecda888ea6"
+      },
+      {
+        "case_id": "video_routine_box_pickup_4fps",
+        "prompt_id": "box_near_pairwise_choice_shuffled",
+        "expected": "B",
+        "gpu_answer": "B",
+        "npu_answer": "A",
+        "gpu_pass": true,
+        "npu_pass": false,
+        "exact_answer_parity": false,
+        "gpu_seconds": 0.10145545959472656,
+        "npu_ttft_ms": 732.4,
+        "gpu_result_sha256": "b81a585849e07724936a7c295ba555335a3722145809cd2ba6c0656310967f24",
+        "npu_package_manifest_sha256": "9b9fc8010a8c9fc96deb32b0d21e4b0a5dabb69d0dac3028aef27305d50dedb5",
+        "npu_verbose_log_sha256": "19137d668c55e67b1bd65cdbd37d49c1f8a8874a577fefc3e8149271484512be"
+      },
+      {
+        "case_id": "video_near_miss_avoidance_4fps",
+        "prompt_id": "box_near_pairwise_choice",
+        "expected": "B",
+        "gpu_answer": "B",
+        "npu_answer": "B",
+        "gpu_pass": true,
+        "npu_pass": true,
+        "exact_answer_parity": true,
+        "gpu_seconds": 0.05923641586303711,
+        "npu_ttft_ms": 739.9,
+        "gpu_result_sha256": "bd30fd51840be4af9d7a95954ea43566c162c17877c2d5c089b321ebfb7f95d9",
+        "npu_package_manifest_sha256": "5ffa0b6265595f1d3bb2386c3ecc7286ad1126332dff3e9dea5686c2a9d0e8d3",
+        "npu_verbose_log_sha256": "4b814321a8ff26e452ae0bed6e94f362cf851160b55246d639f4c468d5ef3041"
+      },
+      {
+        "case_id": "video_near_miss_avoidance_4fps",
+        "prompt_id": "box_near_pairwise_choice_shuffled",
+        "expected": "A",
+        "gpu_answer": "A",
+        "npu_answer": "A",
+        "gpu_pass": true,
+        "npu_pass": true,
+        "exact_answer_parity": true,
+        "gpu_seconds": 0.0855417251586914,
+        "npu_ttft_ms": 741.1,
+        "gpu_result_sha256": "016e2fe84356fa9967a5231fdf4361e28d5dbd21126358b773358f5693b27b22",
+        "npu_package_manifest_sha256": "88733b19b2ff42ea45b9abed05ca0e16091e01da969cbb515931a69dab090549",
+        "npu_verbose_log_sha256": "d444e643aab8776555e2ff895a4ce9a05f04764e94410bae5820f7024c7be957"
+      }
+    ],
+    "interpretation": "The NPU distinguishes box pickup from near-miss avoidance when box is option A and passes both near-miss orders, but it keeps A after the box label moves to B. This is order sensitivity, not total visual confusion. The focused result is GPU 4/4, NPU 3/4, exact parity 3/4."
+  },
+  "verdict": "The earlier r3 4/4 result was a narrow two-scene, three-choice control and does not generalize to the expanded four-scene, four-choice suite. With byte-identical packed pixels and identical prompt counts, BF16 GPU scores 7/8, the executed NPU scores 4/8, and exact answers agree in 5/8 cases. The near-miss video is a realistic positive result at 2/2 in both normal and shuffled order, but broad GPU/NPU video-prediction parity remains unsolved. A 25-token prompt-compression diagnostic leaves NPU accuracy at 4/8 and persistent NPU-only box failures, so shorter wording is not a fix. A focused box-versus-near-miss test reaches NPU 3/4 and shows that the box can be recognized when listed first, narrowing the remaining failure to order sensitivity rather than total visual confusion."
+}

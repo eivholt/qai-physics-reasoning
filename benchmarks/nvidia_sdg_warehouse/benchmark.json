@@ -145,6 +145,114 @@
       "ground_truth_basis": "The official dataset card explicitly presents box pickup as routine non-incident coverage."
     }
   ],
+  "vision_calibration": {
+    "id": "warehouse_preview_motion_pairs_v1",
+    "purpose": "Representative activation calibration for the paired-frame vision graph.",
+    "target_sampling_fps": 4.0,
+    "relationship_to_evaluation": "The calibration frames are disjoint from all evaluation frame indices, but they come from the same four public preview clips. This is a frame holdout, not a clip-level generalization split.",
+    "sequences": [
+      {
+        "clip_asset_id": "near_miss_clip",
+        "pair_frame_indices": [
+          [
+            0,
+            4
+          ],
+          [
+            8,
+            12
+          ],
+          [
+            16,
+            20
+          ],
+          [
+            96,
+            100
+          ],
+          [
+            136,
+            140
+          ]
+        ]
+      },
+      {
+        "clip_asset_id": "collision_clip",
+        "pair_frame_indices": [
+          [
+            0,
+            4
+          ],
+          [
+            20,
+            24
+          ],
+          [
+            40,
+            44
+          ],
+          [
+            140,
+            144
+          ],
+          [
+            170,
+            174
+          ]
+        ]
+      },
+      {
+        "clip_asset_id": "fire_clip",
+        "pair_frame_indices": [
+          [
+            0,
+            4
+          ],
+          [
+            28,
+            32
+          ],
+          [
+            56,
+            60
+          ],
+          [
+            84,
+            88
+          ],
+          [
+            112,
+            116
+          ]
+        ]
+      },
+      {
+        "clip_asset_id": "box_pickup_clip",
+        "pair_frame_indices": [
+          [
+            0,
+            4
+          ],
+          [
+            28,
+            32
+          ],
+          [
+            72,
+            76
+          ],
+          [
+            100,
+            104
+          ],
+          [
+            140,
+            144
+          ]
+        ]
+      }
+    ]
+  },
   "prediction_cases": [
     {
       "id": "predict_near_miss",
@@ -192,14 +300,19 @@
       "prompt": "What is most likely to happen next, and what object is at risk? Answer in one short sentence.",
       "expected": {
         "event_label": "forklift_shelf_collision",
+        "visible_target": "yellow_and_black_striped_marker_or_shelf_guard",
         "immediate_safety_risk": true,
         "required_concepts_any": [
           "forklift is approaching the shelf",
+          "forklift is approaching the yellow striped object",
+          "forklift is approaching a stationary barrier or shelf guard",
           "forklift is likely to collide with the shelf",
           "shelf or stored objects may be knocked over"
         ],
         "outcome_concepts_any": [
           "forklift impacts the shelf",
+          "forklift impacts the yellow striped object",
+          "forklift knocks over the barrier or shelf guard",
           "shelf is knocked over",
           "debris falls"
         ],
@@ -208,7 +321,915 @@
           "the forklift is moving away from the shelf"
         ]
       },
-      "timing_basis": "Heuristic only: the preview has 226 frames and the dataset card documents a 15-second scenario, so this package assumes about 15.07 preview fps. Frames 66 and 88 were selected conservatively before the visually apparent impact around frames 110-132. These are not shard-level simulator timestamps."
+      "ground_truth_basis": "The official dataset card labels the staged run as a forklift-shelf collision. In this small RGB preview and camera view, the immediately visible target is a yellow-and-black striped freestanding marker or shelf guard; it is upright through frame 198 and knocked over by frame 225. The rubric accepts either the official scenario object or the concrete visible target.",
+      "timing_basis": "Heuristic only: the preview has 226 frames and the dataset card documents a 15-second scenario, so this package assumes about 15.07 preview fps. Frames 66 and 88 were selected before the visible target is knocked over near the end of the preview. These are not shard-level simulator timestamps."
+    }
+  ],
+  "observation_cases": [
+    {
+      "id": "observe_near_miss_avoidance",
+      "clip_asset_id": "near_miss_clip",
+      "rgb_frame_indices": [
+        45,
+        75
+      ],
+      "assumed_times_seconds": [
+        3.0,
+        5.0
+      ],
+      "prompt": "How does the worker respond to the forklift between these frames? Answer in one short sentence.",
+      "expected": {
+        "event_label": "forklift_human_near_miss",
+        "is_safety_incident": true,
+        "required_concepts_any": [
+          "worker moves away from the forklift",
+          "worker sidesteps or dodges the forklift",
+          "worker avoids the forklift"
+        ],
+        "must_not_assert": [
+          "the forklift strikes the worker",
+          "the worker remains stationary"
+        ]
+      },
+      "ground_truth_basis": "Manual inspection of the RGB preview shows the worker beside the forklift at frame 45 and moving away from its path by frame 75. This diagnostic reveals the outcome rather than asking the model to predict it.",
+      "timing_basis": "Heuristic only: the preview has 150 frames and the dataset card documents a 10-second scenario, so this package assumes about 15 preview fps. These are not shard-level simulator timestamps."
+    },
+    {
+      "id": "observe_barrier_collision",
+      "clip_asset_id": "collision_clip",
+      "rgb_frame_indices": [
+        198,
+        225
+      ],
+      "assumed_times_seconds": [
+        13.14,
+        14.93
+      ],
+      "prompt": "What changes between these frames, and what caused it? Answer in one short sentence.",
+      "expected": {
+        "event_label": "forklift_barrier_contact",
+        "is_safety_incident": true,
+        "required_concepts_any": [
+          "forklift knocks over the orange barrier",
+          "forklift hits the striped bollard",
+          "orange safety marker falls after contact with the forklift"
+        ],
+        "must_not_assert": [
+          "nothing changes",
+          "the barrier remains upright"
+        ]
+      },
+      "ground_truth_basis": "Manual inspection of the RGB preview shows the orange striped safety marker upright at frame 198 and knocked onto the floor beside the forklift at frame 225. This observable contact is narrower than the dataset card's scenario-level collision label.",
+      "timing_basis": "Heuristic only: the preview has 226 frames and the dataset card documents a 15-second scenario, so this package assumes about 15.07 preview fps. These are not shard-level simulator timestamps."
+    },
+    {
+      "id": "observe_routine_box_pickup",
+      "clip_asset_id": "box_pickup_clip",
+      "rgb_frame_indices": [
+        60,
+        120
+      ],
+      "assumed_times_seconds": [
+        4.29,
+        8.57
+      ],
+      "prompt": "What is the worker doing between these frames, and has a collision or accident occurred? Answer in one short sentence.",
+      "expected": {
+        "event_label": "routine_box_pickup",
+        "is_safety_incident": false,
+        "negative_control": true,
+        "required_concepts_any": [
+          "worker picks up the box",
+          "worker lifts the box",
+          "worker bends down and carries the box"
+        ],
+        "incident_state_concepts_any": [
+          "no collision or accident occurs",
+          "this is a routine box pickup",
+          "the worker completes the task safely"
+        ],
+        "must_not_assert": [
+          "the forklift strikes the worker",
+          "a collision occurs",
+          "the worker falls",
+          "there is a fire"
+        ]
+      },
+      "ground_truth_basis": "The official dataset card labels this as routine box pickup, and manual RGB-preview inspection shows the worker approaching the box at frame 60 and carrying it at frame 120 without an accident.",
+      "timing_basis": "Heuristic only: the preview has 210 frames and the dataset card documents a 15-second scenario, so this package assumes 14 preview fps. These are not shard-level simulator timestamps."
+    }
+  ],
+  "video_case_profile": {
+    "id": "cosmos_qwen3vl_224x384_cl512_three_pair_v1",
+    "target_sampling_fps": 4.0,
+    "pair_count": 3,
+    "frames_per_pair": 2,
+    "input_size_hw": [
+      224,
+      384
+    ],
+    "grid_thw_per_pair": [
+      1,
+      14,
+      24
+    ],
+    "visual_tokens_per_pair": 84,
+    "total_visual_tokens": 252,
+    "context_tokens": 512,
+    "prefill_ar_tokens": 128,
+    "decode_ar_tokens": 1,
+    "prefill_kv_capacity_tokens": 384,
+    "default_system_prompt": "You are a helpful assistant.",
+    "max_new_tokens": 64,
+    "available_text_and_generation_tokens": 260,
+    "available_text_tokens_before_prefill_ceiling": 132,
+    "timestamp_policy": "Each temporal pair is introduced at its midpoint timestamp, rounded to one decimal place exactly as prepare_video_npu_inputs.py formats it.",
+    "sampling_policy": "Retain candidate temporal-pair positions 0, 2, and 3 from the nearest-integer nominal 4 fps sequence. This preserves the first and last event states while keeping the prompt at or below the AR128/CL512 prefill-safe ceiling and every pair disjoint from vision-calibration frames.",
+    "runtime_limit_basis": "Pinned GenieX v0.3.16 corrupts the prefill-to-decode KV transition above CL-AR = 384 prompt tokens. Equivalent three-pair prompts at 320 and 316 tokens decode coherently; the former four-pair prompts at 413 and 408 tokens do not."
+  },
+  "video_cases": [
+    {
+      "id": "video_barrier_knockdown_4fps",
+      "clip_asset_id": "collision_clip",
+      "profile_id": "cosmos_qwen3vl_224x384_cl512_three_pair_v1",
+      "nominal_sampling_fps": 4.0,
+      "retained_candidate_pair_indices": [
+        0,
+        2,
+        3
+      ],
+      "sequence_effective_fps": 2.790123,
+      "within_pair_effective_fps": 3.766667,
+      "temporal_coverage_seconds": 1.792035,
+      "temporal_pairs": [
+        {
+          "frame_indices": [
+            198,
+            202
+          ],
+          "assumed_times_seconds": [
+            13.141593,
+            13.40708
+          ],
+          "pair_midpoint_seconds": 13.274336,
+          "prompt_timestamp_text": "13.3"
+        },
+        {
+          "frame_indices": [
+            213,
+            217
+          ],
+          "assumed_times_seconds": [
+            14.137168,
+            14.402655
+          ],
+          "pair_midpoint_seconds": 14.269912,
+          "prompt_timestamp_text": "14.3"
+        },
+        {
+          "frame_indices": [
+            221,
+            225
+          ],
+          "assumed_times_seconds": [
+            14.668142,
+            14.933628
+          ],
+          "pair_midpoint_seconds": 14.800885,
+          "prompt_timestamp_text": "14.8"
+        }
+      ],
+      "prompt": "What happens to the orange-and-black striped safety marker, and what causes it? Answer in one short sentence.",
+      "expected": {
+        "event_label": "forklift_safety_marker_knockdown",
+        "is_safety_incident": true,
+        "required_concepts_any": [
+          "the striped safety marker tips over",
+          "the orange barrier falls to the floor",
+          "the bollard is knocked down"
+        ],
+        "cause_concepts_any": [
+          "the forklift hits or pushes it",
+          "contact with the forklift knocks it over",
+          "the forklift drives against the marker"
+        ],
+        "must_not_assert": [
+          "nothing changes",
+          "the marker remains upright",
+          "the marker falls without contact from the forklift",
+          "this is routine safe driving"
+        ],
+        "scoring_rule": "Pass requires one state-change concept, one forklift-cause concept, no forbidden assertion, and the safety-incident state."
+      },
+      "context_budget": {
+        "text_tokens": 68,
+        "visual_tokens": 252,
+        "prompt_tokens": 320,
+        "prefill_safe_limit_tokens": 384,
+        "prefill_headroom_tokens": 64,
+        "max_new_tokens": 64,
+        "total_tokens": 384,
+        "headroom_tokens": 128
+      },
+      "freeform_evaluation_role": "diagnostic",
+      "choice_control_scoring_rule": "Both primary gates must select the forklift-marker event after its letter moves from A to C. Together with the corresponding box-video B/A results, this controls for both answer position and scene identity.",
+      "choice_probes": [
+        {
+          "id": "cross_scene_event_choice",
+          "evaluation_role": "primary_grounded_evaluation_gate",
+          "option_order_control_id": "cross_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a forklift pushes a striped safety marker; B) a worker safely picks up a box; C) a warehouse fire starts.",
+          "expected_letter": "A",
+          "expected_event_label": "forklift_safety_marker_knockdown",
+          "context_budget": {
+            "text_tokens": 92,
+            "visual_tokens": 252,
+            "prompt_tokens": 344,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 40,
+            "max_new_tokens": 64,
+            "total_tokens": 408,
+            "headroom_tokens": 104
+          }
+        },
+        {
+          "id": "cross_scene_event_choice_shuffled",
+          "evaluation_role": "primary_grounded_evaluation_gate",
+          "option_order_control_id": "cross_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a worker safely picks up a box; B) a warehouse fire starts; C) a forklift pushes a striped safety marker.",
+          "expected_letter": "C",
+          "expected_event_label": "forklift_safety_marker_knockdown",
+          "context_budget": {
+            "text_tokens": 92,
+            "visual_tokens": 252,
+            "prompt_tokens": 344,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 40,
+            "max_new_tokens": 64,
+            "total_tokens": 408,
+            "headroom_tokens": 104
+          }
+        },
+        {
+          "id": "four_scene_event_choice",
+          "evaluation_role": "expanded_grounded_evaluation_gate",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a forklift pushes a striped safety marker; B) a worker safely picks up a box; C) a worker dodges an approaching forklift; D) two workers run out of warehouse aisles.",
+          "expected_letter": "A",
+          "expected_event_label": "forklift_safety_marker_knockdown",
+          "context_budget": {
+            "text_tokens": 108,
+            "visual_tokens": 252,
+            "prompt_tokens": 360,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 24,
+            "max_new_tokens": 64,
+            "total_tokens": 424,
+            "headroom_tokens": 88
+          }
+        },
+        {
+          "id": "four_scene_event_choice_shuffled",
+          "evaluation_role": "expanded_grounded_evaluation_gate",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) two workers run out of warehouse aisles; B) a worker dodges an approaching forklift; C) a forklift pushes a striped safety marker; D) a worker safely picks up a box.",
+          "expected_letter": "C",
+          "expected_event_label": "forklift_safety_marker_knockdown",
+          "context_budget": {
+            "text_tokens": 108,
+            "visual_tokens": 252,
+            "prompt_tokens": 360,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 24,
+            "max_new_tokens": 64,
+            "total_tokens": 424,
+            "headroom_tokens": 88
+          }
+        },
+        {
+          "id": "four_scene_compact_choice",
+          "evaluation_role": "prompt_compression_diagnostic",
+          "option_order_control_id": "four_scene_compact_choice_order",
+          "prompt": "Choose the event. Answer one letter only: A) marker knocked down; B) box pickup; C) forklift near miss; D) two workers running from aisles.",
+          "expected_letter": "A",
+          "expected_event_label": "forklift_safety_marker_knockdown",
+          "context_budget": {
+            "text_tokens": 83,
+            "visual_tokens": 252,
+            "prompt_tokens": 335,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 49,
+            "max_new_tokens": 64,
+            "total_tokens": 399,
+            "headroom_tokens": 113
+          }
+        },
+        {
+          "id": "four_scene_compact_choice_shuffled",
+          "evaluation_role": "prompt_compression_diagnostic",
+          "option_order_control_id": "four_scene_compact_choice_order",
+          "prompt": "Choose the event. Answer one letter only: A) two workers running from aisles; B) forklift near miss; C) marker knocked down; D) box pickup.",
+          "expected_letter": "C",
+          "expected_event_label": "forklift_safety_marker_knockdown",
+          "context_budget": {
+            "text_tokens": 83,
+            "visual_tokens": 252,
+            "prompt_tokens": 335,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 49,
+            "max_new_tokens": 64,
+            "total_tokens": 399,
+            "headroom_tokens": 113
+          }
+        }
+      ],
+      "ground_truth_basis": "Manual RGB-preview inspection shows the orange-and-black striped safety marker upright beside the forklift at frame 198, progressively rotating after contact, and lying on the floor by frame 225. The test asks only for this directly visible event, not the broader shelf-collision label.",
+      "timing_basis": "Heuristic preview timestamps are frame_index / 15.0666666667 fps, derived from 226 preview frames over the documented 15-second scenario. The retained non-uniform six-frame sequence spans about 1.79 seconds and has an endpoint-based effective rate of about 2.79 fps; each two-frame temporal pair remains separated by four preview frames, about 3.77 fps. These are not shard-level simulator timestamps."
+    },
+    {
+      "id": "video_routine_box_pickup_4fps",
+      "clip_asset_id": "box_pickup_clip",
+      "profile_id": "cosmos_qwen3vl_224x384_cl512_three_pair_v1",
+      "nominal_sampling_fps": 4.0,
+      "retained_candidate_pair_indices": [
+        0,
+        2,
+        3
+      ],
+      "sequence_effective_fps": 2.8,
+      "within_pair_effective_fps": 3.5,
+      "temporal_coverage_seconds": 1.785714,
+      "temporal_pairs": [
+        {
+          "frame_indices": [
+            81,
+            85
+          ],
+          "assumed_times_seconds": [
+            5.785714,
+            6.071429
+          ],
+          "pair_midpoint_seconds": 5.928571,
+          "prompt_timestamp_text": "5.9"
+        },
+        {
+          "frame_indices": [
+            95,
+            99
+          ],
+          "assumed_times_seconds": [
+            6.785714,
+            7.071429
+          ],
+          "pair_midpoint_seconds": 6.928571,
+          "prompt_timestamp_text": "6.9"
+        },
+        {
+          "frame_indices": [
+            102,
+            106
+          ],
+          "assumed_times_seconds": [
+            7.285714,
+            7.571429
+          ],
+          "pair_midpoint_seconds": 7.428571,
+          "prompt_timestamp_text": "7.4"
+        }
+      ],
+      "prompt": "What action does the worker complete, and does any collision or accident occur? Answer in one short sentence.",
+      "expected": {
+        "event_label": "routine_box_pickup",
+        "is_safety_incident": false,
+        "negative_control": true,
+        "required_concepts_any": [
+          "the worker picks up the box",
+          "the worker lifts the cardboard box",
+          "the worker rises while holding the box"
+        ],
+        "incident_state_concepts_any": [
+          "no collision or accident occurs",
+          "the pickup is completed safely",
+          "this is a routine non-incident task"
+        ],
+        "must_not_assert": [
+          "the forklift strikes the worker",
+          "a collision occurs",
+          "the worker falls",
+          "there is a fire",
+          "the box is dropped"
+        ],
+        "scoring_rule": "Pass requires one box-pickup concept, one explicit non-incident concept, no forbidden assertion, and the non-safety-incident state."
+      },
+      "context_budget": {
+        "text_tokens": 64,
+        "visual_tokens": 252,
+        "prompt_tokens": 316,
+        "prefill_safe_limit_tokens": 384,
+        "prefill_headroom_tokens": 68,
+        "max_new_tokens": 64,
+        "total_tokens": 380,
+        "headroom_tokens": 132
+      },
+      "freeform_evaluation_role": "diagnostic",
+      "choice_control_scoring_rule": "Both primary gates must select the routine-safe-box event after its letter moves from B to A. Together with the corresponding barrier-video A/C results, this controls for both answer position and scene identity.",
+      "choice_probes": [
+        {
+          "id": "cross_scene_event_choice",
+          "evaluation_role": "primary_grounded_evaluation_gate",
+          "option_order_control_id": "cross_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a forklift pushes a striped safety marker; B) a worker safely picks up a box; C) a warehouse fire starts.",
+          "expected_letter": "B",
+          "expected_event_label": "routine_box_pickup",
+          "context_budget": {
+            "text_tokens": 89,
+            "visual_tokens": 252,
+            "prompt_tokens": 341,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 43,
+            "max_new_tokens": 64,
+            "total_tokens": 405,
+            "headroom_tokens": 107
+          }
+        },
+        {
+          "id": "cross_scene_event_choice_shuffled",
+          "evaluation_role": "primary_grounded_evaluation_gate",
+          "option_order_control_id": "cross_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a worker safely picks up a box; B) a warehouse fire starts; C) a forklift pushes a striped safety marker.",
+          "expected_letter": "A",
+          "expected_event_label": "routine_box_pickup",
+          "context_budget": {
+            "text_tokens": 89,
+            "visual_tokens": 252,
+            "prompt_tokens": 341,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 43,
+            "max_new_tokens": 64,
+            "total_tokens": 405,
+            "headroom_tokens": 107
+          }
+        },
+        {
+          "id": "four_scene_event_choice",
+          "evaluation_role": "expanded_grounded_evaluation_gate",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a forklift pushes a striped safety marker; B) a worker safely picks up a box; C) a worker dodges an approaching forklift; D) two workers run out of warehouse aisles.",
+          "expected_letter": "B",
+          "expected_event_label": "routine_box_pickup",
+          "context_budget": {
+            "text_tokens": 105,
+            "visual_tokens": 252,
+            "prompt_tokens": 357,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 27,
+            "max_new_tokens": 64,
+            "total_tokens": 421,
+            "headroom_tokens": 91
+          }
+        },
+        {
+          "id": "four_scene_event_choice_shuffled",
+          "evaluation_role": "expanded_grounded_evaluation_gate",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) two workers run out of warehouse aisles; B) a worker dodges an approaching forklift; C) a forklift pushes a striped safety marker; D) a worker safely picks up a box.",
+          "expected_letter": "D",
+          "expected_event_label": "routine_box_pickup",
+          "context_budget": {
+            "text_tokens": 105,
+            "visual_tokens": 252,
+            "prompt_tokens": 357,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 27,
+            "max_new_tokens": 64,
+            "total_tokens": 421,
+            "headroom_tokens": 91
+          }
+        },
+        {
+          "id": "four_scene_compact_choice",
+          "evaluation_role": "prompt_compression_diagnostic",
+          "option_order_control_id": "four_scene_compact_choice_order",
+          "prompt": "Choose the event. Answer one letter only: A) marker knocked down; B) box pickup; C) forklift near miss; D) two workers running from aisles.",
+          "expected_letter": "B",
+          "expected_event_label": "routine_box_pickup",
+          "context_budget": {
+            "text_tokens": 80,
+            "visual_tokens": 252,
+            "prompt_tokens": 332,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 52,
+            "max_new_tokens": 64,
+            "total_tokens": 396,
+            "headroom_tokens": 116
+          }
+        },
+        {
+          "id": "four_scene_compact_choice_shuffled",
+          "evaluation_role": "prompt_compression_diagnostic",
+          "option_order_control_id": "four_scene_compact_choice_order",
+          "prompt": "Choose the event. Answer one letter only: A) two workers running from aisles; B) forklift near miss; C) marker knocked down; D) box pickup.",
+          "expected_letter": "D",
+          "expected_event_label": "routine_box_pickup",
+          "context_budget": {
+            "text_tokens": 80,
+            "visual_tokens": 252,
+            "prompt_tokens": 332,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 52,
+            "max_new_tokens": 64,
+            "total_tokens": 396,
+            "headroom_tokens": 116
+          }
+        },
+        {
+          "id": "box_near_pairwise_choice",
+          "evaluation_role": "box_near_discrimination_diagnostic",
+          "option_order_control_id": "box_near_pairwise_choice_order",
+          "prompt": "Which event is shown? Answer one letter only: A) a worker safely picks up a box; B) a worker dodges an approaching forklift.",
+          "expected_letter": "A",
+          "expected_event_label": "routine_box_pickup",
+          "context_budget": {
+            "text_tokens": 75,
+            "visual_tokens": 252,
+            "prompt_tokens": 327,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 57,
+            "max_new_tokens": 64,
+            "total_tokens": 391,
+            "headroom_tokens": 121
+          }
+        },
+        {
+          "id": "box_near_pairwise_choice_shuffled",
+          "evaluation_role": "box_near_discrimination_diagnostic",
+          "option_order_control_id": "box_near_pairwise_choice_order",
+          "prompt": "Which event is shown? Answer one letter only: A) a worker dodges an approaching forklift; B) a worker safely picks up a box.",
+          "expected_letter": "B",
+          "expected_event_label": "routine_box_pickup",
+          "context_budget": {
+            "text_tokens": 75,
+            "visual_tokens": 252,
+            "prompt_tokens": 327,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 57,
+            "max_new_tokens": 64,
+            "total_tokens": 391,
+            "headroom_tokens": 121
+          }
+        }
+      ],
+      "ground_truth_basis": "The official dataset card labels this scenario as routine box pickup. Manual RGB-preview inspection shows the worker crouched over the cardboard box at frame 81 and standing while holding it by frame 106; the nearby forklift remains stationary and no accident is visible.",
+      "timing_basis": "Heuristic preview timestamps are frame_index / 14 fps, derived from 210 preview frames over the documented 15-second scenario. The retained non-uniform six-frame sequence spans about 1.79 seconds and has an endpoint-based effective rate of 2.8 fps; each two-frame temporal pair spans four preview frames, or 3.5 fps. These are not shard-level simulator timestamps."
+    },
+    {
+      "id": "video_near_miss_avoidance_4fps",
+      "clip_asset_id": "near_miss_clip",
+      "profile_id": "cosmos_qwen3vl_224x384_cl512_three_pair_v1",
+      "nominal_sampling_fps": 4.0,
+      "retained_candidate_pair_indices": [
+        0,
+        2,
+        3
+      ],
+      "sequence_effective_fps": 2.777778,
+      "within_pair_effective_fps": 3.75,
+      "temporal_coverage_seconds": 1.8,
+      "temporal_pairs": [
+        {
+          "frame_indices": [
+            50,
+            54
+          ],
+          "assumed_times_seconds": [
+            3.333333,
+            3.6
+          ],
+          "pair_midpoint_seconds": 3.466667,
+          "prompt_timestamp_text": "3.5"
+        },
+        {
+          "frame_indices": [
+            65,
+            69
+          ],
+          "assumed_times_seconds": [
+            4.333333,
+            4.6
+          ],
+          "pair_midpoint_seconds": 4.466667,
+          "prompt_timestamp_text": "4.5"
+        },
+        {
+          "frame_indices": [
+            73,
+            77
+          ],
+          "assumed_times_seconds": [
+            4.866667,
+            5.133333
+          ],
+          "pair_midpoint_seconds": 5.0,
+          "prompt_timestamp_text": "5.0"
+        }
+      ],
+      "prompt": "How does the worker respond as the forklift approaches? Answer in one short sentence.",
+      "expected": {
+        "event_label": "forklift_human_near_miss",
+        "is_safety_incident": true,
+        "required_concepts_any": [
+          "the worker dodges the forklift",
+          "the worker moves away from its path",
+          "the worker avoids the approaching forklift"
+        ],
+        "must_not_assert": [
+          "the forklift strikes the worker",
+          "the worker remains stationary",
+          "the worker picks up a box",
+          "there is a fire"
+        ],
+        "scoring_rule": "Pass requires a worker-avoidance concept, no forbidden assertion, and the safety-incident state."
+      },
+      "context_budget": {
+        "text_tokens": 61,
+        "visual_tokens": 252,
+        "prompt_tokens": 313,
+        "prefill_safe_limit_tokens": 384,
+        "prefill_headroom_tokens": 71,
+        "max_new_tokens": 64,
+        "total_tokens": 377,
+        "headroom_tokens": 135
+      },
+      "freeform_evaluation_role": "diagnostic",
+      "choice_control_scoring_rule": "Both expanded gates must select the worker-dodge event after its letter moves from C to B. The visible close approach and evasive movement make this a grounded primary extension.",
+      "choice_probes": [
+        {
+          "id": "four_scene_event_choice",
+          "evaluation_role": "expanded_grounded_evaluation_gate",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a forklift pushes a striped safety marker; B) a worker safely picks up a box; C) a worker dodges an approaching forklift; D) two workers run out of warehouse aisles.",
+          "expected_letter": "C",
+          "expected_event_label": "forklift_human_near_miss",
+          "context_budget": {
+            "text_tokens": 105,
+            "visual_tokens": 252,
+            "prompt_tokens": 357,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 27,
+            "max_new_tokens": 64,
+            "total_tokens": 421,
+            "headroom_tokens": 91
+          }
+        },
+        {
+          "id": "four_scene_event_choice_shuffled",
+          "evaluation_role": "expanded_grounded_evaluation_gate",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) two workers run out of warehouse aisles; B) a worker dodges an approaching forklift; C) a forklift pushes a striped safety marker; D) a worker safely picks up a box.",
+          "expected_letter": "B",
+          "expected_event_label": "forklift_human_near_miss",
+          "context_budget": {
+            "text_tokens": 105,
+            "visual_tokens": 252,
+            "prompt_tokens": 357,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 27,
+            "max_new_tokens": 64,
+            "total_tokens": 421,
+            "headroom_tokens": 91
+          }
+        },
+        {
+          "id": "four_scene_compact_choice",
+          "evaluation_role": "prompt_compression_diagnostic",
+          "option_order_control_id": "four_scene_compact_choice_order",
+          "prompt": "Choose the event. Answer one letter only: A) marker knocked down; B) box pickup; C) forklift near miss; D) two workers running from aisles.",
+          "expected_letter": "C",
+          "expected_event_label": "forklift_human_near_miss",
+          "context_budget": {
+            "text_tokens": 80,
+            "visual_tokens": 252,
+            "prompt_tokens": 332,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 52,
+            "max_new_tokens": 64,
+            "total_tokens": 396,
+            "headroom_tokens": 116
+          }
+        },
+        {
+          "id": "four_scene_compact_choice_shuffled",
+          "evaluation_role": "prompt_compression_diagnostic",
+          "option_order_control_id": "four_scene_compact_choice_order",
+          "prompt": "Choose the event. Answer one letter only: A) two workers running from aisles; B) forklift near miss; C) marker knocked down; D) box pickup.",
+          "expected_letter": "B",
+          "expected_event_label": "forklift_human_near_miss",
+          "context_budget": {
+            "text_tokens": 80,
+            "visual_tokens": 252,
+            "prompt_tokens": 332,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 52,
+            "max_new_tokens": 64,
+            "total_tokens": 396,
+            "headroom_tokens": 116
+          }
+        },
+        {
+          "id": "box_near_pairwise_choice",
+          "evaluation_role": "box_near_discrimination_diagnostic",
+          "option_order_control_id": "box_near_pairwise_choice_order",
+          "prompt": "Which event is shown? Answer one letter only: A) a worker safely picks up a box; B) a worker dodges an approaching forklift.",
+          "expected_letter": "B",
+          "expected_event_label": "forklift_human_near_miss",
+          "context_budget": {
+            "text_tokens": 75,
+            "visual_tokens": 252,
+            "prompt_tokens": 327,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 57,
+            "max_new_tokens": 64,
+            "total_tokens": 391,
+            "headroom_tokens": 121
+          }
+        },
+        {
+          "id": "box_near_pairwise_choice_shuffled",
+          "evaluation_role": "box_near_discrimination_diagnostic",
+          "option_order_control_id": "box_near_pairwise_choice_order",
+          "prompt": "Which event is shown? Answer one letter only: A) a worker dodges an approaching forklift; B) a worker safely picks up a box.",
+          "expected_letter": "A",
+          "expected_event_label": "forklift_human_near_miss",
+          "context_budget": {
+            "text_tokens": 75,
+            "visual_tokens": 252,
+            "prompt_tokens": 327,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 57,
+            "max_new_tokens": 64,
+            "total_tokens": 391,
+            "headroom_tokens": 121
+          }
+        }
+      ],
+      "ground_truth_basis": "The official dataset card labels this staged scenario as a forklift-human near miss. Manual RGB-preview inspection shows the worker very close to the approaching forklift at frame 50, crouching or sidestepping across frames 65-69, and moving clear of its path by frame 77 without contact.",
+      "timing_basis": "Heuristic preview timestamps are frame_index / 15 fps, derived from 150 preview frames over the documented 10-second scenario. The retained non-uniform six-frame sequence spans 1.8 seconds and has an endpoint-based effective rate of about 2.78 fps; each two-frame temporal pair spans four preview frames, or 3.75 fps. These are not shard-level simulator timestamps."
+    },
+    {
+      "id": "video_fire_evacuation_4fps",
+      "clip_asset_id": "fire_clip",
+      "profile_id": "cosmos_qwen3vl_224x384_cl512_three_pair_v1",
+      "nominal_sampling_fps": 4.0,
+      "retained_candidate_pair_indices": [
+        0,
+        2,
+        3
+      ],
+      "sequence_effective_fps": 2.78,
+      "within_pair_effective_fps": 3.475,
+      "temporal_coverage_seconds": 1.798561,
+      "temporal_pairs": [
+        {
+          "frame_indices": [
+            107,
+            111
+          ],
+          "assumed_times_seconds": [
+            7.697842,
+            7.985612
+          ],
+          "pair_midpoint_seconds": 7.841727,
+          "prompt_timestamp_text": "7.8"
+        },
+        {
+          "frame_indices": [
+            121,
+            125
+          ],
+          "assumed_times_seconds": [
+            8.705036,
+            8.992806
+          ],
+          "pair_midpoint_seconds": 8.848921,
+          "prompt_timestamp_text": "8.8"
+        },
+        {
+          "frame_indices": [
+            128,
+            132
+          ],
+          "assumed_times_seconds": [
+            9.208633,
+            9.496403
+          ],
+          "pair_midpoint_seconds": 9.352518,
+          "prompt_timestamp_text": "9.4"
+        }
+      ],
+      "prompt": "How do the workers' positions change during this clip? Answer only what is directly visible in one short sentence.",
+      "expected": {
+        "event_label": "warehouse_worker_evacuation_motion",
+        "is_safety_incident": true,
+        "required_concepts_any": [
+          "the workers move quickly through the aisles",
+          "the workers move toward the foreground or right side",
+          "multiple workers are leaving their earlier positions"
+        ],
+        "must_not_assert": [
+          "the workers remain stationary",
+          "a forklift hits a worker",
+          "a worker picks up a box"
+        ],
+        "scoring_rule": "Pass requires directly visible multi-worker movement and no forbidden assertion; identifying fire from the RGB preview is not required for this freeform diagnostic."
+      },
+      "context_budget": {
+        "text_tokens": 65,
+        "visual_tokens": 252,
+        "prompt_tokens": 317,
+        "prefill_safe_limit_tokens": 384,
+        "prefill_headroom_tokens": 67,
+        "max_new_tokens": 64,
+        "total_tokens": 381,
+        "headroom_tokens": 131
+      },
+      "freeform_evaluation_role": "diagnostic",
+      "choice_control_scoring_rule": "Both expanded gates must select the directly visible two-worker aisle-exit motion after its letter moves from D to A. Inferring that the motion is caused by fire remains secondary because fire pixels are tiny or occluded in the 384x216 RGB preview.",
+      "choice_probes": [
+        {
+          "id": "four_scene_event_choice",
+          "evaluation_role": "expanded_grounded_evaluation_gate",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a forklift pushes a striped safety marker; B) a worker safely picks up a box; C) a worker dodges an approaching forklift; D) two workers run out of warehouse aisles.",
+          "expected_letter": "D",
+          "expected_event_label": "warehouse_worker_evacuation_motion",
+          "context_budget": {
+            "text_tokens": 105,
+            "visual_tokens": 252,
+            "prompt_tokens": 357,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 27,
+            "max_new_tokens": 64,
+            "total_tokens": 421,
+            "headroom_tokens": 91
+          }
+        },
+        {
+          "id": "four_scene_event_choice_shuffled",
+          "evaluation_role": "expanded_grounded_evaluation_gate",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) two workers run out of warehouse aisles; B) a worker dodges an approaching forklift; C) a forklift pushes a striped safety marker; D) a worker safely picks up a box.",
+          "expected_letter": "A",
+          "expected_event_label": "warehouse_worker_evacuation_motion",
+          "context_budget": {
+            "text_tokens": 105,
+            "visual_tokens": 252,
+            "prompt_tokens": 357,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 27,
+            "max_new_tokens": 64,
+            "total_tokens": 421,
+            "headroom_tokens": 91
+          }
+        },
+        {
+          "id": "four_scene_compact_choice",
+          "evaluation_role": "prompt_compression_diagnostic",
+          "option_order_control_id": "four_scene_compact_choice_order",
+          "prompt": "Choose the event. Answer one letter only: A) marker knocked down; B) box pickup; C) forklift near miss; D) two workers running from aisles.",
+          "expected_letter": "D",
+          "expected_event_label": "warehouse_worker_evacuation_motion",
+          "context_budget": {
+            "text_tokens": 80,
+            "visual_tokens": 252,
+            "prompt_tokens": 332,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 52,
+            "max_new_tokens": 64,
+            "total_tokens": 396,
+            "headroom_tokens": 116
+          }
+        },
+        {
+          "id": "four_scene_compact_choice_shuffled",
+          "evaluation_role": "prompt_compression_diagnostic",
+          "option_order_control_id": "four_scene_compact_choice_order",
+          "prompt": "Choose the event. Answer one letter only: A) two workers running from aisles; B) forklift near miss; C) marker knocked down; D) box pickup.",
+          "expected_letter": "A",
+          "expected_event_label": "warehouse_worker_evacuation_motion",
+          "context_budget": {
+            "text_tokens": 80,
+            "visual_tokens": 252,
+            "prompt_tokens": 332,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 52,
+            "max_new_tokens": 64,
+            "total_tokens": 396,
+            "headroom_tokens": 116
+          }
+        }
+      ],
+      "ground_truth_basis": "Manual RGB-preview inspection of frames 107-132 directly shows two workers moving rapidly out from the aisles toward the foreground and right side, which is the event scored by the four-scene choice probes. The official dataset card labels the broader staged scenario as warehouse fire and worker evacuation, but the fire itself is tiny or occluded in the 384x216 RGB panel and is not required for the grounded choice score.",
+      "timing_basis": "Heuristic preview timestamps are frame_index / 13.9 fps, derived from 139 preview frames over the documented 10-second scenario. The retained non-uniform six-frame sequence spans about 1.80 seconds and has an endpoint-based effective rate of 2.78 fps; each two-frame temporal pair spans four preview frames, or about 3.48 fps. These are not shard-level simulator timestamps."
     }
   ]
 }

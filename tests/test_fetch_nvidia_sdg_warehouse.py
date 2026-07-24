@@ -11,10 +11,13 @@ from unittest.mock import patch
 from scripts.fetch_nvidia_sdg_warehouse import (
     AssetValidationError,
     DEFAULT_MANIFEST,
+    _case_frame_indices,
+    _paired_frame_cases,
     extract_rgb_frames,
     fetch_asset,
     load_manifest,
 )
+from scripts.prepare_vision_calibration_pairs import calibration_pairs
 
 
 class FetchNvidiaSdgWarehouseTests(unittest.TestCase):
@@ -61,6 +64,267 @@ class FetchNvidiaSdgWarehouseTests(unittest.TestCase):
         self.assertEqual(
             predictions["predict_shelf_collision"]["rgb_frame_indices"], [66, 88]
         )
+        observations = {
+            case["id"]: case for case in manifest["observation_cases"]
+        }
+        self.assertEqual(
+            observations["observe_near_miss_avoidance"]["rgb_frame_indices"],
+            [45, 75],
+        )
+        self.assertEqual(
+            observations["observe_barrier_collision"]["rgb_frame_indices"],
+            [198, 225],
+        )
+        box_pickup = observations["observe_routine_box_pickup"]
+        self.assertEqual(box_pickup["rgb_frame_indices"], [60, 120])
+        self.assertFalse(box_pickup["expected"]["is_safety_incident"])
+        self.assertTrue(box_pickup["expected"]["negative_control"])
+        profile = manifest["video_case_profile"]
+        self.assertEqual(profile["pair_count"], 3)
+        self.assertEqual(profile["visual_tokens_per_pair"], 84)
+        self.assertEqual(profile["total_visual_tokens"], 252)
+        self.assertEqual(profile["context_tokens"], 512)
+        self.assertEqual(profile["prefill_ar_tokens"], 128)
+        self.assertEqual(profile["decode_ar_tokens"], 1)
+        self.assertEqual(profile["prefill_kv_capacity_tokens"], 384)
+
+        videos = {case["id"]: case for case in manifest["video_cases"]}
+        barrier = videos["video_barrier_knockdown_4fps"]
+        routine = videos["video_routine_box_pickup_4fps"]
+        near_miss = videos["video_near_miss_avoidance_4fps"]
+        fire_motion = videos["video_fire_evacuation_4fps"]
+        self.assertEqual(
+            _case_frame_indices(barrier),
+            [198, 202, 213, 217, 221, 225],
+        )
+        self.assertEqual(
+            _case_frame_indices(routine),
+            [81, 85, 95, 99, 102, 106],
+        )
+        self.assertEqual(
+            _case_frame_indices(near_miss),
+            [50, 54, 65, 69, 73, 77],
+        )
+        self.assertEqual(
+            _case_frame_indices(fire_motion),
+            [107, 111, 121, 125, 128, 132],
+        )
+        self.assertTrue(barrier["expected"]["is_safety_incident"])
+        self.assertTrue(routine["expected"]["negative_control"])
+        self.assertEqual(
+            barrier["freeform_evaluation_role"], "diagnostic"
+        )
+        self.assertEqual(
+            routine["freeform_evaluation_role"], "diagnostic"
+        )
+        self.assertEqual(
+            barrier["retained_candidate_pair_indices"], [0, 2, 3]
+        )
+        self.assertEqual(
+            routine["retained_candidate_pair_indices"], [0, 2, 3]
+        )
+        for case in videos.values():
+            self.assertEqual(len(case["temporal_pairs"]), 3)
+            budget = case["context_budget"]
+            self.assertEqual(
+                budget["prompt_tokens"],
+                budget["text_tokens"] + budget["visual_tokens"],
+            )
+            self.assertEqual(
+                budget["total_tokens"],
+                budget["prompt_tokens"] + budget["max_new_tokens"],
+            )
+            self.assertEqual(
+                budget["headroom_tokens"],
+                profile["context_tokens"] - budget["total_tokens"],
+            )
+            self.assertLessEqual(
+                budget["total_tokens"],
+                profile["context_tokens"],
+            )
+            self.assertEqual(
+                budget["prefill_headroom_tokens"],
+                profile["prefill_kv_capacity_tokens"]
+                - budget["prompt_tokens"],
+            )
+            self.assertLessEqual(
+                budget["prompt_tokens"],
+                profile["prefill_kv_capacity_tokens"],
+            )
+
+        box_probes = {
+            probe["id"]: probe for probe in routine["choice_probes"]
+        }
+        self.assertEqual(
+            box_probes["cross_scene_event_choice"]["expected_letter"], "B"
+        )
+        self.assertEqual(
+            box_probes["cross_scene_event_choice_shuffled"][
+                "expected_letter"
+            ],
+            "A",
+        )
+        self.assertEqual(
+            {
+                probe["evaluation_role"] for probe in box_probes.values()
+            },
+            {
+                "primary_grounded_evaluation_gate",
+                "expanded_grounded_evaluation_gate",
+                "prompt_compression_diagnostic",
+                "box_near_discrimination_diagnostic",
+            },
+        )
+        barrier_probes = {
+            probe["id"]: probe for probe in barrier["choice_probes"]
+        }
+        self.assertEqual(
+            {
+                probe["evaluation_role"]
+                for probe in barrier_probes.values()
+            },
+            {
+                "primary_grounded_evaluation_gate",
+                "expanded_grounded_evaluation_gate",
+                "prompt_compression_diagnostic",
+            },
+        )
+        self.assertEqual(
+            barrier_probes["cross_scene_event_choice"]["expected_letter"], "A"
+        )
+        self.assertEqual(
+            barrier_probes["cross_scene_event_choice_shuffled"][
+                "expected_letter"
+            ],
+            "C",
+        )
+        shared_probe_ids = barrier_probes.keys() & box_probes.keys()
+        self.assertEqual(
+            {
+                barrier_probes[probe_id]["prompt"]
+                for probe_id in shared_probe_ids
+            },
+            {
+                box_probes[probe_id]["prompt"]
+                for probe_id in shared_probe_ids
+            },
+        )
+        for case in videos.values():
+            for probe in case["choice_probes"]:
+                budget = probe["context_budget"]
+                self.assertLessEqual(
+                    budget["prompt_tokens"],
+                    profile["prefill_kv_capacity_tokens"],
+                )
+                self.assertEqual(
+                    budget["prefill_headroom_tokens"],
+                    profile["prefill_kv_capacity_tokens"]
+                    - budget["prompt_tokens"],
+                )
+
+        planned_calibration = calibration_pairs(manifest)
+        self.assertEqual(len(planned_calibration), 20)
+        self.assertEqual(
+            {
+                pair["clip_asset_id"]
+                for pair in planned_calibration
+            },
+            {
+                "near_miss_clip",
+                "collision_clip",
+                "fire_clip",
+                "box_pickup_clip",
+            },
+        )
+        calibration_frames: dict[str, set[int]] = {}
+        for pair in planned_calibration:
+            calibration_frames.setdefault(pair["clip_asset_id"], set()).update(
+                pair["frame_indices"]
+            )
+        for case in videos.values():
+            self.assertTrue(
+                set(_case_frame_indices(case)).isdisjoint(
+                    calibration_frames[case["clip_asset_id"]]
+                )
+            )
+
+    def test_video_pair_timestamps_match_preview_cadence(self) -> None:
+        manifest = load_manifest(DEFAULT_MANIFEST)
+        assets = {asset["id"]: asset for asset in manifest["assets"]}
+        for case in manifest["video_cases"]:
+            fps = float(assets[case["clip_asset_id"]]["assumed_preview_fps"])
+            for pair in case["temporal_pairs"]:
+                expected_times = [
+                    round(index / fps, 6) for index in pair["frame_indices"]
+                ]
+                self.assertEqual(
+                    pair["assumed_times_seconds"],
+                    expected_times,
+                )
+                expected_midpoint = round(
+                    sum(pair["frame_indices"]) / (2 * fps),
+                    6,
+                )
+                self.assertEqual(
+                    pair["pair_midpoint_seconds"],
+                    expected_midpoint,
+                )
+                self.assertEqual(
+                    pair["prompt_timestamp_text"],
+                    f"{pair['pair_midpoint_seconds']:.1f}",
+                )
+
+    def test_calibration_rejects_overlap_with_video_case(self) -> None:
+        manifest = load_manifest(DEFAULT_MANIFEST)
+        collision_sequence = next(
+            sequence
+            for sequence in manifest["vision_calibration"]["sequences"]
+            if sequence["clip_asset_id"] == "collision_clip"
+        )
+        collision_sequence["pair_frame_indices"][0] = [198, 202]
+
+        with self.assertRaisesRegex(ValueError, "overlaps evaluation"):
+            calibration_pairs(manifest)
+
+    def test_selects_prediction_observation_and_video_pairs(self) -> None:
+        manifest = load_manifest(DEFAULT_MANIFEST)
+        selected = _paired_frame_cases(
+            manifest,
+            [
+                "observe_routine_box_pickup",
+                "predict_near_miss",
+                "video_barrier_knockdown_4fps",
+            ],
+        )
+        self.assertEqual(
+            [case["id"] for case in selected],
+            [
+                "observe_routine_box_pickup",
+                "predict_near_miss",
+                "video_barrier_knockdown_4fps",
+            ],
+        )
+        all_cases = _paired_frame_cases(manifest, [])
+        self.assertEqual(len(all_cases), 9)
+
+    def test_flattens_four_temporal_pairs_for_extraction(self) -> None:
+        case = {
+            "id": "video_fixture",
+            "temporal_pairs": [
+                {"frame_indices": [0, 1]},
+                {"frame_indices": [3, 4]},
+                {"frame_indices": [6, 7]},
+                {"frame_indices": [9, 10]},
+            ],
+        }
+        self.assertEqual(
+            _case_frame_indices(case),
+            [0, 1, 3, 4, 6, 7, 9, 10],
+        )
+
+        case["temporal_pairs"][2]["frame_indices"] = [4, 7]
+        with self.assertRaisesRegex(ValueError, "strictly increasing"):
+            _case_frame_indices(case)
 
     def test_fetch_is_anonymous_and_validates_hash(self) -> None:
         payload = b"official preview fixture"
@@ -164,7 +428,14 @@ class FetchNvidiaSdgWarehouseTests(unittest.TestCase):
             case = {
                 "id": "predict_fixture",
                 "clip_asset_id": "fixture",
-                "rgb_frame_indices": [0, 2],
+                "temporal_pairs": [
+                    {
+                        "frame_indices": [0, 2],
+                        "assumed_times_seconds": [0.0, 0.2],
+                        "pair_midpoint_seconds": 0.1,
+                        "prompt_timestamp_text": "0.1",
+                    }
+                ],
             }
 
             written = extract_rgb_frames(manifest, root, case)
@@ -207,7 +478,7 @@ class FetchNvidiaSdgWarehouseTests(unittest.TestCase):
             source = root / "assets" / "fixture.gif"
             source.parent.mkdir()
             source.write_bytes(b"")
-            with self.assertRaisesRegex(ValueError, "Unsafe prediction case id"):
+            with self.assertRaisesRegex(ValueError, "Unsafe paired-frame case id"):
                 extract_rgb_frames(manifest, root, case)
 
 

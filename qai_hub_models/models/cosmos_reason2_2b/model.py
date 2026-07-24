@@ -30,7 +30,12 @@ from qai_hub_models.models._shared.qwen3_vl.model import (
     Qwen3VLSplitForwardMixin,
     Qwen3VLVisionEncoderBase,
 )
+from qai_hub_models.models._shared.qwen3_vl.vision_encoder import (
+    Qwen3VLVisionEncoder as SharedQwen3VLVisionEncoder,
+)
 from qai_hub_models.utils.asset_loaders import CachedWebModelAsset
+
+from .calibration import load_vision_calibration_data
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +106,91 @@ DEFAULT_NUM_VISUAL_TOKENS = num_visual_tokens_for_image_size(
 )
 
 SPLIT_MODEL_NAME = "Cosmos_Reason2_2B"
+
+
+def _last_vision_block_activation_quantizer_names(
+    quant_sim: Any,
+) -> tuple[str, ...]:
+    """Find enabled activation quantizers produced by vision block 23.
+
+    AIMET appends ``_qdq``/``_updated`` to graph inputs after inserting its
+    custom quantizer nodes, while its quantizer dictionary retains the original
+    tensor names. The learned parameters therefore provide stable structural
+    boundaries: select from block 23's first through last parameterized
+    operation. This deliberately leaves the block's final residual output and
+    the downstream vision merger on A16.
+    """
+
+    def strip_quantizer_suffix(name: str) -> str:
+        for suffix in ("_qdq", "_updated"):
+            if name.endswith(suffix):
+                return name[: -len(suffix)]
+        return name
+
+    try:
+        nodes = [
+            node
+            for node in quant_sim.model.model.graph.node
+            if node.op_type != "QcQuantizeOp"
+        ]
+        activation_names = set(quant_sim.activation_names)
+        quantizers = quant_sim.qc_quantize_op_dict
+    except AttributeError as exc:
+        raise TypeError("Unexpected AIMET QuantSim graph structure") from exc
+
+    block_prefix = f"blocks.{VISION_DEPTH - 1}."
+    parameterized_node_indices = [
+        index
+        for index, node in enumerate(nodes)
+        if any(
+            strip_quantizer_suffix(value).startswith(block_prefix)
+            for value in node.input
+        )
+    ]
+    if not parameterized_node_indices:
+        raise RuntimeError(
+            f"Could not locate final vision transformer {block_prefix!r}"
+        )
+    block_start = min(parameterized_node_indices)
+    block_end = max(parameterized_node_indices) + 1
+
+    selected = tuple(
+        sorted(
+            {
+                output
+                for node in nodes[block_start:block_end]
+                for output in node.output
+                if output in activation_names
+                and output in quantizers
+                and bool(quantizers[output].enabled)
+            }
+        )
+    )
+    if not selected:
+        raise RuntimeError(
+            "No enabled activation quantizers were found in vision block 23"
+        )
+    return selected
+
+
+def _set_last_vision_block_activations_float16(
+    quant_sim: Any,
+    *,
+    float_data_type: Any | None = None,
+) -> tuple[str, ...]:
+    """Replace integer A16 inside the final vision block with FLOAT16."""
+    if float_data_type is None:
+        from aimet_onnx.common.defs import QuantizationDataType
+
+        float_data_type = QuantizationDataType.float
+
+    selected = _last_vision_block_activation_quantizer_names(quant_sim)
+    for name in selected:
+        quantizer = quant_sim.qc_quantize_op_dict[name]
+        quantizer.reset_encoding_stats()
+        quantizer.data_type = float_data_type
+        quantizer.bitwidth = 16
+    return selected
 
 
 def _pad_prefill_kwargs_to_sequence_multiple(
@@ -363,6 +453,9 @@ class Cosmos_Reason2_2B_QuantizablePreSplit(
 class Cosmos_Reason2_2B_VisionEncoder(Qwen3VLVisionEncoderBase):
     """Qwen3-VL-2B vision embedding generator."""
 
+    paired_calibration_manifest: Path | None = None
+    fp16_last_block_activations = False
+    last_fp16_activation_quantizer_names: tuple[str, ...] = ()
     DEFAULT_IMAGE_SIZE = (DEFAULT_IMAGE_HEIGHT, DEFAULT_IMAGE_WIDTH)
     _hf_repo_name = HF_REPO_NAME
     vision_patch_size = VISION_PATCH_SIZE
@@ -371,6 +464,188 @@ class Cosmos_Reason2_2B_VisionEncoder(Qwen3VLVisionEncoderBase):
     default_image_height = DEFAULT_IMAGE_HEIGHT
     default_image_width = DEFAULT_IMAGE_WIDTH
     quant_presplit_cls = Cosmos_Reason2_2B_QuantizablePreSplit
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        checkpoint: str | os.PathLike[str] | Path = "DEFAULT",
+        device: torch.device | None = None,
+        image_height: int | None = None,
+        image_width: int | None = None,
+        precision: Precision = Precision.float,
+        **kwargs: Any,
+    ) -> Any:
+        """Recover a non-default vision geometry from checkpoint provenance."""
+        checkpoint_path = Path(str(checkpoint)).expanduser()
+        if (
+            checkpoint_path.is_dir()
+            and (checkpoint_path / "args.json").is_file()
+        ):
+            try:
+                quantize_args = json.loads(
+                    (checkpoint_path / "args.json").read_text(encoding="utf-8")
+                )
+                recorded_size = quantize_args["image_size"]
+                recorded_height, recorded_width = (
+                    int(recorded_size[0]),
+                    int(recorded_size[1]),
+                )
+            except (
+                OSError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+                IndexError,
+            ) as exc:
+                raise ValueError(
+                    "Quantized vision checkpoint has no valid image_size in "
+                    f"{checkpoint_path / 'args.json'}"
+                ) from exc
+            if (
+                recorded_height <= 0
+                or recorded_width <= 0
+                or recorded_height % VISION_PATCH_SIZE
+                or recorded_width % VISION_PATCH_SIZE
+            ):
+                raise ValueError(
+                    "Quantized vision checkpoint image_size must contain "
+                    f"positive multiples of {VISION_PATCH_SIZE}"
+                )
+            if (
+                image_height is not None
+                and int(image_height) != recorded_height
+            ):
+                raise ValueError(
+                    "Explicit image_height does not match the quantized "
+                    f"vision checkpoint: {image_height} != {recorded_height}"
+                )
+            if image_width is not None and int(image_width) != recorded_width:
+                raise ValueError(
+                    "Explicit image_width does not match the quantized "
+                    f"vision checkpoint: {image_width} != {recorded_width}"
+                )
+            image_height = (
+                recorded_height if image_height is None else image_height
+            )
+            image_width = recorded_width if image_width is None else image_width
+        return super().from_pretrained(
+            checkpoint=checkpoint,
+            device=device,
+            image_height=image_height,
+            image_width=image_width,
+            precision=precision,
+            **kwargs,
+        )
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Preserve Qwen3-VL's learned temporal-patch projection bias.
+
+        QAIHM 0.58 reuses Qwen2.5-VL's ``Conv2dInplaceConv3d`` adaptation,
+        which constructs its replacement convolution with ``bias=False``.
+        Qwen3-VL's patch projection has a learned bias, so retain it across
+        that otherwise equivalent weight-layout conversion.
+        """
+        visual = kwargs.get("visual", args[0] if args else None)
+        projection = getattr(getattr(visual, "patch_embed", None), "proj", None)
+        source_bias = getattr(projection, "bias", None)
+        preserved_bias = (
+            source_bias.detach().clone()
+            if isinstance(source_bias, torch.Tensor)
+            else None
+        )
+
+        super().__init__(*args, **kwargs)
+        _restore_temporal_patch_projection_bias(
+            self.patch_embed.proj, preserved_bias
+        )
+
+    def get_input_spec(
+        self,
+        image_height: int | None = None,
+        image_width: int | None = None,
+    ) -> Any:
+        """Use the constructed graph geometry instead of class defaults."""
+        if image_height is None:
+            image_height = int(self._image_height)
+        if image_width is None:
+            image_width = int(self._image_width)
+        rope_dim = int(self._pos_emb_cos.shape[-1])
+        return SharedQwen3VLVisionEncoder.get_static_input_spec(
+            image_height,
+            image_width,
+            patch_size=int(self._patch_size),
+            rope_dim=rope_dim,
+        )
+
+    @classmethod
+    def get_calibration_data(
+        cls,
+        num_samples: int,
+        image_height: int = DEFAULT_IMAGE_HEIGHT,
+        image_width: int = DEFAULT_IMAGE_WIDTH,
+    ) -> list[Any]:
+        """Load balanced stills or an opt-in local paired-frame manifest."""
+        return load_vision_calibration_data(
+            hf_repo=cls._hf_repo_name,
+            num_samples=num_samples,
+            image_height=image_height,
+            image_width=image_width,
+            paired_manifest=cls.paired_calibration_manifest,
+        )
+
+    @classmethod
+    def create_quantsim(
+        cls,
+        veg_model: Any,
+        host_device: torch.device,
+    ) -> tuple[Any, dict[str, Any]]:
+        """Optionally keep the final vision block's activations in FP16."""
+        quant_sim, fixed_inputs = super().create_quantsim(
+            veg_model,
+            host_device,
+        )
+        cls.last_fp16_activation_quantizer_names = ()
+        if not cls.fp16_last_block_activations:
+            return quant_sim, fixed_inputs
+
+        # This is the same AIMET representation used by QAIHM's W4/FP16 path:
+        # the quantizer remains present in the exported encoding contract, but
+        # integer A16 quantize/dequantize is replaced by native FLOAT16.
+        selected = _set_last_vision_block_activations_float16(quant_sim)
+        cls.last_fp16_activation_quantizer_names = selected
+        print(
+            "  Using FLOAT16 activation quantizers for final vision block "
+            f"{VISION_DEPTH - 1}: {len(selected)} tensors"
+        )
+        return quant_sim, fixed_inputs
+
+
+def _restore_temporal_patch_projection_bias(
+    adapted_projection: torch.nn.Module,
+    source_bias: torch.Tensor | None,
+) -> None:
+    """Attach the source Conv3d bias to its Conv2d patch adaptation."""
+    if source_bias is None:
+        return
+    conv2d = getattr(adapted_projection, "conv2d", None)
+    if not isinstance(conv2d, torch.nn.Conv2d):
+        raise TypeError(
+            "Temporal patch projection adaptation has no Conv2d module"
+        )
+    expected_shape = (conv2d.out_channels,)
+    if tuple(source_bias.shape) != expected_shape:
+        raise ValueError(
+            "Temporal patch projection bias has shape "
+            f"{tuple(source_bias.shape)}, expected {expected_shape}"
+        )
+    conv2d.bias = torch.nn.Parameter(
+        source_bias.to(
+            device=conv2d.weight.device,
+            dtype=conv2d.weight.dtype,
+        ),
+        requires_grad=source_bias.requires_grad,
+    )
 
 
 class Cosmos_Reason2_2B_PartBase(Qwen3VLPartBase):

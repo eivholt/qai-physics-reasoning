@@ -21,6 +21,11 @@ import shutil
 from pathlib import Path
 from typing import Any, Callable
 
+try:
+    from scripts.vision_profile import VisionProfile
+except ModuleNotFoundError:  # pragma: no cover - direct script execution
+    from vision_profile import VisionProfile
+
 METADATA_FILENAME = "metadata.json"
 GENIE_CONFIG_FILENAME = "genie_config.json"
 MARKER_FILENAME = "geniex_compat.json"
@@ -28,12 +33,23 @@ QAIRT245_COMPAT_MARKER = "qairt_245_compat.json"
 W4_FP16_MARKER = "w4_fp16.json"
 DEFAULT_MODEL_ID = "qwen3_vl_cosmos_reason2_2b"
 PART1_CONTEXT = "part1_of_4.bin"
+VISION_CONTEXT = "vision_encoder.bin"
+VISION_PROFILE_FILES = (
+    "img-enc-htp.json",
+)
+VISION_SAMPLE_FILES = (
+    "pixel_values.raw",
+    "position_ids_cos.raw",
+    "position_ids_sin.raw",
+    "window_attention_mask.raw",
+    "full_attention_mask.raw",
+)
 REQUIRED_CONTEXTS = {
     PART1_CONTEXT,
     "part2_of_4.bin",
     "part3_of_4.bin",
     "part4_of_4.bin",
-    "vision_encoder.bin",
+    VISION_CONTEXT,
 }
 DEEPSTACK_INPUTS = {
     "visual_pos_masks",
@@ -140,21 +156,34 @@ def _validate_part1_replacement(source: Path) -> dict[str, Any]:
             "inputs_embeds; this is unsafe for GenieX graph-spec inference"
         )
 
-    expected_shapes = {
-        "visual_pos_masks": ([1, 1], [1, 128]),
-        "deepstack_visual_embeds_0": ([256, 2048],),
-        "deepstack_visual_embeds_1": ([256, 2048],),
-        "deepstack_visual_embeds_2": ([256, 2048],),
-    }
-    for name, allowed_shapes in expected_shapes.items():
+    mask = inputs["visual_pos_masks"]
+    if (
+        not isinstance(mask, dict)
+        or mask.get("shape") not in ([1, 1], [1, 128])
+    ):
+        raise ValueError(
+            "Replacement visual_pos_masks shape must be [1, 1] or [1, 128]"
+        )
+    deepstack_shape: list[int] | None = None
+    for name in sorted(DEEPSTACK_INPUTS - {"visual_pos_masks"}):
         tensor = inputs[name]
-        if not isinstance(tensor, dict):
-            raise ValueError(f"Replacement {name} contract must be an object")
-        shape = tensor.get("shape")
-        if shape not in allowed_shapes:
+        shape = tensor.get("shape") if isinstance(tensor, dict) else None
+        if (
+            not isinstance(shape, list)
+            or len(shape) != 2
+            or not all(isinstance(value, int) and value > 0 for value in shape)
+            or shape[1] != 2048
+        ):
             raise ValueError(
-                f"Replacement {name} shape is {shape!r}; expected one of "
-                f"{list(allowed_shapes)!r}"
+                f"Replacement {name} shape is {shape!r}; expected "
+                "[positive visual capacity, 2048]"
+            )
+        if deepstack_shape is None:
+            deepstack_shape = shape
+        elif shape != deepstack_shape:
+            raise ValueError(
+                "Replacement DeepStack input shapes must match; "
+                f"{name} is {shape}, expected {deepstack_shape}"
             )
 
     unexpected_deepstack = sorted(
@@ -186,9 +215,97 @@ def _validate_part1_replacement(source: Path) -> dict[str, Any]:
     return metadata
 
 
+def _validate_vision_replacement(
+    source: Path,
+) -> tuple[dict[str, Any], VisionProfile]:
+    context = source / VISION_CONTEXT
+    if not source.is_dir() or not context.is_file():
+        raise ValueError(
+            "Vision replacement bundle must contain "
+            f"{VISION_CONTEXT}: {source}"
+        )
+    metadata = _load_json(
+        source / METADATA_FILENAME, "vision replacement metadata.json"
+    )
+    profile = VisionProfile.from_metadata(metadata)
+    profile.validate_img_encoder_config(source / "img-enc-htp.json")
+    profile.validate_ancillary_files(source / "sample_inputs")
+    pixel_values = source / "sample_inputs" / "pixel_values.raw"
+    if not pixel_values.is_file():
+        raise ValueError(
+            f"Vision replacement is missing sample tensor: {pixel_values}"
+        )
+    if pixel_values.stat().st_size != profile.pixel_bytes:
+        raise ValueError(
+            f"Vision replacement pixel_values.raw has "
+            f"{pixel_values.stat().st_size} bytes; expected "
+            f"{profile.pixel_bytes}"
+        )
+    try:
+        outputs = metadata["model_files"][VISION_CONTEXT]["outputs"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(
+            "Vision replacement metadata has no vision output contract"
+        ) from exc
+    for name in (
+        "image_features",
+        "deepstack_visual_embeds_0",
+        "deepstack_visual_embeds_1",
+        "deepstack_visual_embeds_2",
+    ):
+        tensor = outputs.get(name) if isinstance(outputs, dict) else None
+        if not isinstance(tensor, dict) or tensor.get("shape") != list(
+            profile.visual_shape
+        ):
+            raise ValueError(
+                f"Vision replacement output {name} must have shape "
+                f"{list(profile.visual_shape)}"
+            )
+    return metadata, profile
+
+
+def _validate_vision_text_capacity(
+    text_metadata: dict[str, Any],
+    profile: VisionProfile,
+) -> None:
+    """Ensure the retained first shard can consume one visual prefill slice."""
+
+    try:
+        part1_inputs = text_metadata["model_files"][PART1_CONTEXT][
+            "inputs"
+        ]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(
+            "Text bundle metadata has no part-1 input contract"
+        ) from exc
+    for name in sorted(DEEPSTACK_INPUTS - {"visual_pos_masks"}):
+        tensor = part1_inputs.get(name) if isinstance(part1_inputs, dict) else None
+        shape = tensor.get("shape") if isinstance(tensor, dict) else None
+        if (
+            not isinstance(shape, list)
+            or len(shape) != 2
+            or shape[1] != profile.hidden_size
+            or shape[0] <= 0
+        ):
+            raise ValueError(
+                f"Retained part 1 cannot accept {name} from the replacement "
+                f"vision graph: shape {shape!r}"
+            )
+    mask = (
+        part1_inputs.get("visual_pos_masks")
+        if isinstance(part1_inputs, dict)
+        else None
+    )
+    if not isinstance(mask, dict):
+        raise ValueError(
+            "Retained part 1 has no visual_pos_masks DeepStack input"
+        )
+
+
 def _validate_part1_compatibility(
     source_metadata: dict[str, Any],
     replacement_metadata: dict[str, Any],
+    vision_metadata: dict[str, Any] | None = None,
 ) -> None:
     """Fail before copying if the partial export cannot join the base bundle."""
 
@@ -199,9 +316,14 @@ def _validate_part1_compatibility(
         source_outputs = source_part1["outputs"]
         replacement_inputs = replacement_part1["inputs"]
         replacement_outputs = replacement_part1["outputs"]
-        vision_outputs = source_metadata["model_files"]["vision_encoder.bin"][
-            "outputs"
-        ]
+        selected_vision_metadata = (
+            vision_metadata
+            if vision_metadata is not None
+            else source_metadata
+        )
+        vision_outputs = selected_vision_metadata["model_files"][
+            VISION_CONTEXT
+        ]["outputs"]
     except (KeyError, TypeError) as exc:
         raise ValueError(
             "Source/replacement metadata lacks a complete part-1 or vision contract"
@@ -236,21 +358,33 @@ def _validate_part1_compatibility(
             "the source bundle"
         )
 
-    expected_visual_shape = replacement_inputs[
+    part1_visual_shape = replacement_inputs[
         "deepstack_visual_embeds_0"
     ].get("shape")
-    for name in ("image_features", *sorted(DEEPSTACK_INPUTS - {"visual_pos_masks"})):
+    for name in (
+        "image_features",
+        *sorted(DEEPSTACK_INPUTS - {"visual_pos_masks"}),
+    ):
         tensor = vision_outputs.get(name)
         if not isinstance(tensor, dict):
             raise ValueError(
                 f"Source vision context cannot supply replacement part 1: "
                 f"missing output {name}"
             )
-        if tensor.get("shape") != expected_visual_shape:
+        vision_shape = tensor.get("shape")
+        if (
+            not isinstance(vision_shape, list)
+            or len(vision_shape) != 2
+            or not isinstance(part1_visual_shape, list)
+            or len(part1_visual_shape) != 2
+            or vision_shape[1] != part1_visual_shape[1]
+            or vision_shape[0] <= 0
+            or part1_visual_shape[0] <= 0
+        ):
             raise ValueError(
                 f"Source vision output {name} shape {tensor.get('shape')!r} "
-                f"does not match replacement DeepStack shape "
-                f"{expected_visual_shape!r}"
+                "is incompatible with replacement DeepStack capacity "
+                f"{part1_visual_shape!r}"
             )
 
 
@@ -274,6 +408,7 @@ def prepare_bundle(
     model_id: str = DEFAULT_MODEL_ID,
     hardlink: bool = False,
     part1_replacement_bundle: Path | None = None,
+    vision_replacement_bundle: Path | None = None,
 ) -> Path:
     """Copy a bundle and select GenieX's Qwen3-VL runtime dispatcher."""
 
@@ -289,10 +424,29 @@ def prepare_bundle(
     metadata, _ = _validate_bundle(source)
     replacement_source: Path | None = None
     replacement_metadata: dict[str, Any] | None = None
+    vision_source: Path | None = None
+    vision_metadata: dict[str, Any] | None = None
+    vision_profile: VisionProfile | None = None
+    if vision_replacement_bundle is not None:
+        vision_source = vision_replacement_bundle.expanduser().resolve()
+        vision_metadata, vision_profile = _validate_vision_replacement(
+            vision_source
+        )
     if part1_replacement_bundle is not None:
         replacement_source = part1_replacement_bundle.expanduser().resolve()
         replacement_metadata = _validate_part1_replacement(replacement_source)
-        _validate_part1_compatibility(metadata, replacement_metadata)
+        _validate_part1_compatibility(
+            metadata,
+            replacement_metadata,
+            vision_metadata=vision_metadata,
+        )
+    if vision_profile is not None:
+        _validate_vision_text_capacity(
+            replacement_metadata
+            if replacement_metadata is not None
+            else metadata,
+            vision_profile,
+        )
     original_model_id = metadata.get("model_id")
     if not isinstance(original_model_id, str) or not original_model_id:
         raise ValueError("metadata.json has no non-empty model_id")
@@ -308,16 +462,86 @@ def prepare_bundle(
         # source file remains byte-for-byte untouched.
         patched_metadata = dict(metadata)
         patched_metadata["model_id"] = model_id
-        if replacement_source is not None and replacement_metadata is not None:
+        if replacement_source is not None or vision_source is not None:
             source_model_files = metadata.get("model_files")
             if not isinstance(source_model_files, dict):
                 raise ValueError(
-                    "Source metadata has no model_files object for part-1 replacement"
+                    "Source metadata has no model_files object for replacement"
                 )
+            patched_metadata["model_files"] = dict(source_model_files)
+
+        if (
+            vision_source is not None
+            and vision_metadata is not None
+            and vision_profile is not None
+        ):
+            patched_metadata["model_files"][VISION_CONTEXT] = (
+                vision_metadata["model_files"][VISION_CONTEXT]
+            )
+            _replace_file_atomically(
+                vision_source / VISION_CONTEXT,
+                destination / VISION_CONTEXT,
+                copy_function=copy_function,
+            )
+            for filename in VISION_PROFILE_FILES:
+                _replace_file_atomically(
+                    vision_source / filename,
+                    destination / filename,
+                    copy_function=shutil.copy2,
+                )
+            destination_samples = destination / "sample_inputs"
+            destination_samples.mkdir(exist_ok=True)
+            for filename in VISION_SAMPLE_FILES:
+                _replace_file_atomically(
+                    vision_source / "sample_inputs" / filename,
+                    destination_samples / filename,
+                    copy_function=shutil.copy2,
+                )
+            # Prepared video inputs are bound to the old graph shapes/hashes.
+            # Never carry them into a bundle with a different vision context.
+            stale_video_inputs = destination / "video_inputs"
+            if stale_video_inputs.is_dir():
+                shutil.rmtree(stale_video_inputs)
+
+            source_genie = metadata.get("genie")
+            replacement_genie = vision_metadata.get("genie")
+            if not isinstance(source_genie, dict) or not isinstance(
+                replacement_genie, dict
+            ):
+                raise ValueError(
+                    "Source/replacement metadata has no genie object"
+                )
+            replacement_preprocessing = replacement_genie.get(
+                "vision_preprocessing"
+            )
+            if not isinstance(replacement_preprocessing, dict):
+                raise ValueError(
+                    "Vision replacement has no preprocessing metadata"
+                )
+            patched_metadata["genie"] = dict(source_genie)
+            patched_metadata["genie"]["vision_preprocessing"] = (
+                replacement_preprocessing
+            )
+            replacement_supplementary = vision_metadata.get(
+                "supplementary_files"
+            )
+            if isinstance(replacement_supplementary, dict):
+                supplementary = patched_metadata.get("supplementary_files")
+                patched_metadata["supplementary_files"] = (
+                    dict(supplementary)
+                    if isinstance(supplementary, dict)
+                    else {}
+                )
+                for filename in VISION_PROFILE_FILES:
+                    if filename in replacement_supplementary:
+                        patched_metadata["supplementary_files"][filename] = (
+                            replacement_supplementary[filename]
+                        )
+
+        if replacement_source is not None and replacement_metadata is not None:
             replacement_model_file = replacement_metadata["model_files"][
                 PART1_CONTEXT
             ]
-            patched_metadata["model_files"] = dict(source_model_files)
             patched_metadata["model_files"][PART1_CONTEXT] = replacement_model_file
 
             _replace_file_atomically(
@@ -360,7 +584,7 @@ def prepare_bundle(
         temporary_metadata.replace(destination_metadata)
 
         marker = {
-            "schema_version": 1,
+            "schema_version": 2,
             "purpose": "Select Qualcomm GenieX's Qwen3-VL QAIRT pipeline",
             "source_bundle_name": source.name,
             "source_metadata_sha256": sha256_file(source / METADATA_FILENAME),
@@ -387,11 +611,41 @@ def prepare_bundle(
                 if replacement_source is not None
                 else None
             ),
+            "vision_replacement": (
+                {
+                    "source_bundle_name": vision_source.name,
+                    "context_sha256": sha256_file(
+                        vision_source / VISION_CONTEXT
+                    ),
+                    "metadata_sha256": sha256_file(
+                        vision_source / METADATA_FILENAME
+                    ),
+                    "image_height": vision_profile.image_height,
+                    "image_width": vision_profile.image_width,
+                    "grid_thw": list(vision_profile.grid_thw),
+                    "pixel_values_shape": list(vision_profile.pixel_shape),
+                    "visual_tokens": vision_profile.visual_tokens,
+                    "reused_text_contexts": [
+                        PART1_CONTEXT,
+                        "part2_of_4.bin",
+                        "part3_of_4.bin",
+                        "part4_of_4.bin",
+                    ],
+                }
+                if vision_source is not None and vision_profile is not None
+                else None
+            ),
         }
-        (destination / MARKER_FILENAME).write_text(
+        # ``copytree(..., copy_function=_hardlink_or_copy)`` may have linked an
+        # existing compatibility marker from an already prepared source
+        # bundle.  Replace through a new inode so rewriting provenance never
+        # mutates the source marker through that hard link.
+        temporary_marker = destination / f".{MARKER_FILENAME}.tmp"
+        temporary_marker.write_text(
             json.dumps(marker, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        temporary_marker.replace(destination / MARKER_FILENAME)
     except Exception:
         shutil.rmtree(destination, ignore_errors=True)
         raise
@@ -418,6 +672,16 @@ def main() -> None:
             "part1_of_4.bin and metadata.json"
         ),
     )
+    parser.add_argument(
+        "--vision-replacement-bundle",
+        type=Path,
+        default=None,
+        help=(
+            "Partial export containing a replacement vision_encoder.bin, "
+            "profile metadata/config, and sample vision tensors. Text "
+            "contexts are retained from --source."
+        ),
+    )
     args = parser.parse_args()
 
     output = prepare_bundle(
@@ -426,6 +690,7 @@ def main() -> None:
         model_id=args.model_id,
         hardlink=args.hardlink,
         part1_replacement_bundle=args.part1_replacement_bundle,
+        vision_replacement_bundle=args.vision_replacement_bundle,
     )
     print(f"Prepared GenieX bundle: {output}")
 

@@ -13,18 +13,22 @@ while using an NPU for predictable, power-efficient inference. This port is
 experimental: successful NPU execution is not the same as a correct or
 safety-qualified prediction.
 
-The preferred path is:
+The current full-video path is:
 
 ```text
 nvidia/Cosmos-Reason2-2B (BF16)
   -> Qwen3-VL-2B-compatible QAI Hub Models wrapper
-  -> AIMET-ONNX W4A16 calibration
-  -> QAIRT 2.45 interface compatibility transform
-     |-> export the original W4A16 vision encoder only
-     `-> convert text activations to FP16 and export text parts 1-4 only
-  -> assemble W4A16 vision + W4/FP16 text linked contexts
-  -> legacy Genie 1.17 / QAIRT 2.45 on the IQ-9075 NPU
+     `-> preserve Qwen3-VL's learned temporal patch-projection bias
+  -> 224 x 384 paired-frame vision calibration
+  -> W8/A16 vision + W4-weight/FP16-activation text contexts
+  -> full DeepStack GenieX PixelData runner
+  -> native Hugging Face pixels + <|video_pad|> + timestamped MRoPE
+  -> QAIRT 2.45 / QnnHtp on the IQ-9075 NPU
 ```
+
+The earlier legacy-Genie compatibility path remains useful for text and
+single-image bring-up, but it removes the DeepStack and visual-mask inputs and
+is no longer the parity target for video.
 
 The adapter is based on the supported Qwen3-VL-4B implementation in Qualcomm
 AI Hub Models 0.58.0, with the exact Qwen3-VL-2B dimensions:
@@ -37,7 +41,7 @@ AI Hub Models 0.58.0, with the exact Qwen3-VL-2B dimensions:
 | Head dimension | 128 |
 | Vision depth / width | 24 / 1024 |
 | Text splits | 4 x 7 layers |
-| Proven deployment | Original W4A16 vision + W4/FP16 text |
+| Evaluated video deployment | Bias-corrected W8/A16 vision + W4/FP16 text |
 
 In plain language, the 24 vision-transformer layers turn image patches into
 contextual visual features, then project each feature from width 1024 into the
@@ -78,25 +82,54 @@ using the 2B architecture. It must be validated on the physical board.
   Qualcomm's actual `dog.jpg` sample as a white fluffy dog on green grass.
   Genie dequantizes the quantized `image_features` into its accumulator, so
   the original W4A16 vision context interoperates with the FP16 text path.
-- Video containers are not accepted directly. The repository can predecode
-  `2N` frames and pack each pair as one native Qwen3-VL temporal patch for
-  repeated legacy-Genie NPU execution. The proven 512 × 512 graph consumes
-  `[1024, 1536]` pixels with grid `[1, 32, 32]` and produces 256 tokens per
-  pair. CL512 fits one pair only; the measured benchmark prompt uses 305/512
-  tokens.
-- Two NVIDIA Isaac Sim warehouse cases execute end to end on the physical EVK
-  but currently fail their semantic benchmark rubrics. An exact BF16 CUDA
-  baseline gives a coherent collision-risk answer on the near-miss prompt but
-  also misses the staged dodge outcome. It is materially better than the NPU
-  answer, confirming a quality gap without claiming a full predictive pass.
-- A second experiment restores `visual_pos_masks` and
+- A conversion audit found that the Qwen3-VL Conv3d patch projection's learned
+  1024-element bias was dropped when it was adapted to Conv2d. The adapter now
+  preserves that bias. The NPU input path also uses the native Hugging Face
+  video resize and the upstream `<|video_pad|>` token; byte comparisons
+  confirm that the GPU and NPU receive identical packed pixels.
+- Video containers are not accepted directly. The current profile predecodes
+  `2N` frames, packs each pair as one `[336, 1536]` temporal patch with grid
+  `[1, 14, 24]`, and produces 84 visual tokens at 224 × 384. Its 20-sample
+  calibration set contains distinct warehouse frame pairs rather than
+  duplicated stills. The executed bundle used the older explicit-resize
+  calibration preprocessing, however; native-HF-aligned checkpoints have not
+  yet been compiled.
+- The full-video integration restores `visual_pos_masks` and
   `deepstack_visual_embeds_0..2`: it replaces only part 1 with a full-interface
-  W4/FP16 context, retains the coherent W4/FP16 parts 2-4, and uses a pinned
-  GenieX lower-level `PixelData` runner. Both paired-frame cases execute
-  cleanly on QnnHtp/Hexagon v73 at about 16 tokens/s, but both free-form
-  predictions still fail their semantic rubrics. A shuffled multiple-choice
-  control also exposes option-position bias. No robust realistic NPU video
-  prediction has passed yet.
+  W4/FP16 context, retains coherent W4/FP16 parts 2-4, and uses a pinned
+  GenieX lower-level `PixelData` runner. Exact-input one-pair inference passes
+  0 of 5 strict units that the BF16 GPU reference passes.
+- Three temporal pairs fit the AR128/CL512 text runtime safely and produce
+  coherent NPU output. An initial two-scene, three-choice test matched BF16
+  GPU in all four scene/order combinations, but that narrow 4/4 result does
+  not generalize. In the expanded four-scene, four-choice suite, BF16 GPU
+  scores 7/8, NPU scores 4/8, and their exact answers agree in 5/8 cases.
+  Across the first three unambiguous scenes (marker, box, and near miss), GPU
+  scores 6/6 while NPU scores 3/6.
+- The most robust realistic NPU result in the expanded suite is the near-miss
+  video: both GPU and NPU select the worker-dodge event in normal and shuffled
+  order, 2/2. Every GPU/NPU case has identical native-processor packed pixels
+  and the same prompt count, so the remaining disagreements are downstream of
+  input preparation. Broad video-prediction parity remains unsolved.
+- A compact-prompt ablation removes 25 tokens from every four-choice prompt.
+  It moves errors rather than fixing them: GPU scores 5/8, NPU remains 4/8,
+  exact parity remains 5/8, and the NPU still uniquely fails both box-pickup
+  orders against correct GPU answers.
+- A focused box-versus-near-miss control narrows that failure: GPU scores 4/4
+  and NPU 3/4. NPU recognizes box pickup when it is option `A`, but keeps `A`
+  after the box moves to `B`; this is order sensitivity rather than complete
+  visual confusion.
+- Four pairs cost only 336 visual tokens but produce total prompts of 408 and
+  413 tokens. Those exceed GenieX v0.3.16's safe AR128/CL512 prefill limit of
+  384 and caused corrupted NPU text; preparation, packaging, and the runner
+  now reject such prompts. The corresponding BF16 GPU free-form diagnostics
+  also fail their strict event rubrics, although their text remains coherent.
+- Host QuantSim analysis identifies the final vision-transformer block's
+  activation quantization as the dominant measured late-stage error. Keeping
+  block 23 activations in FP16 in a mixed W8/A16 candidate improves
+  `image_features` cosine similarity to the corrected adapted BF16 reference
+  from 0.950431 to 0.991453. Upload, compile, and NPU execution of that
+  candidate remain pending explicit Qualcomm AI Hub upload authorization.
 
 For the complete reproducible workflow, measured job IDs, GenieX import,
 native-chain diagnosis, and failure guide, see
@@ -104,8 +137,11 @@ native-chain diagnosis, and failure guide, see
 [video input on the NPU](docs/video_npu.md) for the temporal contract,
 measured warehouse results, and scaling plan. The
 [sanitized evidence record](docs/evidence/README.md), including the
-[legacy paired-frame report](docs/evidence/iq9075_video_smoke_r1.json) and
+[legacy paired-frame report](docs/evidence/iq9075_video_smoke_r1.json),
 [full-DeepStack GenieX report](docs/evidence/iq9075_video_deepstack_geniex_r2.json),
+[native-aspect parity report](docs/evidence/iq9075_video_aspect_native_parity_r3.json),
+and the
+[expanded four-scene report](docs/evidence/iq9075_video_four_scene_parity_r4.json),
 contains the exact physical-board proof boundary.
 
 No earlier independent public proof was found for the exact Cosmos-Reason2-2B
@@ -196,6 +232,38 @@ disk space. The finalized W4A16 directory records the original BF16 directory
 in `source_checkpoint.json`; QAI Hub Models still needs that local snapshot
 while preparing the vision encoder, tokenizer, processor, and bundle assets.
 
+For the current native-aspect video experiment, first fetch the pinned
+warehouse previews and build the distinct-pair calibration manifest, then
+quantize at 224 × 384:
+
+```bash
+COSMOS_REPO=/path/to/qai-physics-reasoning
+COSMOS_WORK="${COSMOS_WORK:-$HOME/cosmos-reason2-iq9}"
+
+python "$COSMOS_REPO/scripts/fetch_nvidia_sdg_warehouse.py" \
+  --output "$COSMOS_WORK/benchmarks/nvidia_sdg_warehouse" \
+  --asset-set clips \
+  --extract-rgb
+
+python "$COSMOS_REPO/scripts/prepare_vision_calibration_pairs.py" \
+  --asset-root "$COSMOS_WORK/benchmarks/nvidia_sdg_warehouse" \
+  --output-dir "$COSMOS_WORK/calibration/warehouse_motion_pairs"
+
+CONTEXT_LENGTH=512 \
+IMAGE_HEIGHT=224 \
+IMAGE_WIDTH=384 \
+VEG_NUM_SAMPLES=20 \
+VEG_PAIRED_CALIBRATION_MANIFEST="$COSMOS_WORK/calibration/warehouse_motion_pairs/paired_calibration_manifest.json" \
+bash "$COSMOS_REPO/scripts/quantize_wsl.sh" \
+  "$HOME/models/Cosmos-Reason2-2B" \
+  "$COSMOS_WORK/checkpoints/vision-224x384-paired"
+```
+
+The mixed host candidate additionally sets
+`VEG_FP16_LAST_BLOCK_ACTIVATIONS=1`. Do not treat its host numeric improvement
+as an NPU result: upload, compile, and board execution require separate,
+explicit Qualcomm AI Hub authorization.
+
 ## 4. Prepare and compile for IQ-9075
 
 Create the QAIRT 2.45 text-first interface checkpoint, then derive a W4/FP16
@@ -285,20 +353,23 @@ the proven full vision run.
 
 ## 6. Prepare paired video frames
 
-Encoded video is decoded and sampled outside Genie. Fetch NVIDIA's lightweight
-Isaac Sim warehouse previews, extract a prediction pair, and pack it with the
-local Qwen3-VL processor:
+Encoded video is decoded and sampled outside GenieX. Fetch NVIDIA's
+lightweight Isaac Sim warehouse previews, extract a case, and pack its ordered
+frames with the local Qwen3-VL processor:
 
 ```bash
+COSMOS_VIDEO_BUNDLE=/path/to/full-deepstack-aspect-bundle
+COSMOS_WORK="${COSMOS_WORK:-$HOME/cosmos-reason2-iq9}"
+
 python scripts/fetch_nvidia_sdg_warehouse.py \
   --asset-set clips \
   --extract-rgb \
   --case predict_near_miss
 
 python scripts/prepare_video_npu_inputs.py \
-  --bundle ~/cosmos-reason2-iq9/exports/w4-fp16-text-w4a16-vision-hybrid-cl512-qairt245-r1 \
-  --processor ~/models/Cosmos-Reason2-2B \
-  --output-dir ~/cosmos-reason2-iq9/exports/w4-fp16-text-w4a16-vision-hybrid-cl512-qairt245-r1/video_inputs/predict_near_miss_r1 \
+  --bundle "$COSMOS_VIDEO_BUNDLE" \
+  --processor "$HOME/models/Cosmos-Reason2-2B" \
+  --output-dir "$COSMOS_WORK/video_inputs/predict_near_miss" \
   --frames \
     artifacts/nvidia_sdg_warehouse/frames/predict_near_miss/frame_0030.png \
     artifacts/nvidia_sdg_warehouse/frames/predict_near_miss/frame_0045.png \
@@ -306,17 +377,20 @@ python scripts/prepare_video_npu_inputs.py \
   --question "What is most likely to happen next, and is there an immediate safety risk? Answer in one short sentence."
 ```
 
-The command prints `305/512` prompt tokens and `207` remaining for this case.
-Copy the generated directory into the same relative location in the clean EVK
-bundle, then run its `genie-video-app-script.txt`. Exact `scp`, QAIRT
-environment, and execution commands are in
+The input preparer derives the image geometry from the bundle. For the current
+224 × 384 graph, one pair is `[336, 1536]`, grid `[1, 14, 24]`, and 84 visual
+tokens. It uses native Hugging Face preprocessing, and the GenieX runner
+inserts `<|video_pad|>`. The AR128/CL512 runtime permits at most 384 prompt
+tokens even though the nominal context is 512, so three short-prompt pairs
+work while the measured four-pair prompts do not. Exact packaging, `scp`,
+QAIRT environment, and execution commands are in
 [the developer tutorial](docs/developer_tutorial.md#12-run-paired-video-frames-on-the-npu).
 
-That legacy script uses the compatibility part 1 with DeepStack disabled. For
-the tested full-DeepStack path, assemble the full-interface W4/FP16 part-1
-replacement and use `scripts/geniex_raw_video.sh` to build, package, deploy,
-and run the pinned lower-level GenieX `PixelData` integration. The same
-tutorial section records the exact commands and the negative semantic verdict.
+Use `scripts/geniex_raw_video.sh` to build, package, deploy, and run the pinned
+lower-level GenieX `PixelData` integration with the full-interface W4/FP16
+part-1 replacement. The tutorial records the current positive controlled
+result and the remaining free-form failures without conflating either with
+the pending mixed-vision candidate.
 
 ## CPU baseline
 

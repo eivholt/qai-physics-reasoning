@@ -20,12 +20,20 @@ import hashlib
 import json
 import shutil
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
-SCHEMA_VERSION = 1
+try:
+    from scripts.vision_profile import VisionProfile
+except ModuleNotFoundError:  # pragma: no cover - direct script execution
+    from vision_profile import VisionProfile
+
+SCHEMA_VERSION = 2
 MANIFEST_FILENAME = "geniex_raw_video_manifest.json"
+# Backwards-compatible constants for the original proven profile. Runtime
+# contracts are derived from metadata.json.
 EXPECTED_CONTEXT_SIZE = 512
 EXPECTED_HIDDEN_SIZE = 2048
 EXPECTED_VOCAB_SIZE = 151936
@@ -36,6 +44,11 @@ EXPECTED_VISUAL_SHAPE = (256, 2048)
 EXPECTED_VISUAL_TOKENS = 256
 EXPECTED_DEEPSTACK_LEVELS = 3
 EXPECTED_MROPE_SECTION = [24, 20, 20]
+# These QAIRT text artifacts are compiled as AR128 prefill plus AR1 decode
+# graphs. The pinned GenieX runtime cannot safely transition more than CL-AR
+# prompt tokens from the prefill KV layout into the decode KV layout.
+TEXT_PREFILL_AR = 128
+TEXT_DECODE_AR = 1
 EXPECTED_VISION_PREPROCESSING = {
     "image_width": 512,
     "image_height": 512,
@@ -81,11 +94,30 @@ CONTEXT_FILES = (
 BUNDLE_FILES = (
     "metadata.json",
     "genie_config.json",
+    "img-enc-htp.json",
     "htp_backend_ext_config.json",
     "tokenizer.json",
     "embedding_weights.raw",
     *CONTEXT_FILES,
 )
+
+
+@dataclass(frozen=True)
+class TargetContract:
+    context_size: int
+    profile: VisionProfile
+
+    @property
+    def prefill_kv_capacity(self) -> int:
+        return self.context_size - TEXT_PREFILL_AR
+
+    def text_runtime_contract(self) -> dict[str, int]:
+        return {
+            "prefill_ar": TEXT_PREFILL_AR,
+            "decode_ar": TEXT_DECODE_AR,
+            "prefill_kv_capacity": self.prefill_kv_capacity,
+            "max_safe_prompt_tokens": self.prefill_kv_capacity,
+        }
 
 
 def sha256_file(path: Path) -> str:
@@ -134,7 +166,9 @@ def _validate_hash(path: Path, expected: str, label: str) -> None:
         )
 
 
-def _validate_target_bundle(bundle: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+def _validate_target_bundle(
+    bundle: Path,
+) -> tuple[dict[str, Any], dict[str, Any], TargetContract]:
     missing = [name for name in BUNDLE_FILES if not (bundle / name).is_file()]
     if missing:
         raise ValueError(f"Target bundle is missing required files: {missing}")
@@ -159,9 +193,10 @@ def _validate_target_bundle(bundle: Path) -> tuple[dict[str, Any], dict[str, Any
             "Target bundle does not match the expected QAIRT/Genie schema"
         ) from exc
 
-    if context_size != EXPECTED_CONTEXT_SIZE:
+    if context_size <= TEXT_PREFILL_AR:
         raise ValueError(
-            f"Target context is {context_size}; expected CL{EXPECTED_CONTEXT_SIZE}"
+            "Target context size must exceed the fixed "
+            f"AR{TEXT_PREFILL_AR} prefill width"
         )
     if vocab_size != EXPECTED_VOCAB_SIZE:
         raise ValueError(
@@ -187,28 +222,15 @@ def _validate_target_bundle(bundle: Path) -> tuple[dict[str, Any], dict[str, Any
             f"expected {CONTEXT_FILES[1:]!r}"
         )
 
-    for name, expected in VISION_INPUTS.items():
-        actual = _shape(vision_inputs, name, "vision inputs")
-        if actual != expected:
-            raise ValueError(
-                f"Vision input {name} has shape {actual}; expected {expected}"
-            )
-    for name, expected in VISION_OUTPUTS.items():
+    profile = VisionProfile.from_metadata(metadata)
+    profile.validate_img_encoder_config(bundle / "img-enc-htp.json")
+    for name in VISION_OUTPUTS:
         actual = _shape(vision_outputs, name, "vision outputs")
-        if actual != expected:
+        if actual != profile.visual_shape:
             raise ValueError(
-                f"Vision output {name} has shape {actual}; expected {expected}"
+                f"Vision output {name} has shape {actual}; expected "
+                f"{profile.visual_shape}"
             )
-
-    mismatches = {
-        name: (preprocessing.get(name), expected)
-        for name, expected in EXPECTED_VISION_PREPROCESSING.items()
-        if preprocessing.get(name) != expected
-    }
-    if mismatches:
-        raise ValueError(
-            f"Unexpected target vision preprocessing values: {mismatches}"
-        )
     if rope.get("rope-type") != "qwen3vl-mrope":
         raise ValueError("Target must use qwen3vl-mrope")
     if rope.get("mrope-section") != EXPECTED_MROPE_SECTION:
@@ -273,7 +295,7 @@ def _validate_target_bundle(bundle: Path) -> tuple[dict[str, Any], dict[str, Any
                 f"inputs: {unexpected}"
             )
 
-    cache_length = EXPECTED_CONTEXT_SIZE - 1
+    cache_length = context_size - 1
     for filename in CONTEXT_FILES[1:]:
         inputs = model_files.get(filename, {}).get("inputs", {})
         try:
@@ -292,12 +314,16 @@ def _validate_target_bundle(bundle: Path) -> tuple[dict[str, Any], dict[str, Any
                 f"expected {cache_length}"
             )
 
-    return metadata, config
+    return metadata, config, TargetContract(
+        context_size=context_size,
+        profile=profile,
+    )
 
 
 def _validate_source_video(
     video_dir: Path,
-) -> tuple[dict[str, Any], Path, Path, Path, Path, int]:
+    target: TargetContract,
+) -> tuple[dict[str, Any], Path, list[Path], list[Path], int]:
     source_manifest_path = video_dir / "video_npu_manifest.json"
     source = _load_json(source_manifest_path, "video_npu_manifest.json")
     try:
@@ -308,14 +334,8 @@ def _validate_source_video(
     except KeyError as exc:
         raise ValueError("Video manifest is missing its graph/input contract") from exc
 
-    expected_contract = {
-        "frames_per_pair": 2,
-        "image_size": [512, 512],
-        "pixel_values_shape": list(EXPECTED_PIXEL_SHAPE),
-        "grid_thw": list(EXPECTED_GRID_THW),
-        "image_features_shape": list(EXPECTED_VISUAL_SHAPE),
-        "visual_tokens_per_pair": EXPECTED_VISUAL_TOKENS,
-    }
+    profile = target.profile
+    expected_contract = profile.as_manifest_contract()
     mismatches = {
         name: (contract.get(name), expected)
         for name, expected in expected_contract.items()
@@ -323,34 +343,62 @@ def _validate_source_video(
     }
     if mismatches:
         raise ValueError(f"Source video tensor contract mismatch: {mismatches}")
-    if not isinstance(pairs, list) or len(pairs) != 1:
+    if not isinstance(pairs, list) or not pairs:
+        raise ValueError("Video manifest must contain at least one frame pair")
+    if not isinstance(chunks, list) or len(chunks) != len(pairs) + 1:
         raise ValueError(
-            "The CL512 raw GenieX runner accepts exactly one packed frame pair"
-        )
-    if not isinstance(chunks, list) or len(chunks) != 2:
-        raise ValueError(
-            "A one-pair video manifest must contain exactly prefix and suffix text"
+            "Video manifest must contain prefix, one bridge per additional "
+            "pair, and suffix text"
         )
 
-    try:
-        pixel_info = pairs[0]["pixel_values"]
-        pixel_relative = pixel_info["file"]
-        pixel_sha = pixel_info["sha256"]
-        pixel_bytes = int(pixel_info["bytes"])
-        pixel_shape = tuple(int(value) for value in pixel_info["shape"])
-        pixel_grid = tuple(int(value) for value in pixel_info["grid_thw"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("Video manifest has no valid pair tensor entry") from exc
-    pixel_path = _safe_file(video_dir, pixel_relative, "packed pixel tensor")
-    if pixel_bytes != EXPECTED_PIXEL_BYTES or pixel_path.stat().st_size != pixel_bytes:
-        raise ValueError(
-            f"Packed tensor must contain {EXPECTED_PIXEL_BYTES} bytes"
+    pixel_paths: list[Path] = []
+    for expected_index, pair in enumerate(pairs):
+        try:
+            pair_index = int(pair["pair_index"])
+            pixel_info = pair["pixel_values"]
+            pixel_relative = pixel_info["file"]
+            pixel_sha = pixel_info["sha256"]
+            pixel_bytes = int(pixel_info["bytes"])
+            pixel_shape = tuple(
+                int(value) for value in pixel_info["shape"]
+            )
+            pixel_grid = tuple(
+                int(value) for value in pixel_info["grid_thw"]
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Video manifest has no valid pair {expected_index} tensor entry"
+            ) from exc
+        if pair_index != expected_index:
+            raise ValueError(
+                f"Video pair indices must be contiguous from zero; got "
+                f"{pair_index} at position {expected_index}"
+            )
+        pixel_path = _safe_file(
+            video_dir, pixel_relative, f"packed pixel tensor {expected_index}"
         )
-    if pixel_shape != EXPECTED_PIXEL_SHAPE or pixel_grid != EXPECTED_GRID_THW:
-        raise ValueError("Packed tensor shape/grid does not match the CL512 graph")
-    _validate_hash(pixel_path, pixel_sha, "packed pixel tensor")
+        if (
+            pixel_bytes != profile.pixel_bytes
+            or pixel_path.stat().st_size != pixel_bytes
+        ):
+            raise ValueError(
+                f"Packed tensor {expected_index} must contain "
+                f"{profile.pixel_bytes} bytes"
+            )
+        if (
+            pixel_shape != profile.pixel_shape
+            or pixel_grid != profile.grid_thw
+        ):
+            raise ValueError(
+                f"Packed tensor {expected_index} shape/grid does not match "
+                "the target vision graph"
+            )
+        _validate_hash(
+            pixel_path, pixel_sha, f"packed pixel tensor {expected_index}"
+        )
+        pixel_paths.append(pixel_path)
 
-    by_name: dict[str, tuple[dict[str, Any], Path]] = {}
+    chunk_paths: list[Path] = []
     for entry in chunks:
         try:
             relative = entry["file"]
@@ -359,33 +407,53 @@ def _validate_source_video(
             raise ValueError("Video manifest has an invalid text chunk") from exc
         path = _safe_file(video_dir, relative, "text chunk")
         _validate_hash(path, expected_hash, f"text chunk {relative}")
-        by_name[path.name] = (entry, path)
+        if entry.get("text") != path.read_text(encoding="utf-8"):
+            raise ValueError(f"Text chunk differs from its manifest: {relative}")
+        chunk_paths.append(path)
 
-    expected_names = {"video_prefix_pair_000.txt", "video_suffix.txt"}
-    if set(by_name) != expected_names:
+    expected_names = [
+        "video_prefix_pair_000.txt",
+        *[
+            f"video_bridge_pair_{index:03d}.txt"
+            for index in range(1, len(pairs))
+        ],
+        "video_suffix.txt",
+    ]
+    actual_names = [path.name for path in chunk_paths]
+    if actual_names != expected_names:
         raise ValueError(
-            f"Unexpected one-pair text chunks: {sorted(by_name)}"
+            f"Unexpected ordered text chunks: {actual_names}; expected "
+            f"{expected_names}"
         )
-    prefix_entry, prefix_path = by_name["video_prefix_pair_000.txt"]
-    suffix_entry, suffix_path = by_name["video_suffix.txt"]
-    prefix_text = prefix_path.read_text(encoding="utf-8")
-    suffix_text = suffix_path.read_text(encoding="utf-8")
-    if prefix_entry.get("text") != prefix_text:
-        raise ValueError("Prefix text differs from its video manifest")
-    if suffix_entry.get("text") != suffix_text:
-        raise ValueError("Suffix text differs from its video manifest")
+    prefix_text = chunk_paths[0].read_text(encoding="utf-8")
+    suffix_text = chunk_paths[-1].read_text(encoding="utf-8")
     if (
         not prefix_text.endswith("<|vision_start|>")
         or prefix_text.count("<|vision_start|>") != 1
         or "<|image_pad|>" in prefix_text
+        or "<|video_pad|>" in prefix_text
     ):
         raise ValueError("Prefix has an unsafe Qwen3-VL vision-token layout")
     if (
         not suffix_text.startswith("<|vision_end|>")
         or suffix_text.count("<|vision_end|>") != 1
         or "<|image_pad|>" in suffix_text
+        or "<|video_pad|>" in suffix_text
     ):
         raise ValueError("Suffix has an unsafe Qwen3-VL vision-token layout")
+    for index, bridge_path in enumerate(chunk_paths[1:-1], start=1):
+        bridge = bridge_path.read_text(encoding="utf-8")
+        if (
+            not bridge.startswith("<|vision_end|>")
+            or not bridge.endswith("<|vision_start|>")
+            or bridge.count("<|vision_end|>") != 1
+            or bridge.count("<|vision_start|>") != 1
+            or "<|image_pad|>" in bridge
+            or "<|video_pad|>" in bridge
+        ):
+            raise ValueError(
+                f"Bridge {index} has an unsafe Qwen3-VL vision-token layout"
+            )
 
     try:
         chunk_text_tokens = sum(int(entry["tokens"]) for entry in chunks)
@@ -396,12 +464,51 @@ def _validate_source_video(
         raise ValueError("Video manifest has an invalid context budget") from exc
     if (
         text_tokens != chunk_text_tokens
-        or visual_tokens != EXPECTED_VISUAL_TOKENS
+        or visual_tokens != len(pairs) * profile.visual_tokens
         or prompt_tokens != text_tokens + visual_tokens
     ):
         raise ValueError("Video manifest context budget is internally inconsistent")
+    if prompt_tokens > target.prefill_kv_capacity:
+        raise ValueError(
+            "Video prompt exceeds the safe GenieX prefill cache: "
+            f"{prompt_tokens} prompt tokens, but AR{TEXT_PREFILL_AR}/"
+            f"CL{target.context_size} permits at most "
+            f"{target.prefill_kv_capacity}. Reduce the pair count or use a "
+            "larger compiled text context."
+        )
 
-    return source, source_manifest_path, pixel_path, prefix_path, suffix_path, prompt_tokens
+    source_text_contract = source.get("bundle", {}).get(
+        "text_runtime_contract"
+    )
+    if source_text_contract is not None:
+        expected_text_contract = target.text_runtime_contract()
+        if source_text_contract != expected_text_contract:
+            raise ValueError(
+                "Source video text-runtime contract does not match the "
+                f"target bundle: {source_text_contract!r} != "
+                f"{expected_text_contract!r}"
+            )
+    if "prefill_safe_limit" in budget:
+        try:
+            source_prefill_limit = int(budget["prefill_safe_limit"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "Video manifest has an invalid prefill-safe limit"
+            ) from exc
+        if source_prefill_limit != target.prefill_kv_capacity:
+            raise ValueError(
+                "Video manifest prefill-safe limit does not match the target "
+                f"bundle: {source_prefill_limit} != "
+                f"{target.prefill_kv_capacity}"
+            )
+
+    return (
+        source,
+        source_manifest_path,
+        pixel_paths,
+        chunk_paths,
+        prompt_tokens,
+    )
 
 
 def _file_record(path: Path) -> dict[str, Any]:
@@ -428,15 +535,14 @@ def prepare_run_package(
     if output_dir.exists():
         raise ValueError(f"Output directory already exists: {output_dir}")
 
-    _validate_target_bundle(bundle)
+    _, _, target = _validate_target_bundle(bundle)
     (
         source,
         source_manifest_path,
-        pixel_path,
-        prefix_path,
-        suffix_path,
+        pixel_paths,
+        chunk_paths,
         prompt_tokens,
-    ) = _validate_source_video(video_dir)
+    ) = _validate_source_video(video_dir, target)
 
     temporary = output_dir.with_name(f".{output_dir.name}.partial")
     if temporary.exists():
@@ -445,14 +551,16 @@ def prepare_run_package(
     try:
         inputs = temporary / "inputs"
         inputs.mkdir()
-        copied = {
-            "pixel_values": inputs / "pair_000_pixel_values.raw",
-            "prefix": inputs / "video_prefix_pair_000.txt",
-            "suffix": inputs / "video_suffix.txt",
-        }
-        shutil.copy2(pixel_path, copied["pixel_values"])
-        shutil.copy2(prefix_path, copied["prefix"])
-        shutil.copy2(suffix_path, copied["suffix"])
+        copied_pixels: list[Path] = []
+        for index, source_path in enumerate(pixel_paths):
+            destination = inputs / f"pair_{index:03d}_pixel_values.raw"
+            shutil.copy2(source_path, destination)
+            copied_pixels.append(destination)
+        copied_chunks: list[Path] = []
+        for source_path in chunk_paths:
+            destination = inputs / source_path.name
+            shutil.copy2(source_path, destination)
+            copied_chunks.append(destination)
 
         bundle_records = {
             name: {
@@ -461,18 +569,25 @@ def prepare_run_package(
             }
             for name in BUNDLE_FILES
         }
-        input_records = {
-            name: {
+        pixel_records = [
+            {
                 "file": str(path.relative_to(temporary).as_posix()),
                 **_file_record(path),
             }
-            for name, path in copied.items()
-        }
+            for path in copied_pixels
+        ]
+        chunk_records = [
+            {
+                "file": str(path.relative_to(temporary).as_posix()),
+                **_file_record(path),
+            }
+            for path in copied_chunks
+        ]
         manifest = {
             "schema_version": SCHEMA_VERSION,
             "created_utc": datetime.now(timezone.utc).isoformat(),
             "purpose": (
-                "One Qwen3-VL temporal frame pair through full-DeepStack "
+                "Qwen3-VL temporal frame pairs through full-DeepStack "
                 "Cosmos-Reason2-2B GenieX QAIRT"
             ),
             "source_video_manifest": {
@@ -482,30 +597,45 @@ def prepare_run_package(
             "target_bundle": {
                 "files": bundle_records,
                 "contract": {
-                    "context_size": EXPECTED_CONTEXT_SIZE,
+                    "context_size": target.context_size,
                     "hidden_size": EXPECTED_HIDDEN_SIZE,
                     "vocab_size": EXPECTED_VOCAB_SIZE,
                     "deepstack_levels": EXPECTED_DEEPSTACK_LEVELS,
                     "mrope_section": EXPECTED_MROPE_SECTION,
                     "mrope_interleaving": "stride",
+                    "text_runtime": target.text_runtime_contract(),
+                    "vision": target.profile.as_manifest_contract(),
                 },
             },
             "input": {
-                "files": input_records,
-                "pixel_values_shape": list(EXPECTED_PIXEL_SHAPE),
-                "grid_thw": list(EXPECTED_GRID_THW),
-                "visual_tokens": EXPECTED_VISUAL_TOKENS,
+                "pixel_values": pixel_records,
+                "text_chunks": chunk_records,
+                "pair_count": len(copied_pixels),
+                "pixel_values_shape": list(target.profile.pixel_shape),
+                "grid_thw": list(target.profile.grid_thw),
+                "visual_tokens_per_pair": target.profile.visual_tokens,
+                "visual_tokens": (
+                    len(copied_pixels) * target.profile.visual_tokens
+                ),
                 "expected_prompt_tokens": prompt_tokens,
+                "prefill_safe_limit": target.prefill_kv_capacity,
             },
             "runtime_assumptions": {
                 "frames_per_temporal_patch": 2,
                 "temporal_grid_extent": 1,
+                "text_prefill": {
+                    **target.text_runtime_contract(),
+                    "failure_mode": (
+                        "Prompts above CL-AR are rejected because pinned "
+                        "GenieX v0.3.16 cannot safely merge the final AR128 "
+                        "prefill KV block into the AR1 decode cache."
+                    ),
+                },
                 "explanation": (
                     "The two source frames are fused by temporal_patch_size=2 "
-                    "into one T=1 vision grid. GenieX therefore emits one "
-                    "Qwen3-VL MRoPE grid for 256 image-pad tokens; motion within "
-                    "the pair is represented by the vision encoder, not by two "
-                    "separate text-token timestamps."
+                    "into one T=1 vision grid per pair. GenieX emits one "
+                    "Qwen3-VL MRoPE grid for each timestamped pair; motion "
+                    "within a pair is represented by the vision encoder."
                 ),
             },
         }
@@ -527,7 +657,7 @@ def verify_run_package(
     bundle: Path,
     *,
     max_tokens: int,
-) -> tuple[dict[str, Any], dict[str, Path]]:
+) -> tuple[dict[str, Any], dict[str, list[Path]]]:
     """Verify a prepared package and exact target bundle before execution."""
 
     package_dir = package_dir.expanduser().resolve()
@@ -546,12 +676,15 @@ def verify_run_package(
         raise ValueError(
             f"Unsupported run manifest schema: {manifest.get('schema_version')!r}"
         )
-    _validate_target_bundle(bundle)
+    _, _, target = _validate_target_bundle(bundle)
 
     try:
         bundle_records = manifest["target_bundle"]["files"]
+        manifest_target_contract = manifest["target_bundle"]["contract"]
         input_section = manifest["input"]
-        input_records = input_section["files"]
+        pixel_records = input_section["pixel_values"]
+        chunk_records = input_section["text_chunks"]
+        pair_count = int(input_section["pair_count"])
         expected_prompt_tokens = int(input_section["expected_prompt_tokens"])
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("Run manifest is missing required records") from exc
@@ -566,28 +699,93 @@ def verify_run_package(
             raise ValueError(f"Target bundle file size changed: {name}")
         _validate_hash(path, record.get("sha256"), f"target bundle {name}")
 
-    expected_inputs = {"pixel_values", "prefix", "suffix"}
-    if set(input_records) != expected_inputs:
-        raise ValueError("Run manifest input file set is incomplete or unexpected")
-    paths: dict[str, Path] = {}
-    for name in sorted(expected_inputs):
-        record = input_records[name]
-        path = _safe_file(package_dir, record.get("file"), f"package input {name}")
-        if path.stat().st_size != int(record.get("bytes", -1)):
-            raise ValueError(f"Package input size changed: {name}")
-        _validate_hash(path, record.get("sha256"), f"package input {name}")
-        paths[name] = path
-    if paths["pixel_values"].stat().st_size != EXPECTED_PIXEL_BYTES:
-        raise ValueError("Package pixel tensor has the wrong byte count")
+    expected_text_runtime = target.text_runtime_contract()
+    if manifest_target_contract.get("text_runtime") != expected_text_runtime:
+        raise ValueError(
+            "Run manifest text-runtime contract does not match the target "
+            "bundle"
+        )
 
-    if expected_prompt_tokens <= EXPECTED_VISUAL_TOKENS:
+    if (
+        not isinstance(pixel_records, list)
+        or not isinstance(chunk_records, list)
+        or pair_count <= 0
+        or len(pixel_records) != pair_count
+        or len(chunk_records) != pair_count + 1
+    ):
+        raise ValueError("Run manifest has an invalid pair/chunk file set")
+
+    pixel_paths: list[Path] = []
+    for index, record in enumerate(pixel_records):
+        if not isinstance(record, dict):
+            raise ValueError(f"Pixel record {index} must be an object")
+        path = _safe_file(
+            package_dir,
+            record.get("file"),
+            f"package pixel input {index}",
+        )
+        if path.stat().st_size != int(record.get("bytes", -1)):
+            raise ValueError(f"Package pixel input size changed: {index}")
+        _validate_hash(
+            path, record.get("sha256"), f"package pixel input {index}"
+        )
+        if path.stat().st_size != target.profile.pixel_bytes:
+            raise ValueError(
+                f"Package pixel tensor {index} has the wrong byte count"
+            )
+        pixel_paths.append(path)
+
+    chunk_paths: list[Path] = []
+    for index, record in enumerate(chunk_records):
+        if not isinstance(record, dict):
+            raise ValueError(f"Text chunk record {index} must be an object")
+        path = _safe_file(
+            package_dir,
+            record.get("file"),
+            f"package text chunk {index}",
+        )
+        if path.stat().st_size != int(record.get("bytes", -1)):
+            raise ValueError(f"Package text chunk size changed: {index}")
+        _validate_hash(
+            path, record.get("sha256"), f"package text chunk {index}"
+        )
+        chunk_paths.append(path)
+
+    expected_input_contract = {
+        "pixel_values_shape": list(target.profile.pixel_shape),
+        "grid_thw": list(target.profile.grid_thw),
+        "visual_tokens_per_pair": target.profile.visual_tokens,
+        "visual_tokens": pair_count * target.profile.visual_tokens,
+    }
+    mismatches = {
+        name: (input_section.get(name), expected)
+        for name, expected in expected_input_contract.items()
+        if input_section.get(name) != expected
+    }
+    if mismatches:
+        raise ValueError(f"Run manifest vision contract mismatch: {mismatches}")
+
+    if expected_prompt_tokens <= pair_count * target.profile.visual_tokens:
         raise ValueError("Run manifest has an invalid prompt token count")
-    if expected_prompt_tokens + max_tokens > EXPECTED_CONTEXT_SIZE:
+    if input_section.get("prefill_safe_limit") != target.prefill_kv_capacity:
+        raise ValueError(
+            "Run manifest prefill-safe limit does not match the target bundle"
+        )
+    if expected_prompt_tokens > target.prefill_kv_capacity:
+        raise ValueError(
+            f"Prompt ({expected_prompt_tokens}) exceeds the safe "
+            f"AR{TEXT_PREFILL_AR}/CL{target.context_size} prefill cache "
+            f"({target.prefill_kv_capacity})"
+        )
+    if expected_prompt_tokens + max_tokens > target.context_size:
         raise ValueError(
             f"Prompt ({expected_prompt_tokens}) + generation ({max_tokens}) "
-            f"exceeds CL{EXPECTED_CONTEXT_SIZE}"
+            f"exceeds CL{target.context_size}"
         )
-    return manifest, paths
+    return manifest, {
+        "pixel_values": pixel_paths,
+        "text_chunks": chunk_paths,
+    }
 
 
 def launch_runner(
@@ -609,17 +807,19 @@ def launch_runner(
         str(runner),
         "--model-dir",
         str(bundle.expanduser().resolve()),
-        "--pixel-values",
-        str(paths["pixel_values"]),
-        "--prefix-file",
-        str(paths["prefix"]),
-        "--suffix-file",
-        str(paths["suffix"]),
-        "--expected-prompt-tokens",
-        str(expected_prompt_tokens),
-        "--max-tokens",
-        str(max_tokens),
     ]
+    for path in paths["pixel_values"]:
+        command.extend(("--pixel-values", str(path)))
+    for path in paths["text_chunks"]:
+        command.extend(("--text-chunk", str(path)))
+    command.extend(
+        (
+            "--expected-prompt-tokens",
+            str(expected_prompt_tokens),
+            "--max-tokens",
+            str(max_tokens),
+        )
+    )
     if verbose:
         command.append("--verbose")
     completed = subprocess.run(command, check=False)

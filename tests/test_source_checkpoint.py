@@ -19,6 +19,10 @@ qaihm_models.__path__.insert(0, str(WORKSPACE_MODELS))
 from qai_hub_models import Precision  # noqa: E402
 from qai_hub_models.models._shared.qwen3_vl.model import (  # noqa: E402
     Qwen3VLCollectionBase,
+    Qwen3VLVisionEncoderBase,
+)
+from qai_hub_models.models._shared.qwen2_vl.vision_encoder_adaptations import (  # noqa: E402
+    Conv2dInplaceConv3d,
 )
 from qai_hub_models.models.cosmos_reason2_2b.demo import (  # noqa: E402
     _configure_demo_source_checkpoint,
@@ -36,6 +40,7 @@ from qai_hub_models.models.cosmos_reason2_2b.model import (  # noqa: E402
     Cosmos_Reason2_2B_QuantizablePreSplit,
     Cosmos_Reason2_2B_VisionEncoder,
     _pad_prefill_kwargs_to_sequence_multiple,
+    _restore_temporal_patch_projection_bias,
     resolve_source_checkpoint,
 )
 from qai_hub_models.models.cosmos_reason2_2b.quantize import (  # noqa: E402
@@ -259,6 +264,103 @@ class SourceCheckpointTest(unittest.TestCase):
             torch.all(padded["attention_mask"][:, :63] == 0).item()
         )
         self.assertIs(padded["pixel_values"], pixel_values)
+
+    def test_temporal_patch_adaptation_preserves_qwen3_bias(self) -> None:
+        torch.manual_seed(7)
+        projection = torch.nn.Conv3d(
+            in_channels=3,
+            out_channels=5,
+            kernel_size=(2, 4, 4),
+            stride=(2, 4, 4),
+            bias=True,
+        )
+        assert projection.bias is not None
+        projection.bias.data.copy_(
+            torch.tensor([-0.75, -0.25, 0.125, 0.5, 1.25])
+        )
+        pixel_values = torch.randn(6, 3 * 2 * 4 * 4)
+        expected = projection(
+            pixel_values.reshape(-1, 3, 2, 4, 4)
+        ).reshape(6, 5)
+
+        adapted = Conv2dInplaceConv3d(
+            projection,
+            in_channels=3,
+            temporal_patch_size=2,
+            patch_size=4,
+        )
+        self.assertIsNone(adapted.conv2d.bias)
+        _restore_temporal_patch_projection_bias(
+            adapted, projection.bias.detach().clone()
+        )
+        actual = adapted(pixel_values).reshape(6, 5)
+
+        self.assertIsNotNone(adapted.conv2d.bias)
+        self.assertTrue(torch.allclose(actual, expected, atol=1e-6, rtol=1e-6))
+
+    def test_vision_input_spec_uses_constructed_non_square_geometry(self) -> None:
+        encoder = Cosmos_Reason2_2B_VisionEncoder.__new__(
+            Cosmos_Reason2_2B_VisionEncoder
+        )
+        torch.nn.Module.__init__(encoder)
+        encoder._image_height = 224
+        encoder._image_width = 384
+        encoder._patch_size = 16
+        encoder._pos_emb_cos = torch.zeros((336, 32), dtype=torch.float32)
+
+        spec = encoder.get_input_spec()
+
+        self.assertEqual(spec["pixel_values"].shape, (336, 1536))
+        self.assertEqual(spec["position_ids_cos"].shape, (336, 32))
+        self.assertEqual(spec["full_attention_mask"].shape, (1, 336, 336))
+
+    def test_vision_checkpoint_recovers_recorded_image_size(self) -> None:
+        checkpoint = self.root / "vision"
+        checkpoint.mkdir()
+        (checkpoint / "args.json").write_text(
+            json.dumps({"image_size": [224, 384]}),
+            encoding="utf-8",
+        )
+        captured: dict[str, object] = {}
+
+        def fake_from_pretrained(cls, **kwargs):
+            captured.update(kwargs)
+            return object()
+
+        with patch.object(
+            Qwen3VLVisionEncoderBase,
+            "from_pretrained",
+            new=classmethod(fake_from_pretrained),
+        ):
+            Cosmos_Reason2_2B_VisionEncoder.from_pretrained(
+                checkpoint=checkpoint,
+                precision=Precision.w4a16,
+            )
+
+        self.assertEqual(captured["image_height"], 224)
+        self.assertEqual(captured["image_width"], 384)
+
+    def test_vision_checkpoint_rejects_explicit_geometry_mismatch(self) -> None:
+        checkpoint = self.root / "vision"
+        checkpoint.mkdir()
+        (checkpoint / "args.json").write_text(
+            json.dumps({"image_size": [224, 384]}),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "image_height.*512 != 224"):
+            Cosmos_Reason2_2B_VisionEncoder.from_pretrained(
+                checkpoint=checkpoint,
+                image_height=512,
+                image_width=384,
+                precision=Precision.w4a16,
+            )
+        with self.assertRaisesRegex(ValueError, "image_width.*512 != 384"):
+            Cosmos_Reason2_2B_VisionEncoder.from_pretrained(
+                checkpoint=checkpoint,
+                image_width=512,
+                precision=Precision.w4a16,
+            )
 
     def test_standard_default_call_fails_before_shared_construction(self) -> None:
         called = False

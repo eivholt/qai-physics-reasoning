@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,7 +19,17 @@ from scripts.prepare_geniex_bundle import (
 )
 
 
-def _write_fixture(root: Path, *, model_id: str = "cosmos_reason2_2b") -> None:
+def _write_sparse(path: Path, size: int) -> None:
+    with path.open("wb") as handle:
+        handle.truncate(size)
+
+
+def _write_fixture(
+    root: Path,
+    *,
+    model_id: str = "cosmos_reason2_2b",
+    full_deepstack: bool = False,
+) -> None:
     model_files = {
         name: {
             "inputs": {
@@ -46,6 +57,27 @@ def _write_fixture(root: Path, *, model_id: str = "cosmos_reason2_2b") -> None:
             "dtype": "uint16",
         },
     }
+    if full_deepstack:
+        model_files[PART1_CONTEXT]["inputs"].update(
+            {
+                "visual_pos_masks": {
+                    "shape": [1, 128],
+                    "dtype": "bool8",
+                },
+                "deepstack_visual_embeds_0": {
+                    "shape": [256, 2048],
+                    "dtype": "uint16",
+                },
+                "deepstack_visual_embeds_1": {
+                    "shape": [256, 2048],
+                    "dtype": "uint16",
+                },
+                "deepstack_visual_embeds_2": {
+                    "shape": [256, 2048],
+                    "dtype": "uint16",
+                },
+            }
+        )
     metadata = {
         "model_id": model_id,
         "model_files": model_files,
@@ -83,6 +115,9 @@ def _write_fixture(root: Path, *, model_id: str = "cosmos_reason2_2b") -> None:
         (root / name).write_bytes(name.encode())
     (root / QAIRT245_COMPAT_MARKER).write_text("compat", encoding="utf-8")
     (root / W4_FP16_MARKER).write_text("source marker", encoding="utf-8")
+    (root / MARKER_FILENAME).write_text(
+        "existing source provenance", encoding="utf-8"
+    )
 
 
 def _write_part1_replacement(
@@ -138,6 +173,105 @@ def _write_part1_replacement(
         )
 
 
+def _write_vision_replacement(
+    root: Path,
+    *,
+    image_height: int = 224,
+    image_width: int = 384,
+) -> None:
+    patch_size = 16
+    merge_size = 2
+    grid_height = image_height // patch_size
+    grid_width = image_width // patch_size
+    patches = grid_height * grid_width
+    visual_tokens = patches // (merge_size**2)
+    inputs = {
+        "pixel_values": {
+            "shape": [patches, 1536],
+            "dtype": "float32",
+        },
+        "position_ids_cos": {
+            "shape": [patches, 32],
+            "dtype": "float32",
+        },
+        "position_ids_sin": {
+            "shape": [patches, 32],
+            "dtype": "float32",
+        },
+        "window_attention_mask": {
+            "shape": [1, patches, patches],
+            "dtype": "float32",
+        },
+        "full_attention_mask": {
+            "shape": [1, patches, patches],
+            "dtype": "float32",
+        },
+    }
+    outputs = {
+        name: {
+            "shape": [visual_tokens, 2048],
+            "dtype": "uint16",
+        }
+        for name in (
+            "image_features",
+            "deepstack_visual_embeds_0",
+            "deepstack_visual_embeds_1",
+            "deepstack_visual_embeds_2",
+        )
+    }
+    metadata = {
+        "model_id": "cosmos_reason2_2b_vision_profile",
+        "model_files": {
+            "vision_encoder.bin": {
+                "inputs": inputs,
+                "outputs": outputs,
+            }
+        },
+        "supplementary_files": {
+            "img-enc-htp.json": "aspect-profile image encoder config",
+        },
+        "genie": {
+            "vision_preprocessing": {
+                "image_width": image_width,
+                "image_height": image_height,
+                "patch_size": patch_size,
+                "temporal_patch_size": 2,
+                "spatial_merge_size": merge_size,
+            }
+        },
+    }
+    (root / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    (root / "vision_encoder.bin").write_bytes(b"aspect-vision-context")
+    (root / "img-enc-htp.json").write_text(
+        json.dumps(
+            {
+                "image-encoder": {
+                    "engine": {
+                        "model": {
+                            "vision-param": {
+                                "height": grid_height,
+                                "width": grid_width,
+                            }
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    samples = root / "sample_inputs"
+    samples.mkdir()
+    sample_shapes = {
+        "pixel_values.raw": (patches, 1536),
+        "position_ids_cos.raw": (patches, 32),
+        "position_ids_sin.raw": (patches, 32),
+        "window_attention_mask.raw": (1, patches, patches),
+        "full_attention_mask.raw": (1, patches, patches),
+    }
+    for filename, shape in sample_shapes.items():
+        _write_sparse(samples / filename, math.prod(shape) * 4)
+
+
 class PrepareGenieXBundleTests(unittest.TestCase):
     def test_prepares_independent_metadata_with_dispatch_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -147,10 +281,15 @@ class PrepareGenieXBundleTests(unittest.TestCase):
             source.mkdir()
             _write_fixture(source)
             source_bytes = (source / "metadata.json").read_bytes()
+            source_marker_bytes = (source / MARKER_FILENAME).read_bytes()
 
             prepare_bundle(source, destination, hardlink=True)
 
             self.assertEqual((source / "metadata.json").read_bytes(), source_bytes)
+            self.assertEqual(
+                (source / MARKER_FILENAME).read_bytes(),
+                source_marker_bytes,
+            )
             patched = json.loads((destination / "metadata.json").read_text())
             self.assertEqual(patched["model_id"], DEFAULT_MODEL_ID)
             marker = json.loads((destination / MARKER_FILENAME).read_text())
@@ -357,6 +496,112 @@ class PrepareGenieXBundleTests(unittest.TestCase):
                     source,
                     destination,
                     part1_replacement_bundle=replacement,
+                )
+            self.assertFalse(destination.exists())
+
+    def test_replaces_only_vision_profile_and_reuses_all_text_contexts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            replacement = root / "replacement"
+            destination = root / "destination"
+            source.mkdir()
+            replacement.mkdir()
+            _write_fixture(source, full_deepstack=True)
+            _write_vision_replacement(replacement)
+            stale = source / "video_inputs" / "old_square"
+            stale.mkdir(parents=True)
+            (stale / "bound-to-square.txt").write_text(
+                "stale", encoding="utf-8"
+            )
+            source_metadata = (source / "metadata.json").read_bytes()
+            text_contexts = {
+                name: (source / name).read_bytes()
+                for name in REQUIRED_CONTEXTS - {"vision_encoder.bin"}
+            }
+
+            prepare_bundle(
+                source,
+                destination,
+                hardlink=True,
+                vision_replacement_bundle=replacement,
+            )
+
+            self.assertEqual(
+                (destination / "vision_encoder.bin").read_bytes(),
+                b"aspect-vision-context",
+            )
+            for name, expected in text_contexts.items():
+                self.assertEqual((destination / name).read_bytes(), expected)
+            self.assertFalse((destination / "video_inputs").exists())
+            self.assertTrue((source / "video_inputs" / "old_square").is_dir())
+            self.assertEqual((source / "metadata.json").read_bytes(), source_metadata)
+
+            metadata = json.loads(
+                (destination / "metadata.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                metadata["genie"]["vision_preprocessing"]["image_height"],
+                224,
+            )
+            self.assertEqual(
+                metadata["genie"]["vision_preprocessing"]["image_width"],
+                384,
+            )
+            self.assertEqual(
+                metadata["model_files"]["vision_encoder.bin"]["outputs"][
+                    "image_features"
+                ]["shape"],
+                [84, 2048],
+            )
+            self.assertEqual(
+                json.loads(
+                    (destination / "img-enc-htp.json").read_text(encoding="utf-8")
+                )["image-encoder"]["engine"]["model"]["vision-param"],
+                {"height": 14, "width": 24},
+            )
+            self.assertEqual(
+                (destination / "sample_inputs" / "pixel_values.raw").stat().st_size,
+                336 * 1536 * 4,
+            )
+            marker = json.loads(
+                (destination / MARKER_FILENAME).read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                marker["vision_replacement"]["pixel_values_shape"],
+                [336, 1536],
+            )
+            self.assertEqual(marker["vision_replacement"]["visual_tokens"], 84)
+            self.assertEqual(
+                marker["vision_replacement"]["reused_text_contexts"],
+                [
+                    "part1_of_4.bin",
+                    "part2_of_4.bin",
+                    "part3_of_4.bin",
+                    "part4_of_4.bin",
+                ],
+            )
+
+    def test_rejects_invalid_vision_profile_before_copying(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            replacement = root / "replacement"
+            destination = root / "destination"
+            source.mkdir()
+            replacement.mkdir()
+            _write_fixture(source, full_deepstack=True)
+            _write_vision_replacement(replacement)
+            bad_tensor = (
+                replacement / "sample_inputs" / "position_ids_cos.raw"
+            )
+            _write_sparse(bad_tensor, bad_tensor.stat().st_size - 4)
+
+            with self.assertRaisesRegex(ValueError, "Ancillary tensor"):
+                prepare_bundle(
+                    source,
+                    destination,
+                    vision_replacement_bundle=replacement,
                 )
             self.assertFalse(destination.exists())
 

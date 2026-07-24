@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -18,6 +20,7 @@ from qai_hub_models.models.cosmos_reason2_2b import MODEL_ID  # noqa: E402
 from qai_hub_models.models.cosmos_reason2_2b.export import (  # noqa: E402
     EXPORT_COMPONENTS,
     SUPPORTED_PRECISION_RUNTIMES,
+    _resolve_export_vision_profile,
     _use_local_model_metadata,
     build_parser,
 )
@@ -68,11 +71,15 @@ class LocalExportMetadataTests(unittest.TestCase):
                     "--components",
                     "vision_encoder",
                     "--skip-downloading",
+                    "--image-size",
+                    "224",
+                    "384",
                 ]
             )
 
         self.assertEqual(args.components, ["vision_encoder"])
         self.assertTrue(args.skip_downloading)
+        self.assertEqual(args.image_size, [224, 384])
         self.assertEqual(
             EXPORT_COMPONENTS,
             (
@@ -82,6 +89,77 @@ class LocalExportMetadataTests(unittest.TestCase):
                 "part3_of_4",
                 "part4_of_4",
             ),
+        )
+
+    def test_omitted_image_size_uses_checkpoint_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            checkpoint = Path(temporary)
+            (checkpoint / "args.json").write_text(
+                json.dumps({"image_size": [224, 384]}),
+                encoding="utf-8",
+            )
+
+            profile = _resolve_export_vision_profile(checkpoint, None)
+
+        self.assertEqual(
+            (profile.image_height, profile.image_width),
+            (224, 384),
+        )
+
+    def test_explicit_image_size_must_match_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            checkpoint = Path(temporary)
+            (checkpoint / "args.json").write_text(
+                json.dumps({"image_size": [224, 384]}),
+                encoding="utf-8",
+            )
+
+            matching = _resolve_export_vision_profile(
+                checkpoint, [224, 384]
+            )
+            with self.assertRaisesRegex(
+                ValueError,
+                "conflicts with checkpoint args.json image_size 224 384",
+            ):
+                _resolve_export_vision_profile(checkpoint, [512, 512])
+
+        self.assertEqual(
+            (matching.image_height, matching.image_width),
+            (224, 384),
+        )
+
+    def test_legacy_and_default_checkpoints_fall_back_to_512(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            legacy_checkpoint = Path(temporary)
+            (legacy_checkpoint / "args.json").write_text(
+                json.dumps({"precision": "w4a16"}),
+                encoding="utf-8",
+            )
+
+            legacy = _resolve_export_vision_profile(
+                legacy_checkpoint, None
+            )
+            default = _resolve_export_vision_profile("DEFAULT", None)
+            explicit = _resolve_export_vision_profile(
+                legacy_checkpoint, [512, 512]
+            )
+
+        for profile in (legacy, default, explicit):
+            self.assertEqual(
+                (profile.image_height, profile.image_width),
+                (512, 512),
+            )
+
+    def test_parser_distinguishes_omitted_image_size(self) -> None:
+        with _use_local_model_metadata():
+            parser = build_parser()
+            args = parser.parse_args(["--skip-downloading"])
+            help_text = parser.format_help()
+
+        self.assertIsNone(args.image_size)
+        self.assertIn(
+            "checkpoint's args.json, or 512 512 for legacy/default",
+            help_text,
         )
 
 
