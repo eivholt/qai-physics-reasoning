@@ -22,7 +22,7 @@ regression with much less latency, but it does not reach the quality-first
 profile's complete answer parity with the recorded BF16 GPU panel.
 
 See the
-[developer tutorial](../../docs/developer_tutorial.md#quality-versus-latency-placement-profiles)
+[engineering appendix](../../docs/engineering_appendix.md#quality-versus-latency-placement-profiles)
 and
 [sanitized evidence](../../docs/evidence/iq9075_geniex_vision_placement_r8.json)
 for commands, measurements, and limitations.

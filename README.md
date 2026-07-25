@@ -190,9 +190,10 @@ pilot. These are pending results, not inferred improvements. A balanced
 P1–P4 GPU extension scores 13/16 overall (the new P3/P4 half is 6/8); its NPU
 run is also pending.
 
-For the complete reproducible workflow, measured job IDs, GenieX import,
-native-chain diagnosis, and failure guide, see
-[the developer tutorial](docs/developer_tutorial.md). See
+For the verified export and deployment workflow, see the
+[developer tutorial](docs/developer_tutorial.md). For measured job IDs,
+precision experiments, native-chain diagnosis, and the failure guide, see the
+[engineering appendix](docs/engineering_appendix.md). See
 [video input on the NPU](docs/video_npu.md) for the temporal contract,
 measured warehouse results, and scaling plan. The
 [sanitized evidence record](docs/evidence/README.md) defines the exact
@@ -510,8 +511,8 @@ tokens. It uses native Hugging Face preprocessing, and the GenieX runner
 inserts `<|video_pad|>`. The AR128/CL512 runtime permits at most 384 prompt
 tokens even though the nominal context is 512, so three short-prompt pairs
 work while the measured four-pair prompts do not. Exact packaging, `scp`,
-QAIRT environment, and execution commands are in
-[the developer tutorial](docs/developer_tutorial.md#12-run-paired-video-frames-on-the-npu).
+QAIRT environment, and execution commands are in the
+[engineering appendix](docs/engineering_appendix.md#12-run-paired-video-frames-on-the-npu).
 
 Use `scripts/geniex_raw_video.sh` to build, package, deploy, and run the pinned
 lower-level GenieX `PixelData` integration with the full-interface W4/FP16
