@@ -68,10 +68,13 @@ holding the secure CDSP FastRPC device. A placement ablation also identifies
 and corrects the one stock-NPU regression in the controlled same-GGUF panel. The
 quality-first placement keeps the vision encoder/projector on CPU and all
 decoder layers on NPU; it scores 7/8 and matches all eight recorded BF16 GPU
-letters on the bounded long-prompt panel. Cosmos-Reason2-2B retains
-Qwen3-VL-2B's model structure, so this route also keeps DeepStack and
-visual-mask wiring inside llama.cpp instead of exposing those tensors at a
-split QAIRT boundary.
+letters on the bounded long-prompt panel. For native encoded video, the newer
+2 FPS profile keeps vision and all decoder layers on NPU, matches the hybrid
+profile's 7/8 sequence, and reduces warm inference to 1.453 seconds. A
+task-specific two-request warehouse classifier reaches 4/4 at about 2.90
+seconds per clip. Cosmos-Reason2-2B retains Qwen3-VL-2B's model structure, so
+this route also keeps DeepStack and visual-mask wiring inside llama.cpp
+instead of exposing those tensors at a split QAIRT boundary.
 
 The NPU integration is experimental. Qualcomm AI Hub Models 0.58.0 publishes
 a GenieX llama.cpp recipe for Qwen3-VL-2B, but its public Python package only
@@ -112,9 +115,10 @@ Status below is current as of 2026-07-25.
 | GenieX quality-first placement | CPU vision `mmproj` context plus NPU decoder scores 7/8, matches all eight recorded BF16 GPU letters, and averages 6.402 s TTFT versus 7.688 s all-CPU |
 | GenieX shorter deployment prompt | BF16 GPU and standard Q4_0 NPU both score 7/8 and match all eight answers with the same user prompt and option order; chat templates, numerical precision, and visual preprocessing still differ |
 | GenieX task-specific edge profile | 4/4 across marker knockdown, safe box pickup, near-miss avoidance, and worker motion using fixed prompts plus declared ROI/final-pair preprocessing for the two small-actor scenes |
-| Patched GenieX native encoded-video service | Verified with 1.5-second H.264 MP4 clips at 4 FPS; mtmd decodes and pairs successive frames, while the persistent service retains the model and NPU backend |
-| Encoded-video frozen panel | Quality-first CPU-vision/NPU-decoder plus `[ABCD]` grammar scores 7/8 at 6.8–7.3 s/warm request; the recorded BF16 GPU run scores 6/8; fast all-NPU scores 5/8 at about 2.0 s/warm request |
-| Encoded-video lifecycle | Fixed two cleanup defects; after 20 requests file descriptors remain 26→26 with no live/zombie ffmpeg children, and a further 10-request RSS/thread check plateaus |
+| Patched GenieX native encoded-video service | Verified with 1.5-second H.264 MP4 clips at 2 FPS; mtmd decodes and pairs successive frames, while the persistent service retains the model and NPU backend |
+| Fully-NPU encoded-video frozen panel | Full NPU plus `[ABCD]` grammar scores 7/8 with the same sequence as the r9 hybrid at a 1.453 s warm mean; 1, 3, and 4 FPS each score 5/8 |
+| Fully-NPU warehouse classifier | The tracked two-request, branch-specific A/B client scores 4/4 at a 2.90 s warm mean; a balanced direct four-choice diagnostic remains only 10/16 |
+| Encoded-video lifecycle | Fixed the stock owner/subprocess leaks; a 48-request 2 FPS soak leaves 26 FDs, plateaus at 49 threads, and has no decoder children, but a later extended run stalls after 54 completed requests |
 | GenieX large-image/context limits | `nctx=8192` aborts during vision-model allocation; one 1344 × 768 image aborts NPU and hybrid vision encoding with `dspqueue_read 0x2e`; `image-max-length` did not downscale it |
 | GenieX process lifecycle | Repeated one-shot creation can lose the CDSP FastRPC node; the verified `geniex serve` path instead resets request state while retaining the loaded model and HTP backend |
 | Official gated Cosmos checkpoint download and architecture validation | Verified; all 15 files are present |
@@ -1068,8 +1072,7 @@ measured one-shot CDSP teardown failure:
 
 ```bash
 export GENIEX_DATADIR=/path/to/geniex-data
-export GENIEX_EXPERIMENT_MMPROJ_CPU=1
-export MTMD_VIDEO_FPS=4
+export MTMD_VIDEO_FPS=2
 export MTMD_VIDEO_TIMESTAMP_INTERVAL_MS=0
 
 geniex --skip-update serve \
@@ -1085,29 +1088,56 @@ four-choice benchmark, add `"grammar_string": "root ::= [ABCD]"`. Keep
 `GenieX-KeepCache` unset for independent requests: the server resets the KV
 cache while retaining the loaded model and HTP backend.
 
-The patched service is stable in the bounded lifecycle test. Five stock video
+The patched service is stable in the bounded r9 lifecycle test. Five stock video
 requests left ten zombie ffmpeg/ffprobe children and increased RSS by about
 31 MB. After both cleanup fixes, file descriptors remain exactly 26 before
 and after 20 requests, there are no live or zombie decoder children, and a
 further ten requests leave the thread count at 39 while RSS changes only from
 639,860 to 641,104 KiB.
 
-The native encoded-video quality result is:
+The r10 full-NPU sampling sweep changes the preferred placement:
 
 | Profile | Frozen result | Warm request time | Answers |
 |---|---:|---:|---|
 | Recorded BF16 GPU | 6/8 | Not comparable | `A C B D C B C A` |
-| Fast all-NPU GGUF | 5/8 | About 2.0 s | `C C B C C B C A` |
-| CPU vision context, NPU decoder | **7/8** | 6.8–7.3 s | `A C B A C B C A` |
+| Full NPU, 1 FPS | 5/8 | About 0.92 s | `A C C C C B C A` |
+| Full NPU, 2 FPS | **7/8** | **1.453 s mean** | `A C B A C B C A` |
+| Full NPU, 3 or 4 FPS | 5/8 | About 1.99 s | `C C B C C B C A` |
+| CPU vision context, NPU decoder at 4 FPS | 7/8 | 6.8–7.3 s | `A C B A C B C A` |
 
-The expected sequence is `A C B A C B D A`. The constrained quality profile
-also scores 4/4 on the focused box-versus-near-miss A/B controls. Its
-remaining fire-onset miss is a valid `C` rather than `D`, so grammar cannot
-repair it. This result is stronger than the earlier ordered-still pilot, but
-not a tensor-equivalence claim: mtmd and Hugging Face still use different
-video preprocessing and chat wrappers. Full settings, timings, hashes, and
-the lifecycle evidence are recorded in
-[`iq9075_geniex_native_video_r9.json`](evidence/iq9075_geniex_native_video_r9.json).
+The expected sequence is `A C B A C B D A`. Two FPS retains enough frames for
+box pickup but avoids the higher-frame `C` collapse. The remaining
+multi-worker primary miss is a valid `C` rather than `D`, so grammar cannot
+repair it.
+
+For a declared four-event warehouse service, use the tracked two-stage
+client:
+
+```bash
+python scripts/classify_geniex_warehouse_video.py \
+  --video /path/visible/to/server/clip.mp4
+```
+
+It asks one broad forklift-versus-worker question and one branch-specific A/B
+question. The EVK results are `AA` marker knockdown, `BA` box pickup, `AB`
+near miss, and `BB` multi-worker aisle exit: 4/4 at a 2.90-second warm mean.
+A one-request two-letter-code ablation scores only 2/4, so the sequential
+prompting is material. A balanced four-permutation direct-choice diagnostic
+scores 10/16; therefore 4/4 is explicitly task-specific routing, not broad
+zero-shot accuracy.
+
+A 48-request 2 FPS soak with `Connection: close` retains 26 file descriptors,
+plateaus at 49 threads, and leaves no ffmpeg/ffprobe children. A later
+extended run stalls after 54 completed requests with an NPU request
+outstanding. Supervise and recycle the worker conservatively before 40 video
+requests until this limit is resolved.
+
+Neither result is a tensor-equivalence claim: mtmd and Hugging Face still use
+different video preprocessing and chat wrappers. Full r9 patch/lifecycle
+details are in
+[`iq9075_geniex_native_video_r9.json`](evidence/iq9075_geniex_native_video_r9.json);
+the full-NPU sweep, classifier, soak, and limit are in
+[`iq9075_geniex_full_npu_video_r10.json`](evidence/iq9075_geniex_full_npu_video_r10.json).
 
 The physical-board result is:
 
@@ -2573,6 +2603,7 @@ for the design boundary and runtime support matrix.
 | `prepare_video_npu_inputs.py` rejects an odd frame count | Temporal patches require exactly two frames | Pass exactly `2N` ordered frames and `2N` increasing timestamps |
 | Video prompt exceeds 384 tokens despite fitting CL512 | AR128 prefill can safely transfer only `CL - AR = 384` tokens into AR1 decode | Reduce to three pairs or compile a longer-context text runtime; do not bypass the preparation/package/runner guards |
 | Direct MP4 through stock GenieX leaks resources | The wrapper drops the video-context owner and mtmd skips subprocess cleanup after normal EOF | Apply all four patches under `integrations/geniex_native_video`, build with `MTMD_VIDEO=ON`, install ffmpeg/ffprobe, and use a persistent service; use the raw runner instead when native-HF tensor parity is required |
+| Patched 2 FPS full-NPU service stops answering after a long soak | The extended r10 run stalls after 54 completed video requests with one NPU request outstanding; its exited ffmpeg child cannot be reaped until request teardown | Send independent `Connection: close` requests, supervise the worker, and recycle conservatively before 40 requests; retain board-reboot recovery if CDSP access disappears |
 | Full-DeepStack run exits 0 but prediction is wrong | Functional execution, DeepStack wiring, and exact inputs do not imply retained quantized accuracy | Compare every output with BF16 and score every precision candidate on the same frozen probes; the completed r5 boundary-FP16 leader is 13/20 versus GPU 16/20 |
 
 ## What to save for a reproducible result

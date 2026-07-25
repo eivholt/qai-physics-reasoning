@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "report_id": "iq9075-geniex-full-npu-video-r10",
+  "created_date": "2026-07-25",
+  "extends": "iq9075-geniex-native-video-r9",
+  "model": {
+    "repository": "nvidia/Cosmos-Reason2-2B",
+    "main_precision": "standard Q4_0 with Q6_K vocabulary projection",
+    "multimodal_projector_precision": "F16",
+    "runtime": "patched GenieX v0.3.17 llama_cpp",
+    "target": "Dragonwing IQ-9075 EVK, Hexagon v73"
+  },
+  "placement": {
+    "compute": "npu",
+    "n_gpu_layers": -1,
+    "cpu_mmproj_override": false,
+    "operator_fallback_override": null,
+    "description": "Vision encoder/projector and all 28 language-decoder layers use the runtime's requested NPU placement. CPU still performs orchestration, video I/O, tokenization, and sampling.",
+    "direct_process_evidence": [
+      "GENIEX_EXPERIMENT_MMPROJ_CPU absent from the process environment",
+      "libggml-hexagon.so mapped",
+      "libcdsprpc mapped",
+      "/dev/fastrpc-cdsp-secure held"
+    ],
+    "claim_boundary": "This proves full-NPU placement at the GenieX/llama.cpp configuration boundary and live Hexagon execution, not an operator-by-operator trace excluding every internal CPU fallback."
+  },
+  "sampling_sweep": {
+    "fixed_settings": {
+      "timestamp_interval_ms": 0,
+      "context_tokens": 4096,
+      "top_k": 1,
+      "temperature": 0,
+      "seed": 42,
+      "grammar_string": "root ::= [ABCD]"
+    },
+    "profiles": [
+      {
+        "fps": 1,
+        "answers": [
+          "A",
+          "C",
+          "C",
+          "C",
+          "C",
+          "B",
+          "C",
+          "A"
+        ],
+        "correct": 5,
+        "total": 8,
+        "representative_primary_prompt_tokens": 86,
+        "warm_request_seconds_approx": 0.92
+      },
+      {
+        "fps": 2,
+        "answers": [
+          "A",
+          "C",
+          "B",
+          "A",
+          "C",
+          "B",
+          "C",
+          "A"
+        ],
+        "correct": 7,
+        "total": 8,
+        "representative_primary_prompt_tokens": 100,
+        "repeated_warm_mean_seconds": 1.453
+      },
+      {
+        "fps": 3,
+        "answers": [
+          "C",
+          "C",
+          "B",
+          "C",
+          "C",
+          "B",
+          "C",
+          "A"
+        ],
+        "correct": 5,
+        "total": 8,
+        "representative_primary_prompt_tokens": 114,
+        "warm_request_seconds_approx": 1.99
+      },
+      {
+        "fps": 4,
+        "answers": [
+          "C",
+          "C",
+          "B",
+          "C",
+          "C",
+          "B",
+          "C",
+          "A"
+        ],
+        "correct": 5,
+        "total": 8,
+        "representative_primary_prompt_tokens": 114,
+        "warm_request_seconds_approx": 1.98
+      }
+    ],
+    "conclusion": "Two FPS is the measured full-NPU sweet spot for these 1.5-second clips. One FPS drops the box action; three and four FPS reproduce the C-biased barrier and box errors."
+  },
+  "comparison": {
+    "answer_order": [
+      "barrier_primary",
+      "barrier_shuffled",
+      "box_primary",
+      "box_shuffled",
+      "near_primary",
+      "near_shuffled",
+      "multi_worker_primary",
+      "multi_worker_shuffled"
+    ],
+    "expected_answers": [
+      "A",
+      "C",
+      "B",
+      "A",
+      "C",
+      "B",
+      "D",
+      "A"
+    ],
+    "recorded_bf16_gpu": {
+      "correct": 6,
+      "total": 8
+    },
+    "r9_quality_cpu_vision_npu_decoder_4fps": {
+      "answers": [
+        "A",
+        "C",
+        "B",
+        "A",
+        "C",
+        "B",
+        "C",
+        "A"
+      ],
+      "correct": 7,
+      "total": 8,
+      "warm_request_seconds_range": [
+        6.8,
+        7.3
+      ]
+    },
+    "r10_full_npu_2fps": {
+      "answers": [
+        "A",
+        "C",
+        "B",
+        "A",
+        "C",
+        "B",
+        "C",
+        "A"
+      ],
+      "correct": 7,
+      "total": 8,
+      "repeated_warm_mean_seconds": 1.453,
+      "speedup_vs_quality_profile_approx": 4.8
+    },
+    "caveat": "The frozen eight probes use the tracked primary and shuffled prompts; the barrier and box shuffled prompts are three-choice controls rather than a fully balanced four-choice permutation."
+  },
+  "balanced_permutation_diagnostic": {
+    "description": "Four option permutations for each of the four scenes, mapped back to semantic labels.",
+    "correct": 10,
+    "total": 16,
+    "per_scene_correct": {
+      "barrier_knockdown": 4,
+      "routine_box_pickup": 2,
+      "near_miss_avoidance": 3,
+      "multi_worker_aisle_exit": 1
+    },
+    "interpretation": "The 7/8 frozen score does not remove general option-order sensitivity. A task-specific decision layer is still useful."
+  },
+  "two_stage_classifier": {
+    "script": "scripts/classify_geniex_warehouse_video.py",
+    "stage_1": {
+      "question": "forklift prominent versus worker-only activity",
+      "grammar": "root ::= [AB]"
+    },
+    "stage_2": {
+      "forklift_branch": "marker contact versus worker avoidance",
+      "worker_branch": "visible box pickup yes versus no",
+      "grammar": "root ::= [AB]"
+    },
+    "results": [
+      {
+        "scene": "barrier_knockdown",
+        "answers": "AA",
+        "event": "forklift_marker_knockdown",
+        "correct": true,
+        "warm_total_seconds": 2.877373
+      },
+      {
+        "scene": "routine_box_pickup",
+        "answers": "BA",
+        "event": "routine_box_pickup",
+        "correct": true,
+        "warm_total_seconds": 2.930742
+      },
+      {
+        "scene": "near_miss_avoidance",
+        "answers": "AB",
+        "event": "forklift_human_near_miss",
+        "correct": true,
+        "warm_total_seconds": 2.856843
+      },
+      {
+        "scene": "multi_worker_aisle_exit",
+        "answers": "BB",
+        "event": "multi_worker_aisle_exit",
+        "correct": true,
+        "warm_total_seconds": 2.940969
+      }
+    ],
+    "correct": 4,
+    "total": 4,
+    "warm_mean_seconds": 2.901482,
+    "single_request_ab_code_ablation": {
+      "answers": [
+        "AA",
+        "BA",
+        "BA",
+        "BA"
+      ],
+      "correct": 2,
+      "total": 4,
+      "conclusion": "The two sequential questions are material; merely encoding the decision tree into a two-character one-shot grammar does not retain accuracy."
+    },
+    "scope": "This is a declared task-specific warehouse classifier over four known event families, not zero-shot or broad Cosmos accuracy."
+  },
+  "persistent_service_soak": {
+    "sampling_fps": 2,
+    "completed_video_requests": 48,
+    "client_header": "Connection: close",
+    "file_descriptors_after": 26,
+    "threads_after_40": 49,
+    "threads_after_48": 49,
+    "rss_kib_after_40": 641996,
+    "rss_kib_after_48": 642844,
+    "live_or_zombie_ffmpeg_or_ffprobe_children_after_48": 0,
+    "extended_limit": {
+      "completed_before_stall": 54,
+      "next_request_completed": false,
+      "observed_state": "The NPU request remained outstanding and an exited ffmpeg child could not be reaped because request teardown had not run.",
+      "operational_rule": "Treat 40 completed video requests as the current conservative worker recycle threshold; use a supervisor and retain board-reboot recovery for CDSP loss."
+    }
+  },
+  "verdict": "Full-NPU vision placement is now the preferred bounded profile at MTMD_VIDEO_FPS=2. It matches the r9 hybrid profile's 7/8 answer sequence while reducing warm request latency from about 7.0 to 1.453 seconds. The task-specific two-request classifier reaches 4/4 at about 2.90 seconds per clip. Broad option-order robustness remains 10/16, and the service must currently be recycled conservatively because an extended run stalled after 54 completed video requests."
+}

@@ -124,8 +124,9 @@ simulator annotations when frame-accurate collision timing is required.
 The repository's four-patch
 [`geniex_native_video`](../integrations/geniex_native_video/README.md) overlay
 retains the lazy video's owner, reaps ffmpeg/ffprobe after normal EOF, exposes
-the 4 FPS/no-generic-timestamp profile, and forwards `grammar_string` into
-the sampler. The OpenAI-compatible `/v1/chat/completions` service resets the
+the configurable 2 FPS/no-generic-timestamp profile, and forwards
+`grammar_string` into the sampler. The OpenAI-compatible
+`/v1/chat/completions` service resets the
 KV cache for independent requests while retaining the loaded model and NPU
 backend.
 
@@ -136,22 +137,38 @@ descriptors at 26→26 and no live or zombie decoder children. Ten more requests
 leave threads at 39 and RSS effectively plateaued.
 
 Closed-set grammar (`root ::= [ABCD]`) materially improves the bounded
-warehouse comparison:
+warehouse comparison. A later sampling sweep makes 2 FPS full NPU the
+preferred profile:
 
 | Encoded-video profile | Score | Answers | Warm latency |
 |---|---:|---|---:|
 | Recorded BF16 GPU | 6/8 | `A C B D C B C A` | Not comparable |
-| Fast all-NPU GGUF | 5/8 | `C C B C C B C A` | About 2.0 s |
-| CPU vision context, NPU decoder | **7/8** | `A C B A C B C A` | 6.8–7.3 s |
+| Full NPU, 1 FPS | 5/8 | `A C C C C B C A` | About 0.92 s |
+| Full NPU, 2 FPS | **7/8** | `A C B A C B C A` | **1.453 s mean** |
+| Full NPU, 3 or 4 FPS | 5/8 | `C C B C C B C A` | About 1.99 s |
+| CPU vision context, NPU decoder at 4 FPS | 7/8 | `A C B A C B C A` | 6.8–7.3 s |
 
-The expected answers are `A C B A C B D A`. The quality profile also passes
-all four box-versus-near-miss A/B controls. Grammar fixes the former invalid
-out-of-set response, but the remaining fire-onset error is already a valid
-`C`, so it cannot be corrected by stricter decoding. The recorded BF16 and
-GGUF paths use different video processors and wrappers; 7/8 versus 6/8 is a
-small benchmark result, not a claim that quantization improves the model.
-See
-[`iq9075_geniex_native_video_r9.json`](evidence/iq9075_geniex_native_video_r9.json).
+The expected answers are `A C B A C B D A`. Two FPS retains the box action
+while avoiding the high-frame `C` collapse. The remaining multi-worker miss
+is already a valid `C`, so it cannot be corrected by stricter decoding.
+
+The tracked
+[`classify_geniex_warehouse_video.py`](../scripts/classify_geniex_warehouse_video.py)
+client replaces four-way competition with two branch-specific A/B requests.
+It classifies marker knockdown, box pickup, near miss, and multi-worker aisle
+motion 4/4 at a 2.90-second warm mean. This is a declared four-family
+classifier: a balanced four-permutation direct-choice diagnostic is only
+10/16. A one-request two-letter-code version is also only 2/4, so the
+sequential questions are material.
+
+The 2 FPS service completes a 48-request soak with 26 file descriptors,
+49 plateaued threads, and no decoder children. A later extended run stalls
+after 54 completed requests; supervise and recycle before 40 video requests
+until that limit is resolved. The recorded BF16 and GGUF paths use different
+video processors and wrappers, so 7/8 versus 6/8 is not a claim that
+quantization improves the model. See the
+[`r9 patch report`](evidence/iq9075_geniex_native_video_r9.json) and
+[`r10 full-NPU report`](evidence/iq9075_geniex_full_npu_video_r10.json).
 
 #### Official GenieX v0.3.17 GGUF result
 

@@ -18,8 +18,8 @@ pipes even after normal EOF.
 Patch 0002 adds two opt-in environment variables while preserving llama.cpp's
 upstream defaults:
 
-- `MTMD_VIDEO_FPS` controls decoded frame sampling; use `4` for the current
-  Cosmos benchmark profile.
+- `MTMD_VIDEO_FPS` controls decoded frame sampling. Use `2` for the current
+  full-NPU short-clip profile; the earlier r9 profile used `4`.
 - `MTMD_VIDEO_TIMESTAMP_INTERVAL_MS` controls generic timestamp text. Use `0`
   for short Qwen3-VL clips so timestamp text does not split adjacent frames
   before the temporal-patch merger can pair them.
@@ -45,7 +45,7 @@ For the fast persistent NPU service:
 
 ```bash
 export GENIEX_DATADIR=/path/to/geniex-data
-export MTMD_VIDEO_FPS=4
+export MTMD_VIDEO_FPS=2
 export MTMD_VIDEO_TIMESTAMP_INTERVAL_MS=0
 
 geniex --skip-update serve \
@@ -79,18 +79,41 @@ question:
 }
 ```
 
-On the frozen four-scene/two-order encoded-MP4 panel, the quality-first
-service returns `A C B A C B C A`: 7/8 correct at 6.8–7.3 seconds per warm
-request. The recorded BF16 GPU run returns 6/8 on that panel. The fast
-all-NPU placement returns `C C B C C B C A`: 5/8 at about 2.0 seconds per
-warm request. This is a bounded benchmark, not evidence that Q4_0 generally
-outperforms BF16. The two paths use different video processors, chat wrappers,
-and numerical precision.
+At 2 FPS, the full-NPU service returns `A C B A C B C A` on the frozen
+four-scene/two-order encoded-MP4 panel: 7/8 at a repeated 1.453-second warm
+mean. This matches the r9 CPU-vision/NPU-decoder answer sequence while being
+about 4.8 times faster. One FPS loses box pickup, and three or four FPS
+reproduce the `C`-biased barrier/box failures; each scores 5/8. The recorded
+BF16 GPU run returns 6/8 on this panel. This is a bounded benchmark, not
+evidence that Q4_0 generally outperforms BF16. The two paths use different
+video processors, chat wrappers, and numerical precision.
 
 The grammar is material only when the task has a closed answer set. It fixed
 the last malformed `C` in the A/B box-versus-near-miss control, taking the
 quality-first service to 4/4, but it cannot repair a wrong in-set prediction:
 the remaining fire-onset miss is still `C` instead of `D`.
+
+For the four declared warehouse event families, the tracked two-request
+classifier removes four-way option competition:
+
+```bash
+python scripts/classify_geniex_warehouse_video.py \
+  --video /path/visible/to/server/clip.mp4
+```
+
+It first distinguishes forklift-prominent from worker-only activity, then
+asks a branch-specific A/B question. The physical EVK run classifies all four
+clips correctly with a 2.90-second warm mean. This is a task-specific
+classifier, not a zero-shot accuracy claim. A fully balanced four-permutation
+diagnostic remains only 10/16, so the simpler 7/8 panel does not establish
+general option-order robustness.
+
+Use independent HTTP connections (`Connection: close`) and supervise the
+worker. A 48-request 2 FPS soak retains 26 file descriptors, plateaus at 49
+threads, and leaves no ffmpeg/ffprobe children. A later extended run stalls
+after 54 completed video requests. Until that NPU-service limit is resolved,
+recycle the worker conservatively before 40 requests and retain board-reboot
+recovery for loss of the CDSP device.
 
 This path supplies paired temporal patches to the GGUF vision tower, but it is
 not bit-exact with the Hugging Face processor or the project's QAIRT

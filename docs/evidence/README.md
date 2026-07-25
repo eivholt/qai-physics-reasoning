@@ -97,6 +97,14 @@ The result is narrower than vendor certification:
   fast all-NPU scores 5/8 at about 2.0 seconds. The recorded BF16 GPU run is
   6/8. After 20 video requests, file descriptors remain 26→26 and no decoder
   children remain; the following ten-request thread/RSS check plateaus.
+- The r10 report restores fully-NPU vision placement by sampling the short
+  clips at 2 FPS. It matches the r9 hybrid answer sequence at 7/8 while
+  reducing warm latency to a 1.453-second mean; 1, 3, and 4 FPS each score
+  5/8. A balanced four-permutation diagnostic is 10/16, while the declared
+  two-request warehouse decision tree scores 4/4 at a 2.90-second warm mean.
+  A 48-request soak leaves 26 file descriptors and no decoder children, but
+  an extended run stalls after 54 completed requests. The current operational
+  boundary is therefore a supervised worker recycled before 40 requests.
 - Hosted P1 chunk-0 screens compare five candidates with BF16 vision and three
   candidates with the production boundary-FP16 NPU vision output. W8 layers
   0–6 ranks first in both completed screens, but these hidden-state and

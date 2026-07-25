@@ -79,13 +79,17 @@ using the 2B architecture. It must be validated on the physical board.
   a narrower task-specific profile reaches 4/4.
 - The patched v0.3.17 service now accepts H.264 MP4 through ffmpeg/mtmd,
   pairs adjacent frames temporally, and keeps the model and HTP backend loaded
-  between independent requests. On the frozen encoded-video panel, closed-set
-  decoding gives 7/8 for CPU vision plus NPU decoder at 6.8–7.3 seconds per
-  warm request, versus a recorded BF16 GPU 6/8. Fast all-NPU gives 5/8 at
-  about 2.0 seconds per warm request. The service cleanup fixes keep file
-  descriptors stable and leave no ffmpeg/ffprobe zombies after 20 requests.
-  This is bounded project evidence, not tensor equivalence, broad
-  GPU-equivalent accuracy, or safety qualification.
+  between independent requests. The new 2 FPS profile requests NPU placement
+  for the vision encoder/projector and all 28 decoder layers. It scores 7/8 on the
+  frozen encoded-video panel with the same answer sequence as the r9 hybrid,
+  while reducing warm inference from about 7.0 seconds to a 1.453-second
+  mean. The task-specific two-request warehouse classifier reaches 4/4 at a
+  2.90-second warm mean, although a balanced direct four-choice diagnostic is
+  only 10/16. A 48-request soak leaves 26 file descriptors and no decoder
+  children; an extended run stalls after 54 completed requests, so the worker
+  currently needs conservative supervised recycling. This is bounded project
+  evidence, not tensor equivalence, broad GPU-equivalent accuracy, or safety
+  qualification.
 - Historical r1/r2 bring-up: the first all-W4A16 bundle compiles, links, and
   executes on QnnHtp, but its
   four-part text decoder is numerically incorrect. Bundled Genie 1.17 and
@@ -202,8 +206,10 @@ physical-board proof boundary for the
 [r7 CPU/NPU isolation report](docs/evidence/iq9075_geniex_cpu_npu_parity_r7.json),
 and
 [r8 vision-placement report](docs/evidence/iq9075_geniex_vision_placement_r8.json).
-The current persistent native-video service is recorded in the
-[r9 encoded-video report](docs/evidence/iq9075_geniex_native_video_r9.json).
+The patched service is recorded in the
+[r9 encoded-video report](docs/evidence/iq9075_geniex_native_video_r9.json);
+the preferred 2 FPS full-NPU profile is recorded in the
+[r10 full-NPU video report](docs/evidence/iq9075_geniex_full_npu_video_r10.json).
 
 No earlier independent public proof was found for the exact Cosmos-Reason2-2B
 checkpoint on IQ-9075. NVIDIA's

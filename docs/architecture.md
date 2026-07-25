@@ -83,6 +83,13 @@ MP4 through ffmpeg/mtmd and pairs adjacent frames. The latter is practical
 encoded-video ingestion but does not reproduce the Hugging Face processor
 byte for byte.
 
+For the short 1.5-second GGUF clips, 2 FPS is the measured fully-NPU profile:
+the runtime requests Hexagon placement for the vision encoder/projector and
+all decoder layers, and the frozen panel scores 7/8 at a 1.453-second warm
+mean. The optional warehouse client uses two branch-specific A/B requests and
+scores 4/4 at about 2.90 seconds per clip. That decision layer is deliberately
+task-specific; balanced direct four-choice permutations remain 10/16.
+
 The implemented bridge uses Qwen3-VL's native temporal patch representation:
 
 ```text
