@@ -89,6 +89,14 @@ The result is narrower than vendor certification:
   matches all eight same-GGUF CPU letters, and averages 2.146 seconds TTFT.
   Live-process evidence confirms that both corrected profiles retain the
   Hexagon backend and secure CDSP access.
+- The r9 report turns GenieX's hidden encoded-video fallback into a stable
+  persistent service. Four patches retain/release the lazy video owner, reap
+  ffmpeg/ffprobe after EOF, configure frame/timestamp sampling, and forward
+  closed-set grammar. The quality-first CPU-vision/NPU-decoder profile scores
+  7/8 on the frozen H.264 MP4 panel at 6.8–7.3 seconds per warm request;
+  fast all-NPU scores 5/8 at about 2.0 seconds. The recorded BF16 GPU run is
+  6/8. After 20 video requests, file descriptors remain 26→26 and no decoder
+  children remain; the following ten-request thread/RSS check plateaus.
 - Hosted P1 chunk-0 screens compare five candidates with BF16 vision and three
   candidates with the production boundary-FP16 NPU vision output. W8 layers
   0–6 ranks first in both completed screens, but these hidden-state and
@@ -227,8 +235,9 @@ Replace pending part-1 and balanced-NPU status only after complete,
 hash-bound EVK logs have been scored. Do not infer a winner from smoke output.
 -->
 
-The word *video* in these reports has a precise, limited meaning: ordered
-frames are fused in pairs into Qwen3-VL temporal patches and supplied as raw
-`PixelData`. The r3–r5 runner can interleave multiple timestamped pairs, but
-it still does not decode an MP4, consume a camera stream, or provide an
-unbounded video frontend.
+In the r3–r5 reports, *video* has a precise, limited meaning: ordered frames
+are fused in pairs into Qwen3-VL temporal patches and supplied as raw
+`PixelData`. That runner can interleave multiple timestamped pairs, but it
+does not decode an MP4, consume a camera stream, or provide an unbounded video
+frontend. R9 is separate: its patched GGUF service decodes short MP4 clips
+through ffmpeg/mtmd, with explicitly different preprocessing semantics.

@@ -75,10 +75,13 @@ not be debugged as if it were a graph issue.
 
 ## Video path
 
-The runtime does not accept encoded video directly. Legacy Genie exposes an
-image node but no MP4/video node. Stock QAI Hub Models rejects
-`pixel_values_videos` and `video_grid_thw`, while GenieX v0.3.16 accepts
-multiple still-image paths but has no native video frontend.
+Legacy Genie exposes an image node but no MP4/video node, and stock QAI Hub
+Models rejects `pixel_values_videos` and `video_grid_thw`. The project now has
+two bridges: the explicit QAIRT/DeepStack path below consumes predecoded raw
+tensors, while a separately patched GenieX v0.3.17 GGUF service accepts H.264
+MP4 through ffmpeg/mtmd and pairs adjacent frames. The latter is practical
+encoded-video ingestion but does not reproduce the Hugging Face processor
+byte for byte.
 
 The implemented bridge uses Qwen3-VL's native temporal patch representation:
 

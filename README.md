@@ -76,9 +76,16 @@ using the 2B architecture. It must be validated on the physical board.
   NPU; it scores 7/8, matches all eight recorded BF16 GPU letters, and
   averages 6.402 seconds TTFT versus 7.688 seconds all-CPU. The shorter fixed
   prompt also gives stock NPU and BF16 GPU 7/8 with eight-answer parity, while
-  a narrower task-specific profile reaches 4/4. These are bounded ordered
-  still-image results, not native encoded-video support, tensor equivalence,
-  or broad GPU-equivalent accuracy.
+  a narrower task-specific profile reaches 4/4.
+- The patched v0.3.17 service now accepts H.264 MP4 through ffmpeg/mtmd,
+  pairs adjacent frames temporally, and keeps the model and HTP backend loaded
+  between independent requests. On the frozen encoded-video panel, closed-set
+  decoding gives 7/8 for CPU vision plus NPU decoder at 6.8–7.3 seconds per
+  warm request, versus a recorded BF16 GPU 6/8. Fast all-NPU gives 5/8 at
+  about 2.0 seconds per warm request. The service cleanup fixes keep file
+  descriptors stable and leave no ffmpeg/ffprobe zombies after 20 requests.
+  This is bounded project evidence, not tensor equivalence, broad
+  GPU-equivalent accuracy, or safety qualification.
 - Historical r1/r2 bring-up: the first all-W4A16 bundle compiles, links, and
   executes on QnnHtp, but its
   four-part text decoder is numerically incorrect. Bundled Genie 1.17 and
@@ -107,15 +114,16 @@ using the 2B architecture. It must be validated on the physical board.
   preserves that bias. The NPU input path also uses the native Hugging Face
   video resize and the upstream `<|video_pad|>` token; byte comparisons
   confirm that the GPU and NPU receive identical packed pixels.
-- Video containers are not accepted directly. The current profile predecodes
-  `2N` frames, packs each pair as one `[336, 1536]` temporal patch with grid
-  `[1, 14, 24]`, and produces 84 visual tokens at 224 × 384. Its 20-sample
+- The raw QAIRT/DeepStack profile still predecodes video outside the runtime.
+  It packs `2N` frames as `[336, 1536]` temporal patches with grid
+  `[1, 14, 24]` and produces 84 visual tokens per pair at 224 × 384. Its 20-sample
   calibration set contains distinct warehouse frame pairs rather than
   duplicated stills. The compiled r5 candidates still derive from the older
   paired/explicit-resize calibration checkpoint. Runtime input preparation is
   native Hugging Face and byte-identical between GPU and NPU, but a
   native-HF-aligned calibration checkpoint was not the compiled source for
-  this sweep.
+  this sweep. The separate patched GenieX GGUF route accepts encoded MP4
+  directly, but its mtmd preprocessing is not byte-identical with this path.
 - The full-video integration restores `visual_pos_masks` and
   `deepstack_visual_embeds_0..2`: it replaces only part 1 with a full-interface
   W4/FP16 context, retains coherent W4/FP16 parts 2-4, and uses a pinned
@@ -194,6 +202,8 @@ physical-board proof boundary for the
 [r7 CPU/NPU isolation report](docs/evidence/iq9075_geniex_cpu_npu_parity_r7.json),
 and
 [r8 vision-placement report](docs/evidence/iq9075_geniex_vision_placement_r8.json).
+The current persistent native-video service is recorded in the
+[r9 encoded-video report](docs/evidence/iq9075_geniex_native_video_r9.json).
 
 No earlier independent public proof was found for the exact Cosmos-Reason2-2B
 checkpoint on IQ-9075. NVIDIA's

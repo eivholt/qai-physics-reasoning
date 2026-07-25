@@ -56,15 +56,16 @@ transform removes the unsupported `visual_pos_masks` and
 `deepstack_visual_embeds_0..2` inputs. The higher-fidelity paired-frame
 experiment restores those inputs by replacing only text part 1 with a
 full-interface W4/FP16 context, retaining the coherent parts 2-4, and running
-the result through a pinned GenieX lower-level `PixelData` integration. A
-globally-W4 vision export remains incompatible with legacy Genie, and native
-MP4 ingestion remains unsupported. A CPU GGUF path is included as an
-independent correctness baseline. The second NPU route uses the official
-GenieX `llama_cpp` runtime with Qualcomm's GGML Hexagon backend. This route is
-now verified on the physical EVK with GenieX v0.3.17: the exact Cosmos GGUF
-loads, and live successful processes map the Hexagon backend while holding the
-secure CDSP FastRPC device. A placement ablation also identifies and corrects
-the one stock-NPU regression in the controlled same-GGUF panel. The
+the result through a pinned GenieX lower-level `PixelData` integration. That
+QAIRT path still expects predecoded tensors, and a globally-W4 vision export
+remains incompatible with legacy Genie. A patched GenieX v0.3.17 GGUF path
+described below now accepts encoded MP4 through mtmd. A CPU GGUF path is
+included as an independent correctness baseline. The second NPU route uses
+the official GenieX `llama_cpp` runtime with Qualcomm's GGML Hexagon backend.
+This route is now verified on the physical EVK with GenieX v0.3.17: the exact
+Cosmos GGUF loads, and live successful processes map the Hexagon backend while
+holding the secure CDSP FastRPC device. A placement ablation also identifies
+and corrects the one stock-NPU regression in the controlled same-GGUF panel. The
 quality-first placement keeps the vision encoder/projector on CPU and all
 decoder layers on NPU; it scores 7/8 and matches all eight recorded BF16 GPU
 letters on the bounded long-prompt panel. Cosmos-Reason2-2B retains
@@ -111,8 +112,11 @@ Status below is current as of 2026-07-25.
 | GenieX quality-first placement | CPU vision `mmproj` context plus NPU decoder scores 7/8, matches all eight recorded BF16 GPU letters, and averages 6.402 s TTFT versus 7.688 s all-CPU |
 | GenieX shorter deployment prompt | BF16 GPU and standard Q4_0 NPU both score 7/8 and match all eight answers with the same user prompt and option order; chat templates, numerical precision, and visual preprocessing still differ |
 | GenieX task-specific edge profile | 4/4 across marker knockdown, safe box pickup, near-miss avoidance, and worker motion using fixed prompts plus declared ROI/final-pair preprocessing for the two small-actor scenes |
+| Patched GenieX native encoded-video service | Verified with 1.5-second H.264 MP4 clips at 4 FPS; mtmd decodes and pairs successive frames, while the persistent service retains the model and NPU backend |
+| Encoded-video frozen panel | Quality-first CPU-vision/NPU-decoder plus `[ABCD]` grammar scores 7/8 at 6.8–7.3 s/warm request; the recorded BF16 GPU run scores 6/8; fast all-NPU scores 5/8 at about 2.0 s/warm request |
+| Encoded-video lifecycle | Fixed two cleanup defects; after 20 requests file descriptors remain 26→26 with no live/zombie ffmpeg children, and a further 10-request RSS/thread check plateaus |
 | GenieX large-image/context limits | `nctx=8192` aborts during vision-model allocation; one 1344 × 768 image aborts NPU and hybrid vision encoding with `dspqueue_read 0x2e`; `image-max-length` did not downscale it |
-| GenieX repeated-process lifecycle | The exact CPU/NPU matrix completes with two successful bounded retries, but later model creations lose the CDSP FastRPC device node and fail at `GGML_ASSERT(device)` until a board reboot or power cycle |
+| GenieX process lifecycle | Repeated one-shot creation can lose the CDSP FastRPC node; the verified `geniex serve` path instead resets request state while retaining the loaded model and HTP backend |
 | Official gated Cosmos checkpoint download and architecture validation | Verified; all 15 files are present |
 | Cosmos text and vision quantization | Verified for CL512; r5 compares the native-aspect 224 × 384 W8/A16 baseline with three compiled mixed-precision vision layouts, all derived from the older paired/explicit-resize calibration checkpoint |
 | QAIRT 2.45 compatibility checkpoint | Verified; ONNX checker passes, split points are unchanged, and the four unsupported auxiliary text inputs are removed |
@@ -127,7 +131,7 @@ Status below is current as of 2026-07-25.
 | Historical legacy hybrid bundle | Verified end to end: original W4A16 vision target `mngx5gv5q` plus the four W4/FP16 text targets |
 | Legacy Genie 1.17 text-only result | Verified coherent: 131.152 ms TTFT, 289.7711 prompt tok/s, 17.9982 generation tok/s, 2.489846 s query |
 | Cosmos image-to-text through legacy Genie | Verified; default script exits 0, accepts all five image inputs, and describes Qualcomm's `dog.jpg` as a white fluffy dog on green grass |
-| Native MP4/video-container input | Unsupported by legacy Genie and stock QAI Hub Models; GenieX documents only images, while an undocumented llama.cpp fallback can reach its ffmpeg helper but leaks the video context and is not native-Qwen3-VL equivalent |
+| Native MP4/video-container input | Unsupported by legacy Genie and stock QAI Hub Models; patched GenieX v0.3.17 now accepts H.264 MP4 through its ffmpeg/mtmd helper without the measured owner/subprocess leaks; it is temporal but not bit-exact with the Hugging Face processor |
 | Learned temporal patch-projection bias | Fixed: the adapter now retains Qwen3-VL's learned 1024-element bias when adapting Conv3d to Conv2d |
 | Native video input parity | Verified: NPU preparation uses native Hugging Face processing; per-pair GPU/NPU pixel hashes match, and the runner uses upstream video-pad token `151656` |
 | Native-aspect vision profile | Verified on NPU: 224 × 384, `[336, 1536]` pixels, grid `[1, 14, 24]`, and 84 visual tokens per pair |
@@ -1049,23 +1053,61 @@ fixed region-of-interest policy and resize the crop back to 384 × 216; do not
 increase the Hexagon grid until a runtime update removes this failure.
 
 Increase `--nctx` only after checking memory headroom; each image adds visual
-tokens. The current GenieX CLI documents image paths, not encoded video.
-Source inspection shows that an `.mp4` can nevertheless fall through the
-generic media loader into pinned llama.cpp's ffmpeg-backed video helper.
-That wrapper discards the returned video-context owner while retaining its
-lazy bitmap callback, leaking the context and making lifetime behavior
-unsuitable as a supported or repeatable interface. Use ordered extracted
-frames for GenieX evaluation; reserve direct MP4 for an explicitly labeled
-one-shot diagnostic. The pinned helper can fuse consecutive Qwen-VL frames.
-The
-[pinned helper interface](https://github.com/ggml-org/llama.cpp/blob/910196f6b3dfc6aca88fa732e2b02f270ff9b56b/tools/mtmd/mtmd-helper.h)
-defaults to 4 FPS with a timestamp text chunk every five seconds, whereas this
-project's native-Qwen3-VL reference uses 2 FPS and a timestamp for every
-temporal pair. Direct `llama-mtmd-cli` video output is therefore an
-exploratory smoke, not GPU-equivalent preprocessing. The completed
-five-second lathe smoke loaded 20 frames and described the scene, but its
-hazard response stayed at generic tool-slip/bolt language and missed the
-intended entanglement/unguarded-chuck risk, reinforcing that distinction.
+tokens. GenieX v0.3.17's documented CLI focuses on images, but its
+`llama_cpp` plugin can pass an `.mp4` to llama.cpp's ffmpeg-backed mtmd video
+helper. The stock path had two persistent-service cleanup defects: GenieX
+dropped the lazy bitmap's video-context owner, and mtmd skipped subprocess
+join/destroy after normal EOF. The four-patch overlay in
+[`integrations/geniex_native_video`](../integrations/geniex_native_video)
+repairs both defects, exposes video sampling controls, and forwards the
+server's already-declared grammar fields into the sampler.
+
+On the EVK, install `ffmpeg`/`ffprobe`, build GenieX with `MTMD_VIDEO=ON`, and
+start one long-lived service. This avoids repeated model loads and the
+measured one-shot CDSP teardown failure:
+
+```bash
+export GENIEX_DATADIR=/path/to/geniex-data
+export GENIEX_EXPERIMENT_MMPROJ_CPU=1
+export MTMD_VIDEO_FPS=4
+export MTMD_VIDEO_TIMESTAMP_INTERVAL_MS=0
+
+geniex --skip-update serve \
+  --host 127.0.0.1:18181 \
+  --keepalive 3600 \
+  --compute npu \
+  --nctx 4096 \
+  --ngl -1
+```
+
+Submit the MP4 as an OpenAI-compatible `image_url` content part. For a closed
+four-choice benchmark, add `"grammar_string": "root ::= [ABCD]"`. Keep
+`GenieX-KeepCache` unset for independent requests: the server resets the KV
+cache while retaining the loaded model and HTP backend.
+
+The patched service is stable in the bounded lifecycle test. Five stock video
+requests left ten zombie ffmpeg/ffprobe children and increased RSS by about
+31 MB. After both cleanup fixes, file descriptors remain exactly 26 before
+and after 20 requests, there are no live or zombie decoder children, and a
+further ten requests leave the thread count at 39 while RSS changes only from
+639,860 to 641,104 KiB.
+
+The native encoded-video quality result is:
+
+| Profile | Frozen result | Warm request time | Answers |
+|---|---:|---:|---|
+| Recorded BF16 GPU | 6/8 | Not comparable | `A C B D C B C A` |
+| Fast all-NPU GGUF | 5/8 | About 2.0 s | `C C B C C B C A` |
+| CPU vision context, NPU decoder | **7/8** | 6.8–7.3 s | `A C B A C B C A` |
+
+The expected sequence is `A C B A C B D A`. The constrained quality profile
+also scores 4/4 on the focused box-versus-near-miss A/B controls. Its
+remaining fire-onset miss is a valid `C` rather than `D`, so grammar cannot
+repair it. This result is stronger than the earlier ordered-still pilot, but
+not a tensor-equivalence claim: mtmd and Hugging Face still use different
+video preprocessing and chat wrappers. Full settings, timings, hashes, and
+the lifecycle evidence are recorded in
+[`iq9075_geniex_native_video_r9.json`](evidence/iq9075_geniex_native_video_r9.json).
 
 The physical-board result is:
 
@@ -1130,14 +1172,15 @@ The independent component placement, GELU fallback, full corrected panels,
 timings, and direct process proof are recorded in
 [`iq9075_geniex_vision_placement_r8.json`](evidence/iq9075_geniex_vision_placement_r8.json).
 
-For automation, avoid launching a new GenieX process indefinitely. In the r7
+For automation, do not launch a new GenieX process per request. In the r7
 matrix, one CPU and one NPU model creation needed a bounded retry. Subsequent
 model creations eventually failed at `GGML_ASSERT(device)` after
 `/dev/fastrpc-cdsp` and `/dev/fastrpc-cdsp-secure` disappeared despite ample
 host memory and no live inference process. Restarting `cdsprpcd` could not
-recreate the missing kernel device. Prefer a persistent loaded-model service
-when one is available, monitor the device nodes, and treat a board reboot or
-power cycle as the current recovery procedure.
+recreate the missing kernel device. The verified solution is one persistent
+`geniex serve` process: independent requests reset their KV state while the
+model and HTP backend remain loaded. Monitor the device nodes, and retain a
+board reboot or power cycle as recovery if they disappear.
 
 ## 5. Quantize a small W4A16 smoke checkpoint
 
@@ -1963,17 +2006,18 @@ validation creates no rollback action for that active path.
 
 ### Understand the supported input
 
-Neither legacy Genie nor the documented GenieX interface decodes an MP4. The
-CLI can attach one or more image paths. Its undocumented generic-media
-fallback can reach upstream llama.cpp's ffmpeg helper, but the current wrapper
-leaks the returned video context and is excluded from this reproducible path.
-Stock QAI Hub Models also rejects Qwen3-VL's
+Legacy Genie and stock QAI Hub Models do not decode an MP4. Stock QAI Hub
+Models also rejects Qwen3-VL's
 `pixel_values_videos` and `video_grid_thw` inputs, and GenieX v0.3.16's public
 Qwen3-VL QAIRT image frontend hardcodes a temporal grid of one. The
 repository's custom runner bypasses that image-path frontend and uses
 GenieX's lower-level `PixelData` API, but it still expects an already decoded
 and packed raw tensor. It is not an MP4 decoder or a native multi-clip video
-frontend.
+frontend. Separately, the patched GenieX v0.3.17 GGUF path in Step 4 accepts
+encoded MP4 through ffmpeg/mtmd and pairs adjacent frames. Use that service
+for practical encoded-video deployment; use the raw QAIRT path in this
+section when byte-identical Hugging Face pixels and explicit DeepStack tensors
+are the test requirement.
 
 Decode and sample video outside the runtime, then use the official local
 Hugging Face processor to pack consecutive frame pairs as Qwen3-VL temporal
@@ -2483,12 +2527,12 @@ steps are numerical and contextual:
    and motion cases, and retain strict free-form event scoring rather than
    accepting generic hazard words.
 
-Keep encoded-video decoding and native-Qwen3-VL frame/timestamp preparation
-outside GenieX unless a future CLI exposes a documented video input with
-matching semantics. Multiple image paths are useful for experiments but do
-not by themselves reproduce the native 2-FPS, per-temporal-pair timestamp
-contract. The custom lower-API runner bypasses the stock image frontend and
-supplies bounded multi-pair semantics; it is not an MP4 decoder,
+Keep native-Hugging-Face frame/timestamp preparation outside GenieX when
+tensor parity is required. The patched GGUF service can decode MP4, but mtmd
+does not reproduce the raw runner's native 2-FPS, per-temporal-pair timestamp
+contract. Multiple image paths are useful for experiments but do not create
+that contract either. The custom lower-API runner bypasses the stock image
+frontend and supplies bounded multi-pair semantics; it is not an MP4 decoder,
 camera-stream pipeline, or unbounded video frontend. See
 [`docs/video_npu.md`](video_npu.md)
 for the design boundary and runtime support matrix.
@@ -2528,7 +2572,7 @@ for the design boundary and runtime support matrix.
 | Ordered text context fails or exhausts memory on decode | The link did not share weights even though its graph order is correct | Require equal nonzero `sharedWeightsSize` for both graphs; reject the measured 711,176,192-byte no-sharing part 1 that fails its 490,733,568-byte FastRPC mapping |
 | `prepare_video_npu_inputs.py` rejects an odd frame count | Temporal patches require exactly two frames | Pass exactly `2N` ordered frames and `2N` increasing timestamps |
 | Video prompt exceeds 384 tokens despite fitting CL512 | AR128 prefill can safely transfer only `CL - AR = 384` tokens into AR1 decode | Reduce to three pairs or compile a longer-context text runtime; do not bypass the preparation/package/runner guards |
-| Direct MP4 through GenieX is undocumented or unstable | The generic-media fallback can reach mtmd video, but the wrapper drops the video-context owner and its sampling/timestamps differ from native Qwen3-VL | Decode and sample frames first; use ordered images for the GGUF pilot or `prepare_video_npu_inputs.py` plus the custom raw runner for native-pair parity |
+| Direct MP4 through stock GenieX leaks resources | The wrapper drops the video-context owner and mtmd skips subprocess cleanup after normal EOF | Apply all four patches under `integrations/geniex_native_video`, build with `MTMD_VIDEO=ON`, install ffmpeg/ffprobe, and use a persistent service; use the raw runner instead when native-HF tensor parity is required |
 | Full-DeepStack run exits 0 but prediction is wrong | Functional execution, DeepStack wiring, and exact inputs do not imply retained quantized accuracy | Compare every output with BF16 and score every precision candidate on the same frozen probes; the completed r5 boundary-FP16 leader is 13/20 versus GPU 16/20 |
 
 ## What to save for a reproducible result

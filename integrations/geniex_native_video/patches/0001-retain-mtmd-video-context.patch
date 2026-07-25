@@ -1,0 +1,25 @@
+diff --git a/sdk/plugins/llama_cpp/src/vlm.cpp b/sdk/plugins/llama_cpp/src/vlm.cpp
+--- a/sdk/plugins/llama_cpp/src/vlm.cpp
++++ b/sdk/plugins/llama_cpp/src/vlm.cpp
+@@ -204,0 +205 @@ int32_t LlamaVlm::generate(const geniex_VlmGenerateInput* input, geniex_VlmGener
++    std::vector<mtmd_helper::video_ptr> video_contexts;
+@@ -214,3 +215,4 @@ int32_t LlamaVlm::generate(const geniex_VlmGenerateInput* input, geniex_VlmGener
+-                    mtmd_bitmap* bmp =
+-                        mtmd_helper_bitmap_init_from_file(this->ctx_vision, input->config->image_paths[i], false)
+-                            .bitmap;
++                    auto media =
++                        mtmd_helper_bitmap_init_from_file(this->ctx_vision, input->config->image_paths[i], false);
++                    mtmd_helper::video_ptr video_context(media.video_ctx);
++                    mtmd_bitmap*           bmp = media.bitmap;
+@@ -218,0 +221 @@ int32_t LlamaVlm::generate(const geniex_VlmGenerateInput* input, geniex_VlmGener
++                        if (video_context) video_contexts.emplace_back(std::move(video_context));
+@@ -237,3 +240,4 @@ int32_t LlamaVlm::generate(const geniex_VlmGenerateInput* input, geniex_VlmGener
+-                    mtmd_bitmap* bmp =
+-                        mtmd_helper_bitmap_init_from_file(this->ctx_vision, input->config->audio_paths[i], false)
+-                            .bitmap;
++                    auto media =
++                        mtmd_helper_bitmap_init_from_file(this->ctx_vision, input->config->audio_paths[i], false);
++                    mtmd_helper::video_ptr video_context(media.video_ctx);
++                    mtmd_bitmap*           bmp = media.bitmap;
+@@ -241,0 +246 @@ int32_t LlamaVlm::generate(const geniex_VlmGenerateInput* input, geniex_VlmGener
++                        if (video_context) video_contexts.emplace_back(std::move(video_context));

@@ -1,0 +1,18 @@
+diff --git a/third-party/llama.cpp/tools/mtmd/mtmd-helper.cpp b/third-party/llama.cpp/tools/mtmd/mtmd-helper.cpp
+--- a/third-party/llama.cpp/tools/mtmd/mtmd-helper.cpp
++++ b/third-party/llama.cpp/tools/mtmd/mtmd-helper.cpp
+@@ -663 +663 @@ struct mtmd_helper_video {
+-            if (alive) {
++            if (alive && proc.alive) {
+@@ -671,3 +671,5 @@ struct mtmd_helper_video {
+-            if (alive) {
+-                subprocess_destroy(&proc);
+-                alive = false;
++            // read_next_frame() clears the wrapper's `alive` flag at EOF, but
++            // sheredom still owns the child PID and pipes until join/destroy.
++            // Always reap a created child, including one that exited normally.
++            if (proc.alive) {
++                subprocess_join(&proc, nullptr);
+@@ -674,0 +677,2 @@ struct mtmd_helper_video {
++            subprocess_destroy(&proc);
++            alive = false;

@@ -1,0 +1,6 @@
+diff --git a/cli/server/handler/chat.go b/cli/server/handler/chat.go
+--- a/cli/server/handler/chat.go
++++ b/cli/server/handler/chat.go
+@@ -564,0 +565,2 @@ func parseSamplerConfig(param ChatCompletionRequest) *geniex_sdk.SamplerConfig {
++		GrammarPath:       param.GrammarPath,
++		GrammarString:     param.GrammarString,

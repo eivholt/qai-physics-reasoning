@@ -1,0 +1,27 @@
+diff --git a/third-party/llama.cpp/tools/mtmd/mtmd-helper.cpp b/third-party/llama.cpp/tools/mtmd/mtmd-helper.cpp
+--- a/third-party/llama.cpp/tools/mtmd/mtmd-helper.cpp
++++ b/third-party/llama.cpp/tools/mtmd/mtmd-helper.cpp
+@@ -15,0 +16 @@
++#include <cstdlib>
+@@ -945 +946 @@ mtmd_helper_video_init_params mtmd_helper_video_init_params_default() {
+-    return {
++    mtmd_helper_video_init_params params = {
+@@ -949,0 +951,18 @@ mtmd_helper_video_init_params mtmd_helper_video_init_params_default() {
++
++    if (const char * value = std::getenv("MTMD_VIDEO_FPS")) {
++        float parsed = 0.0f;
++        char  trailing = '\0';
++        if (sscanf(value, "%f%c", &parsed, &trailing) == 1 && parsed > 0.0f) {
++            params.fps_target = parsed;
++        }
++    }
++
++    if (const char * value = std::getenv("MTMD_VIDEO_TIMESTAMP_INTERVAL_MS")) {
++        long long parsed = -1;
++        char      trailing = '\0';
++        if (sscanf(value, "%lld%c", &parsed, &trailing) == 1 && parsed >= 0) {
++            params.timestamp_interval_ms = parsed;
++        }
++    }
++
++    return params;

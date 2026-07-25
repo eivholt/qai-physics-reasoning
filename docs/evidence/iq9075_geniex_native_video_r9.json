@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "report_id": "iq9075-geniex-native-video-r9",
+  "created_date": "2026-07-25",
+  "extends": "iq9075-geniex-vision-placement-r8",
+  "model": {
+    "repository": "nvidia/Cosmos-Reason2-2B",
+    "main_precision": "standard Q4_0 with Q6_K vocabulary projection",
+    "multimodal_projector_precision": "F16",
+    "runtime": "patched GenieX v0.3.17 llama_cpp",
+    "target": "Dragonwing IQ-9075 EVK, Hexagon v73"
+  },
+  "native_encoded_video": {
+    "container": "H.264 MP4",
+    "clip_duration_seconds": 1.5,
+    "frames_per_clip": 6,
+    "sampling_fps": 4,
+    "timestamp_interval_ms": 0,
+    "input_api": "OpenAI-compatible image_url content part",
+    "temporal_behavior": "mtmd decodes the container and Qwen3-VL merges successive frames in pairs",
+    "required_target_packages": [
+      "ffmpeg",
+      "ffprobe"
+    ]
+  },
+  "patches": {
+    "retain_mtmd_video_context": "Keep the mtmd_helper_video owner alive until lazy video expansion and release it with RAII.",
+    "configure_video_sampling": "Expose MTMD_VIDEO_FPS and MTMD_VIDEO_TIMESTAMP_INTERVAL_MS without changing upstream defaults.",
+    "reap_video_subprocesses": "Join and destroy ffmpeg/ffprobe children after normal EOF even when the wrapper-level alive flag is clear.",
+    "wire_server_grammar": "Forward the already-declared grammar_path and grammar_string request fields into SamplerConfig."
+  },
+  "deployed_artifacts": {
+    "llama_cpp_libgeniex_plugin_sha256": "2170109556627e5fcb178b55b89d3798be8eba60c436ca27afd9fd48b7642acf",
+    "llama_cpp_libmtmd_sha256": "8c439c8a1f7a78097e5c4a152767606d4d196626a2468f63cdd0f07df016539a",
+    "grammar_capable_cli_sha256": "09ce3fa5e36c77b684de7de50bf2119f448e45e702d3179e9ef5a639e6747cf9"
+  },
+  "persistent_service": {
+    "endpoint": "/v1/chat/completions",
+    "bind_address": "loopback only",
+    "context_tokens": 4096,
+    "keepalive_seconds": 3600,
+    "independent_request_behavior": "KV cache reset between requests; model and HTP backend remain loaded",
+    "fast_static_probe": {
+      "warmup_seconds": 2.62,
+      "warm_request_seconds_range": [
+        0.86,
+        0.9
+      ],
+      "answer": "B",
+      "correct": true
+    },
+    "npu_proof": [
+      "libggml-hexagon.so mapped",
+      "libcdsprpc mapped",
+      "/dev/fastrpc-cdsp-secure held"
+    ]
+  },
+  "lifecycle_regression": {
+    "before_patches": {
+      "video_requests": 5,
+      "resident_memory_growth_megabytes_approx": 31,
+      "additional_threads": 10,
+      "additional_file_descriptors": 10,
+      "zombie_ffmpeg_or_ffprobe_children": 10
+    },
+    "after_patches": {
+      "video_requests_initial": 20,
+      "file_descriptors_before": 26,
+      "file_descriptors_after": 26,
+      "live_or_zombie_ffmpeg_or_ffprobe_children": 0,
+      "plateau_check_additional_requests": 10,
+      "threads_before_plateau_check": 39,
+      "threads_after_plateau_check": 39,
+      "rss_kib_before_plateau_check": 639860,
+      "rss_kib_after_plateau_check": 641104
+    }
+  },
+  "frozen_encoded_video_panel": {
+    "answer_order": [
+      "barrier_knockdown_primary",
+      "barrier_knockdown_shuffled",
+      "routine_box_pickup_primary",
+      "routine_box_pickup_shuffled",
+      "near_miss_avoidance_primary",
+      "near_miss_avoidance_shuffled",
+      "fire_evacuation_primary",
+      "fire_evacuation_shuffled"
+    ],
+    "expected_answers": [
+      "A",
+      "C",
+      "B",
+      "A",
+      "C",
+      "B",
+      "D",
+      "A"
+    ],
+    "sampler": {
+      "top_k": 1,
+      "temperature": 0,
+      "seed": 42,
+      "grammar_string": "root ::= [ABCD]"
+    },
+    "recorded_bf16_gpu": {
+      "answers": [
+        "A",
+        "C",
+        "B",
+        "D",
+        "C",
+        "B",
+        "C",
+        "A"
+      ],
+      "correct": 6,
+      "total": 8
+    },
+    "quality_first_cpu_vision_npu_decoder": {
+      "answers": [
+        "A",
+        "C",
+        "B",
+        "A",
+        "C",
+        "B",
+        "C",
+        "A"
+      ],
+      "correct": 7,
+      "total": 8,
+      "elapsed_seconds": [
+        6.816,
+        6.978,
+        7.295,
+        6.995,
+        6.966,
+        7.126,
+        7.126,
+        6.963
+      ],
+      "remaining_error": "Fire evacuation primary returns C instead of D."
+    },
+    "fast_all_npu": {
+      "answers": [
+        "C",
+        "C",
+        "B",
+        "C",
+        "C",
+        "B",
+        "C",
+        "A"
+      ],
+      "correct": 5,
+      "total": 8,
+      "elapsed_seconds": [
+        4.625,
+        1.973,
+        1.994,
+        1.967,
+        1.965,
+        1.996,
+        1.985,
+        1.98
+      ],
+      "first_request_includes_model_warmup": true
+    }
+  },
+  "focused_box_near_control": {
+    "answer_order": [
+      "box_ab",
+      "box_ba",
+      "near_ab",
+      "near_ba"
+    ],
+    "expected_answers": [
+      "A",
+      "B",
+      "B",
+      "A"
+    ],
+    "quality_first_constrained_answers": [
+      "A",
+      "B",
+      "B",
+      "A"
+    ],
+    "quality_first_correct": 4,
+    "total": 4,
+    "grammar_string": "root ::= [AB]"
+  },
+  "interpretation": {
+    "positive": "A persistent patched GenieX service now accepts encoded MP4, uses temporal frame pairing, keeps the language decoder on the IQ-9075 NPU, and reaches 7/8 on the bounded frozen panel with closed-set decoding.",
+    "precision_caveat": "The quality result requires CPU placement for the vision encoder/projector. The fast all-NPU placement loses two additional cases. The BF16 and GGUF paths use different video preprocessing, chat wrappers, and numerical precision.",
+    "optimization_stop_condition": "The remaining fire error is a valid in-grammar semantic prediction. More grammar or lifecycle work cannot fix it; further quality work should require a new quantization, broader calibration data, or a materially larger benchmark."
+  },
+  "verdict": "Native encoded-video inference is now practically usable as a bounded experimental service. The recommended quality profile is CPU vision plus NPU decoder with closed-set grammar: 7/8 on the frozen four-scene/two-order panel and 4/4 on the focused box/near control. The faster all-NPU profile is 5/8. This is strong project evidence, not broad accuracy, safety qualification, tensor equivalence, or vendor certification."
+}

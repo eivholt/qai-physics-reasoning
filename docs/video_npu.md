@@ -2,12 +2,12 @@
 
 ## What works today
 
-The project now executes one or more pre-extracted temporal frame pairs
-through a GenieX runner with the full three-level DeepStack interface on the
-IQ-9075 NPU. The earlier legacy Genie compatibility path remains as historical
-one-pair evidence. Neither path accepts an MP4, WebM, camera stream, or other
-encoded video container directly; decoding and frame selection remain
-host-side preprocessing.
+The project now has two temporal NPU routes. The QAIRT route executes
+pre-extracted frame pairs through a GenieX runner with the full three-level
+DeepStack interface. A patched GenieX v0.3.17 GGUF service also accepts H.264
+MP4 through ffmpeg/mtmd, pairs adjacent frames, and retains its model and HTP
+backend between requests. The earlier legacy Genie compatibility path remains
+as historical one-pair evidence.
 
 [`scripts/prepare_video_npu_inputs.py`](../scripts/prepare_video_npu_inputs.py)
 uses the local NVIDIA Hugging Face processor to pack exactly `2N` ordered
@@ -53,7 +53,8 @@ text partition.
 | Legacy Genie compatibility pipeline | No | One pair historically tested | No |
 | Stock QAI Hub Models generator | No; rejects `pixel_values_videos` and `video_grid_thw` | No stock path | N/A |
 | Stock GenieX v0.3.16 Qwen3-VL CLI | No; image paths only | No raw-video CLI path | Supported for images |
-| Official GenieX v0.3.17 GGUF pilot | No supported encoded-video path; six ordered stills tested | No native temporal-patch CLI path | Supported internally by llama.cpp |
+| Stock GenieX v0.3.17 GGUF | Undocumented ffmpeg/mtmd path leaks owners and decoder children | Adjacent-frame pairing inside mtmd | Supported internally by llama.cpp |
+| Project-patched GenieX v0.3.17 GGUF | Yes; H.264 MP4 verified in a persistent service | Adjacent-frame pairing inside mtmd | Supported internally by llama.cpp |
 | Project GenieX raw runner | No; pre-extracted raw tensors only | Yes; one and three pairs tested | Yes |
 
 The QAIRT 2.45 legacy compatibility graph omits DeepStack vision injections
@@ -118,6 +119,40 @@ simulator annotations when frame-accurate collision timing is required.
 
 ### Physical EVK results
 
+#### Patched persistent encoded-video service
+
+The repository's four-patch
+[`geniex_native_video`](../integrations/geniex_native_video/README.md) overlay
+retains the lazy video's owner, reaps ffmpeg/ffprobe after normal EOF, exposes
+the 4 FPS/no-generic-timestamp profile, and forwards `grammar_string` into
+the sampler. The OpenAI-compatible `/v1/chat/completions` service resets the
+KV cache for independent requests while retaining the loaded model and NPU
+backend.
+
+The lifecycle fix is measured, not inferred. Five requests through the stock
+path left ten zombie decoder children, ten extra file descriptors/threads, and
+about 31 MB of RSS growth. After both cleanup fixes, 20 requests leave file
+descriptors at 26→26 and no live or zombie decoder children. Ten more requests
+leave threads at 39 and RSS effectively plateaued.
+
+Closed-set grammar (`root ::= [ABCD]`) materially improves the bounded
+warehouse comparison:
+
+| Encoded-video profile | Score | Answers | Warm latency |
+|---|---:|---|---:|
+| Recorded BF16 GPU | 6/8 | `A C B D C B C A` | Not comparable |
+| Fast all-NPU GGUF | 5/8 | `C C B C C B C A` | About 2.0 s |
+| CPU vision context, NPU decoder | **7/8** | `A C B A C B C A` | 6.8–7.3 s |
+
+The expected answers are `A C B A C B D A`. The quality profile also passes
+all four box-versus-near-miss A/B controls. Grammar fixes the former invalid
+out-of-set response, but the remaining fire-onset error is already a valid
+`C`, so it cannot be corrected by stricter decoding. The recorded BF16 and
+GGUF paths use different video processors and wrappers; 7/8 versus 6/8 is a
+small benchmark result, not a claim that quantization improves the model.
+See
+[`iq9075_geniex_native_video_r9.json`](evidence/iq9075_geniex_native_video_r9.json).
+
 #### Official GenieX v0.3.17 GGUF result
 
 The official `llama_cpp` plugin now supplies an independent NPU route for the
@@ -174,7 +209,7 @@ Repeated one-shot CLI creation is another measured limit. The r7 matrix
 completed, but one CPU and one NPU creation needed a bounded retry; later
 creates failed at `GGML_ASSERT(device)` after the CDSP FastRPC device nodes
 disappeared. Memory remained available and no inference process was alive.
-Prefer a persistent model process, monitor `/dev/fastrpc-cdsp-secure`, and
+Use the persistent service above, monitor `/dev/fastrpc-cdsp-secure`, and
 expect a board reboot or power cycle for recovery on this software image.
 
 #### Historical r3 exact-input one-pair comparison
