@@ -130,11 +130,15 @@ prompt. One-image vehicle recognition is also identical (`forklift`) at
 
 This path consumes ordered independent images, not native Qwen3-VL temporal
 pairs. With the exact r4 four-scene wording it scores 5/8 versus recorded BF16
-GPU 7/8, with 6/8 answer parity. A shorter fixed deployment wording reaches
-7/8, while declared ROI/final-pair preprocessing reaches 4/4 on four targeted
+GPU 7/8. The exact same-GGUF isolation scores CPU 6/8 and NPU 5/8 with 7/8
+CPU/NPU answer parity, attributing one additional shuffled-box error to NPU
+execution. A shorter fixed deployment user prompt reaches NPU 7/8; BF16 GPU
+rerun with the same user prompt also scores 7/8 and matches all eight NPU
+answers. Declared ROI/final-pair preprocessing reaches 4/4 on four targeted
 tasks. These improvements are useful deployment evidence but do not replace
 the native-pair parity benchmark. See
-[`iq9075_geniex_gguf_r6.json`](evidence/iq9075_geniex_gguf_r6.json).
+[`iq9075_geniex_gguf_r6.json`](evidence/iq9075_geniex_gguf_r6.json) and
+[`iq9075_geniex_cpu_npu_parity_r7.json`](evidence/iq9075_geniex_cpu_npu_parity_r7.json).
 
 The measured safe boundary is also narrower than the nominal CLI flags:
 `nctx=8192` aborts during vision-model allocation, and a single 1344 × 768
@@ -142,6 +146,13 @@ image aborts both NPU-only and hybrid with `dspqueue_read 0x2e`.
 `--image-max-length` did not prevent that large-grid path. Keep this pilot at
 `nctx=4096` and 384 × 216 per image, using fixed ROI crops when a small actor
 needs more detail.
+
+Repeated one-shot CLI creation is another measured limit. The r7 matrix
+completed, but one CPU and one NPU creation needed a bounded retry; later
+creates failed at `GGML_ASSERT(device)` after the CDSP FastRPC device nodes
+disappeared. Memory remained available and no inference process was alive.
+Prefer a persistent model process, monitor `/dev/fastrpc-cdsp-secure`, and
+expect a board reboot or power cycle for recovery on this software image.
 
 #### Historical r3 exact-input one-pair comparison
 

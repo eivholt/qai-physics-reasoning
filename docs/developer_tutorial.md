@@ -102,10 +102,11 @@ Status below is current as of 2026-07-25.
 | GenieX v0.3.17 `llama_cpp` Q4_0 on IQ-9075 | Verified end to end on CPU, NPU-only, and hybrid; the successful NPU process maps `libggml-hexagon.so` and `libcdsprpc.so` and holds `/dev/fastrpc-cdsp-secure` |
 | GenieX single-image CPU/NPU control | Both answer `forklift`; NPU TTFT is 0.657 s versus CPU 2.458 s |
 | GenieX grounded six-frame barrier control | CPU, NPU-only, hybrid, and pure-Q4_0 all correctly state that the forklift knocked the striped marker flat; standard NPU TTFT is 1.754 s versus CPU 7.339 s |
-| GenieX exact-wording four-scene panel | Standard Q4_0 NPU scores 5/8 versus recorded BF16 GPU 7/8, with 6/8 exact answer parity; ordered stills are not the GPU runner's native paired-video tensors |
-| GenieX shorter deployment prompt | Standard Q4_0 NPU scores 7/8 and returns the same answer pattern as the recorded GPU panel, but the GPU was not rerun with the shorter wording |
+| GenieX exact-wording four-scene panel | Standard Q4_0 CPU scores 6/8 and NPU 5/8 with 7/8 CPU/NPU answer parity; recorded BF16 GPU scores 7/8, while ordered GenieX stills are not the GPU runner's native paired-video tensors |
+| GenieX shorter deployment prompt | BF16 GPU and standard Q4_0 NPU both score 7/8 and match all eight answers with the same user prompt and option order; chat templates, numerical precision, and visual preprocessing still differ |
 | GenieX task-specific edge profile | 4/4 across marker knockdown, safe box pickup, near-miss avoidance, and worker motion using fixed prompts plus declared ROI/final-pair preprocessing for the two small-actor scenes |
 | GenieX large-image/context limits | `nctx=8192` aborts during vision-model allocation; one 1344 × 768 image aborts NPU and hybrid vision encoding with `dspqueue_read 0x2e`; `image-max-length` did not downscale it |
+| GenieX repeated-process lifecycle | The exact CPU/NPU matrix completes with two successful bounded retries, but later model creations lose the CDSP FastRPC device node and fail at `GGML_ASSERT(device)` until a board reboot or power cycle |
 | Official gated Cosmos checkpoint download and architecture validation | Verified; all 15 files are present |
 | Cosmos text and vision quantization | Verified for CL512; r5 compares the native-aspect 224 × 384 W8/A16 baseline with three compiled mixed-precision vision layouts, all derived from the older paired/explicit-resize calibration checkpoint |
 | QAIRT 2.45 compatibility checkpoint | Verified; ONNX checker passes, split points are unchanged, and the four unsupported auxiliary text inputs are removed |
@@ -190,16 +191,19 @@ substitute for end-task scoring. See the
 [`r5 precision report`](evidence/iq9075_video_precision_parity_r5.json).
 
 The independent GenieX GGUF route is now a real second baseline rather than a
-paper design. With the exact tracked four-scene wording, its ordered-still NPU
-panel scores 5/8 versus the recorded BF16 GPU's 7/8 and reproduces 6/8 GPU
-letters. Changing only the instruction prefix to identify a chronological
-frame sequence and requesting one letter raises the NPU result to 7/8. That
-answer sequence matches the recorded GPU sequence, but the GPU was not rerun
-with the shorter prompt, so this is not an exact same-prompt parity claim. A
-declared task-specific profile reaches 4/4 by using fixed ROI preprocessing
-for the small worker/box cases and only the decisive first/final pair for
-near-miss motion. See the
-[`r6 GenieX GGUF report`](evidence/iq9075_geniex_gguf_r6.json).
+paper design. With the exact tracked four-scene wording, same-GGUF GenieX CPU
+scores 6/8 and NPU 5/8, matching 7/8 answers. One of the two BF16-GPU/NPU
+differences therefore exists before NPU offload; NPU adds one observed
+shuffled-box error. Changing the instruction prefix to identify a
+chronological frame sequence and requesting one letter raises the NPU result
+to 7/8. BF16 GPU was rerun with that same user prompt and also scores 7/8,
+matching all eight NPU answers. Visual preprocessing, chat wrappers, and
+precision still differ, so this is end-answer parity rather than tensor-level
+equivalence. A declared task-specific profile reaches 4/4 by using fixed ROI
+preprocessing for the small worker/box cases and only the decisive first/final
+pair for near-miss motion. See the
+[`r6 GenieX GGUF report`](evidence/iq9075_geniex_gguf_r6.json) and
+[`r7 isolation report`](evidence/iq9075_geniex_cpu_npu_parity_r7.json).
 
 No earlier independent public result was found for the exact
 `nvidia/Cosmos-Reason2-2B` checkpoint on IQ-9075. NVIDIA's published hardware
@@ -922,21 +926,42 @@ Give only the letter: ...
 ```
 
 raises the NPU panel to 7/8 with answers `A/C`, `B/D`, `C/B`, and `C/A`;
-this happens to equal the recorded GPU answer sequence. Because the GPU
-reference used the longer benchmark wording, report this as a prompt-profile
-improvement, not exact same-prompt parity. For free-form edge tasks, a fixed
-256 × 144 ROI at `(64, 72)` resized back to 384 × 216 makes the box action
-explicit (`safe box pickup`), and the decisive first/final ROI pair makes the
-near-miss motion explicit (`The worker is running away from the forklift.`).
-The full task-specific profile passes 4/4, but it is intentionally narrower
-than a broad zero-shot benchmark.
+BF16 GPU rerun with the same user prompt also scores 7/8 with the identical
+eight answers. The GPU retains native three-pair video preprocessing while
+GenieX receives six ordered stills, and the full chat wrappers and precision
+differ, so report this as exact end-answer parity for the declared profile,
+not numerical equivalence. For free-form edge tasks, a fixed 256 × 144 ROI at
+`(64, 72)` resized back to 384 × 216 makes the box action explicit
+(`safe box pickup`), and the decisive first/final ROI pair makes the near-miss
+motion explicit (`The worker is running away from the forklift.`). The full
+task-specific profile passes 4/4, but it is intentionally narrower than a
+broad zero-shot benchmark.
+
+The same-GGUF long-prompt isolation scores CPU 6/8 and NPU 5/8 with 7/8
+answer parity. CPU and NPU disagree only on shuffled box pickup: CPU returns
+the correct `D`, while NPU returns `C`. Mean TTFT from the rounded CLI output
+is 7.688 seconds on CPU and 1.800 seconds on NPU, a 4.27× reduction. This
+shows that NPU execution contributes one additional observed error, while the
+barrier-normal difference from BF16 GPU is already present on GenieX CPU.
 
 Use the standard Q4_0 main as the quality default. The pure-Q4_0 output head
 improves barrier decode speed from 20.9 to 26.3 tokens/s and total time from
 3.19 to 2.85 seconds, but it loses box detail on the full-frame free-form
 probe. Full commands, artifact hashes, all eight choice results, the 4/4 edge
 profile, and failure boundaries are recorded in
-[`iq9075_geniex_gguf_r6.json`](evidence/iq9075_geniex_gguf_r6.json).
+[`iq9075_geniex_gguf_r6.json`](evidence/iq9075_geniex_gguf_r6.json). The
+controlled CPU/NPU matrix, same-user-prompt BF16 GPU rerun, and lifecycle
+failure are recorded in
+[`iq9075_geniex_cpu_npu_parity_r7.json`](evidence/iq9075_geniex_cpu_npu_parity_r7.json).
+
+For automation, avoid launching a new GenieX process indefinitely. In the r7
+matrix, one CPU and one NPU model creation needed a bounded retry. Subsequent
+model creations eventually failed at `GGML_ASSERT(device)` after
+`/dev/fastrpc-cdsp` and `/dev/fastrpc-cdsp-secure` disappeared despite ample
+host memory and no live inference process. Restarting `cdsprpcd` could not
+recreate the missing kernel device. Prefer a persistent loaded-model service
+when one is available, monitor the device nodes, and treat a board reboot or
+power cycle as the current recovery procedure.
 
 ## 5. Quantize a small W4A16 smoke checkpoint
 

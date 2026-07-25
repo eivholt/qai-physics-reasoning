@@ -74,6 +74,13 @@ The result is narrower than vendor certification:
   answer parity. A shorter declared deployment prompt reaches NPU 7/8; a
   task-specific ROI/final-pair profile reaches 4/4. The latter two are
   explicitly not broad same-prompt GPU-parity claims.
+- The r7 report isolates the official GenieX route further. With identical
+  standard-Q4_0 model files, frames, long prompts, and deterministic sampler,
+  CPU scores 6/8 and NPU 5/8 with 7/8 answer parity. NPU adds one shuffled-box
+  error; the other BF16-GPU/NPU difference is already present on GenieX CPU.
+  BF16 GPU rerun with the shorter deployment user prompt scores 7/8 and
+  matches all eight NPU answers. The report also records loss of the CDSP
+  FastRPC device node after repeated one-shot model creation.
 - Hosted P1 chunk-0 screens compare five candidates with BF16 vision and three
   candidates with the production boundary-FP16 NPU vision output. W8 layers
   0–6 ranks first in both completed screens, but these hidden-state and
@@ -102,7 +109,7 @@ evidence for the Cosmos-Reason2-2B checkpoint. We found no earlier independent
 public IQ-9075 result for the exact Cosmos model, so the report here should be
 described as project evidence for a new experimental port.
 
-The seven tracked summaries are:
+The eight tracked summaries are:
 
 - [`iq9075_npu_smoke_r1.json`](iq9075_npu_smoke_r1.json), the historical text
   and single-image bundle evidence;
@@ -127,7 +134,11 @@ The seven tracked summaries are:
 - [`iq9075_geniex_gguf_r6.json`](iq9075_geniex_gguf_r6.json), the official
   GenieX v0.3.17 Q4_0/F16 deployment, direct live-process Hexagon evidence,
   CPU/NPU timing controls, exact and shortened four-scene panels, targeted
-  edge profile, and measured image/context failure boundaries.
+  edge profile, and measured image/context failure boundaries; and
+- [`iq9075_geniex_cpu_npu_parity_r7.json`](iq9075_geniex_cpu_npu_parity_r7.json),
+  the same-GGUF CPU/NPU isolation panel, same-user-prompt BF16 GPU rerun,
+  answer-level attribution of the remaining gap, and repeated-process
+  FastRPC lifecycle observation.
 
 ## Reproduce the report
 

@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "report_id": "iq9075_geniex_cpu_npu_parity_r7",
+  "created_date": "2026-07-25",
+  "extends": {
+    "report_id": "iq9075_geniex_gguf_r6",
+    "relationship": "Adds an exact same-GGUF CPU/NPU isolation panel and reruns BF16 GPU with the shorter GenieX deployment user prompt."
+  },
+  "model": {
+    "checkpoint": "nvidia/Cosmos-Reason2-2B",
+    "geniex_bundle": "standard Q4_0 main with Q6_K output head plus F16 multimodal projector",
+    "geniex_version": "v0.3.17",
+    "qairt_runtime_version": "2.45.0.260326",
+    "device": "physical Dragonwing IQ-9075 EVK"
+  },
+  "exact_wording_cpu_npu_isolation": {
+    "purpose": "Separate NPU execution effects from the GGUF quantization and ordered-still input path.",
+    "controlled_variables": [
+      "same GenieX v0.3.17 runtime",
+      "same standard Q4_0/F16 model files",
+      "same six ordered natural-resolution PNG frames per scene",
+      "same long four-choice user prompts",
+      "same nctx=4096",
+      "same max_tokens=64",
+      "same top_k=1 and seed=42",
+      "thinking disabled"
+    ],
+    "only_intended_variable": "compute=cpu versus compute=npu",
+    "raw_result_sha256": "7b466682c42376b746b17ebfa18c0b0ca2b7e6699dba53d30e8f6e76210f25b7",
+    "answer_order": [
+      "barrier_knockdown_normal",
+      "barrier_knockdown_shuffled",
+      "routine_box_pickup_normal",
+      "routine_box_pickup_shuffled",
+      "near_miss_avoidance_normal",
+      "near_miss_avoidance_shuffled",
+      "worker_motion_normal",
+      "worker_motion_shuffled"
+    ],
+    "expected_answers": [
+      "A",
+      "C",
+      "B",
+      "D",
+      "C",
+      "B",
+      "D",
+      "A"
+    ],
+    "recorded_bf16_gpu_answers": [
+      "A",
+      "C",
+      "B",
+      "D",
+      "C",
+      "B",
+      "C",
+      "A"
+    ],
+    "geniex_cpu_answers": [
+      "C",
+      "C",
+      "B",
+      "D",
+      "C",
+      "B",
+      "C",
+      "A"
+    ],
+    "geniex_npu_answers": [
+      "C",
+      "C",
+      "B",
+      "C",
+      "C",
+      "B",
+      "C",
+      "A"
+    ],
+    "scores": {
+      "recorded_bf16_gpu": {
+        "passed": 7,
+        "total": 8
+      },
+      "geniex_cpu": {
+        "passed": 6,
+        "total": 8
+      },
+      "geniex_npu": {
+        "passed": 5,
+        "total": 8
+      }
+    },
+    "answer_parity": {
+      "gpu_cpu": {
+        "matched": 7,
+        "total": 8
+      },
+      "cpu_npu": {
+        "matched": 7,
+        "total": 8
+      },
+      "gpu_npu": {
+        "matched": 6,
+        "total": 8
+      }
+    },
+    "mean_ttft_seconds_from_rounded_cli_output": {
+      "cpu": 7.6875,
+      "npu": 1.8,
+      "npu_speedup": 4.2708
+    },
+    "interpretation": "One of the two long-prompt GPU/NPU differences already exists on GenieX CPU: barrier normal is C on CPU and NPU but A on BF16 GPU. This points to GGUF quantization, llama.cpp behavior, or ordered-still preprocessing rather than NPU arithmetic. The only CPU/NPU answer difference is shuffled box pickup: CPU returns the correct D while NPU returns C. NPU execution therefore contributes one additional error in this small panel, but it is not the main source of the observed GPU gap."
+  },
+  "same_user_prompt_gpu_npu_deployment_control": {
+    "user_prompt_change": "Replace the long instruction prefix with 'Which event is shown in this chronological frame sequence? Give only the letter:' while preserving options, option order, scene frames, and greedy decoding.",
+    "bf16_gpu": {
+      "precision": "BF16",
+      "preprocessing": "native Hugging Face three temporal pairs with video_grid_thw, timestamps, video-pad tokens, and temporal MRoPE",
+      "run_id": "gpu-geniex-deployment-r7",
+      "summary_sha256": "db8ea37c2b5e215442686462bc91226344de9ce59b2b022658a35cbafbe2e0a5",
+      "temporary_benchmark_sha256": "52adfb458aee669f931d67dbcd0021f7e461ebc92c5534c3faa3b88f276457d7",
+      "prompt_tokens": {
+        "barrier_cases": 358,
+        "other_cases": 355
+      },
+      "answers": [
+        "A",
+        "C",
+        "B",
+        "D",
+        "C",
+        "B",
+        "C",
+        "A"
+      ],
+      "passed": 7,
+      "total": 8
+    },
+    "geniex_npu": {
+      "precision": "Q4_0 main with Q6_K output head and F16 projector",
+      "preprocessing": "six ordered independent natural-resolution still images",
+      "answers": [
+        "A",
+        "C",
+        "B",
+        "D",
+        "C",
+        "B",
+        "C",
+        "A"
+      ],
+      "passed": 7,
+      "total": 8
+    },
+    "answer_parity": {
+      "matched": 8,
+      "total": 8
+    },
+    "caveat": "The user prompt text and option order now match, but the GPU and GenieX paths still use different chat templates, tokenization wrappers, visual preprocessing, temporal representation, and numerical precision. This is exact end-answer parity for this eight-probe profile, not tensor-level or broad behavioral equivalence."
+  },
+  "runtime_lifecycle_observation": {
+    "successful_matrix_completed": true,
+    "events": [
+      "The eighth initial CPU model creation aborted at GGML_ASSERT(device); a later retry succeeded.",
+      "The worker-motion normal NPU model creation aborted once and succeeded on retry.",
+      "After the completed matrix, repeated follow-up model creations failed at GGML_ASSERT(device) with about 33 GiB host memory still available and no inference process alive.",
+      "The /dev/fastrpc-cdsp and /dev/fastrpc-cdsp-secure device nodes were no longer present, while the CDSP1 nodes remained.",
+      "Restarting cdsprpcd could not recreate the missing device because its systemd device-node condition was no longer satisfied."
+    ],
+    "operational_conclusion": "GenieX v0.3.17 repeated one-shot process creation is not robust enough for a long-running evaluation harness on this image. Use a persistent model process when available, add bounded retries, monitor the CDSP device nodes, and expect a board reboot or power cycle if the FastRPC CDSP node disappears."
+  },
+  "verdict": "Most of the long-prompt BF16-GPU versus GenieX-NPU gap is attributable to the changed GGUF/llama.cpp/ordered-still path rather than NPU execution alone. NPU adds one observed answer error relative to same-GGUF CPU on the eight-probe long-prompt panel. With the shorter fixed deployment user prompt, BF16 GPU and GenieX NPU both score 7/8 and match all eight answers, substantially strengthening the controlled-use case while leaving preprocessing differences and runtime lifecycle robustness as open deployment concerns."
+}
