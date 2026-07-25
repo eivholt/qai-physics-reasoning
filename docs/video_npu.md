@@ -53,6 +53,7 @@ text partition.
 | Legacy Genie compatibility pipeline | No | One pair historically tested | No |
 | Stock QAI Hub Models generator | No; rejects `pixel_values_videos` and `video_grid_thw` | No stock path | N/A |
 | Stock GenieX v0.3.16 Qwen3-VL CLI | No; image paths only | No raw-video CLI path | Supported for images |
+| Official GenieX v0.3.17 GGUF pilot | No supported encoded-video path; six ordered stills tested | No native temporal-patch CLI path | Supported internally by llama.cpp |
 | Project GenieX raw runner | No; pre-extracted raw tensors only | Yes; one and three pairs tested | Yes |
 
 The QAIRT 2.45 legacy compatibility graph omits DeepStack vision injections
@@ -116,6 +117,31 @@ Their frame times are documented estimates; use full dataset shards and
 simulator annotations when frame-accurate collision timing is required.
 
 ### Physical EVK results
+
+#### Official GenieX v0.3.17 GGUF result
+
+The official `llama_cpp` plugin now supplies an independent NPU route for the
+exact model. A successful process maps `libggml-hexagon.so` and
+`libcdsprpc.so`, holds `/dev/fastrpc-cdsp-secure`, and produces the same
+grounded barrier answer as CPU: the blue forklift knocks the striped marker
+flat. NPU TTFT is 1.754 seconds versus CPU 7.339 seconds for that six-image
+prompt. One-image vehicle recognition is also identical (`forklift`) at
+0.657-second NPU versus 2.458-second CPU TTFT.
+
+This path consumes ordered independent images, not native Qwen3-VL temporal
+pairs. With the exact r4 four-scene wording it scores 5/8 versus recorded BF16
+GPU 7/8, with 6/8 answer parity. A shorter fixed deployment wording reaches
+7/8, while declared ROI/final-pair preprocessing reaches 4/4 on four targeted
+tasks. These improvements are useful deployment evidence but do not replace
+the native-pair parity benchmark. See
+[`iq9075_geniex_gguf_r6.json`](evidence/iq9075_geniex_gguf_r6.json).
+
+The measured safe boundary is also narrower than the nominal CLI flags:
+`nctx=8192` aborts during vision-model allocation, and a single 1344 × 768
+image aborts both NPU-only and hybrid with `dspqueue_read 0x2e`.
+`--image-max-length` did not prevent that large-grid path. Keep this pilot at
+`nctx=4096` and 384 × 216 per image, using fixed ROI crops when a small actor
+needs more detail.
 
 #### Historical r3 exact-input one-pair comparison
 
@@ -275,8 +301,8 @@ benchmark truth, exact GPU/NPU answer parity, and retention of the 16 probes
 the GPU answers correctly; these are different quantities and should not be
 interchanged.
 
-Three early-decoder W8 variants remain pending only because the EVK is
-offline:
+Three early-decoder W8 variants remain pending outside the resumed GenieX
+GGUF pilot:
 
 | Pending text candidate | Scope | AI Hub linked target | NPU status |
 |---|---|---|---|

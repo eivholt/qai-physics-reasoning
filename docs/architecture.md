@@ -143,15 +143,15 @@ The text tower remains W4/FP16 in that completed leader. A W8 part-4
 experiment scores 12/20 with 13/20 exact parity and retains 11/16 GPU-correct
 answers; its 873.5 ms TTFT mean covers only 3 of 20 timing-bearing logs and is
 not directly comparable with the complete means above. Three part-1 variants
-are compiled but unscored while the EVK is offline: layers 0–6 (252 W8
-matrices), layers 0–3 (144), and layers 0–2 (108). The full variant has passed
-a four-token HTP smoke; the narrower variants and all three frozen-suite
-scores remain pending.
+are compiled but unscored outside the resumed GenieX GGUF pilot: layers 0–6
+(252 W8 matrices), layers 0–3 (144), and layers 0–2 (108). The full variant
+has passed a four-token HTP smoke; the narrower variants and all three
+frozen-suite scores remain pending.
 
 The benchmark also adds two more balanced option permutations per scene.
 BF16 GPU scores 13/16 across P1–P4 (6/8 on the new P3/P4 half): barrier 4/4,
-box 3/4, near miss 4/4, and fire/worker-motion 2/4. No balanced NPU result has
-been run while the EVK is offline.
+box 3/4, near miss 4/4, and fire/worker-motion 2/4. The balanced NPU run
+remains pending.
 
 See
 [`iq9075_video_precision_parity_r5.json`](evidence/iq9075_video_precision_parity_r5.json)

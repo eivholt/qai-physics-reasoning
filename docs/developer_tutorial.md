@@ -59,12 +59,14 @@ full-interface W4/FP16 context, retaining the coherent parts 2-4, and running
 the result through a pinned GenieX lower-level `PixelData` integration. A
 globally-W4 vision export remains incompatible with legacy Genie, and native
 MP4 ingestion remains unsupported. A CPU GGUF path is included as an
-independent correctness baseline. A second, currently unvalidated NPU route
-uses the official GenieX `llama_cpp` runtime with Qualcomm's GGML Hexagon
-backend. That route is architecturally plausible because Cosmos-Reason2-2B
-retains Qwen3-VL-2B's model structure, and it keeps DeepStack and visual-mask
-wiring inside llama.cpp instead of exposing those tensors at a split QAIRT
-boundary. It does not yet establish correct Cosmos inference on IQ-9075.
+independent correctness baseline. The second NPU route uses the official
+GenieX `llama_cpp` runtime with Qualcomm's GGML Hexagon backend. This route is
+now verified on the physical EVK with GenieX v0.3.17: the exact Cosmos GGUF
+loads, image-conditioned CPU/NPU answers agree on a grounded warehouse event,
+and the live successful process maps the Hexagon backend while holding the
+secure CDSP FastRPC device. Cosmos-Reason2-2B retains Qwen3-VL-2B's model
+structure, so this route also keeps DeepStack and visual-mask wiring inside
+llama.cpp instead of exposing those tensors at a split QAIRT boundary.
 
 The NPU integration is experimental. Qualcomm AI Hub Models 0.58.0 publishes
 a GenieX llama.cpp recipe for Qwen3-VL-2B, but its public Python package only
@@ -88,7 +90,7 @@ Status below is current as of 2026-07-25.
 | Adapter Python syntax, wheel contents, and dependency metadata | Verified locally |
 | Adapter imports and helper-call signatures against the exact QAI Hub Models 0.58.0 wheel | Verified statically |
 | 2B architecture constants against the public Qwen3-VL-2B config | Verified |
-| SSH access to the IQ-9075 EVK | Previously verified; EVK is currently offline, which blocks the explicitly pending r5 runs |
+| SSH access to the IQ-9075 EVK | Verified after the 2026-07-25 reboot |
 | QAIRT `2.45.0.260326` gcc11.2/gcc8.2 host libraries, Genie executables, Hexagon v73 DSP files, and FastRPC access on the EVK | Verified |
 | QAIRT `2.47.0.260601` as a separately installed alternative runtime | Verified; Workbench does not currently offer a matching 2.47 compiler |
 | A non-Cosmos Genie context binary loading under QAIRT 2.47 on this EVK | Verified; this proves that installation, not the Cosmos port |
@@ -97,7 +99,13 @@ Status below is current as of 2026-07-25.
 | Official-checkpoint Q4_0 GGUF and F16 projector conversion | Verified locally at pinned llama.cpp commit `910196f6b3dfc6aca88fa732e2b02f270ff9b56b`; sizes and SHA-256 hashes are recorded in Step 4 |
 | Host llama.cpp six-frame barrier probe | At 84 visual tokens/image, Q4_0 answers `C` in both option orders and passes only the shuffled case; BF16 passes the unshuffled case. At 1024 visual tokens/image, Q4_0 passes both orders. This is a bounded host diagnostic, not broad quality evidence |
 | Host llama.cpp encoded-video smoke | Mechanically successful on a five-second lathe clip, but its generic description/tool-slip framing missed the intended entanglement/unguarded-chuck hazard; this is not a quality pass |
-| GenieX `llama_cpp` Q4_0 on IQ-9075 | QCS9075 and Qwen3-VL GGUF are officially supported, but this exact Cosmos bundle's NPU-only and hybrid runs are pending while the EVK is offline |
+| GenieX v0.3.17 `llama_cpp` Q4_0 on IQ-9075 | Verified end to end on CPU, NPU-only, and hybrid; the successful NPU process maps `libggml-hexagon.so` and `libcdsprpc.so` and holds `/dev/fastrpc-cdsp-secure` |
+| GenieX single-image CPU/NPU control | Both answer `forklift`; NPU TTFT is 0.657 s versus CPU 2.458 s |
+| GenieX grounded six-frame barrier control | CPU, NPU-only, hybrid, and pure-Q4_0 all correctly state that the forklift knocked the striped marker flat; standard NPU TTFT is 1.754 s versus CPU 7.339 s |
+| GenieX exact-wording four-scene panel | Standard Q4_0 NPU scores 5/8 versus recorded BF16 GPU 7/8, with 6/8 exact answer parity; ordered stills are not the GPU runner's native paired-video tensors |
+| GenieX shorter deployment prompt | Standard Q4_0 NPU scores 7/8 and returns the same answer pattern as the recorded GPU panel, but the GPU was not rerun with the shorter wording |
+| GenieX task-specific edge profile | 4/4 across marker knockdown, safe box pickup, near-miss avoidance, and worker motion using fixed prompts plus declared ROI/final-pair preprocessing for the two small-actor scenes |
+| GenieX large-image/context limits | `nctx=8192` aborts during vision-model allocation; one 1344 × 768 image aborts NPU and hybrid vision encoding with `dspqueue_read 0x2e`; `image-max-length` did not downscale it |
 | Official gated Cosmos checkpoint download and architecture validation | Verified; all 15 files are present |
 | Cosmos text and vision quantization | Verified for CL512; r5 compares the native-aspect 224 × 384 W8/A16 baseline with three compiled mixed-precision vision layouts, all derived from the older paired/explicit-resize calibration checkpoint |
 | QAIRT 2.45 compatibility checkpoint | Verified; ONNX checker passes, split points are unchanged, and the four unsupported auxiliary text inputs are removed |
@@ -130,9 +138,9 @@ Status below is current as of 2026-07-25.
 | Current completed NPU leader | Boundary-FP16 vision scores 13/20, exact GPU parity 15/20, GPU-correct retention 12/16, mean TTFT 857.510 ms |
 | Other completed r5 vision candidates | W8/A16 baseline 11/20; W-FP16/A16 11/20; combined FP16 weights/internals with A16 boundaries 12/20 |
 | W8 text part 4 | 12/20, exact parity 13/20, GPU-correct retention 11/16; 873.5 ms mean TTFT covers only 3/20 timing-bearing logs |
-| W8 text part 1, layers 0–6 | AI Hub link and shared-weight contract verified; four-token HTP smoke passes; frozen 20 pending while EVK is offline |
-| W8 text part 1, layers 0–3 and 0–2 | Compiled/linked; their stated contract checks are recorded below; EVK smoke and frozen 20 pending |
-| Balanced P1–P4 extension | BF16 GPU 13/16 overall and 6/8 on new P3/P4; NPU pending while EVK is offline |
+| W8 text part 1, layers 0–6 | AI Hub link and shared-weight contract verified; four-token HTP smoke passes; frozen 20 remains pending outside the resumed GenieX pilot |
+| W8 text part 1, layers 0–3 and 0–2 | Compiled/linked; their stated contract checks are recorded below; EVK smoke and frozen 20 remain pending |
+| Balanced P1–P4 extension | BF16 GPU 13/16 overall and 6/8 on new P3/P4; NPU execution remains pending |
 | EVK deployment | Legacy hybrid and full-DeepStack GenieX artifacts use separate new directories; the old active bundle is untouched |
 
 The accumulated-drift diagnosis applies to the original all-W4A16 text
@@ -180,6 +188,18 @@ The combined FP16-weight/internal candidate has the lowest mean TTFT
 (686.080 ms) but scores 12/20, so host numerical fidelity and speed do not
 substitute for end-task scoring. See the
 [`r5 precision report`](evidence/iq9075_video_precision_parity_r5.json).
+
+The independent GenieX GGUF route is now a real second baseline rather than a
+paper design. With the exact tracked four-scene wording, its ordered-still NPU
+panel scores 5/8 versus the recorded BF16 GPU's 7/8 and reproduces 6/8 GPU
+letters. Changing only the instruction prefix to identify a chronological
+frame sequence and requesting one letter raises the NPU result to 7/8. That
+answer sequence matches the recorded GPU sequence, but the GPU was not rerun
+with the shorter prompt, so this is not an exact same-prompt parity claim. A
+declared task-specific profile reaches 4/4 by using fixed ROI preprocessing
+for the small worker/box cases and only the decisive first/final pair for
+near-miss motion. See the
+[`r6 GenieX GGUF report`](evidence/iq9075_geniex_gguf_r6.json).
 
 No earlier independent public result was found for the exact
 `nvidia/Cosmos-Reason2-2B` checkpoint on IQ-9075. NVIDIA's published hardware
@@ -731,28 +751,40 @@ sudo apt update
 sudo apt install -y \
   libatomic1 \
   libglib2.0-0 \
-  ocl-icd-libopencl1
-sudo apt-get install -y qcom-adreno1 qcom-fastrpc1 libqnn1
+  ocl-icd-libopencl1 \
+  qcom-fastrpc1
 
 curl -fsSL \
   https://qaihub-public-assets.s3.us-west-2.amazonaws.com/qai-hub-geniex/install.sh \
-  | sh -s -- --version v0.3.17
+  | sh -s -- \
+      --version v0.3.17 \
+      --prefix /home/ubuntu/geniex-cosmos-v0317
 
 geniex --version
 ```
+
+The explicit prefix keeps an existing v0.3.16 or source-built runtime intact.
+The installer updates only the small launcher in `$HOME/.local/bin`; its
+generated wrapper points at the selected prefix and sets the required library
+path. On the measured board, `qcom-fastrpc1` was already installed but
+`ocl-icd-libopencl1` was missing. Without the latter, even `--compute cpu`
+fails before model loading because the bundled plugin links its OpenCL backend
+at load time.
 
 Register the local VLM once, then run the same frozen image and prompt on the
 two relevant compute modes:
 
 ```bash
 MODEL_DIR=/home/ubuntu/models/cosmos_reason2_2b_geniex_q4_0
+GENIEX_DATA=/home/ubuntu/geniex-cosmos-v0317-data
 PROMPT="Describe the scene and identify imminent hazards. /absolute/path/to/frame.png"
 
-geniex pull local/cosmos-reason2-2b:Q4_0 \
+geniex --data-dir "$GENIEX_DATA" pull local/cosmos-reason2-2b:Q4_0 \
+  --model-hub localfs \
   --local-path "$MODEL_DIR" \
   --model-type vlm
 
-geniex infer local/cosmos-reason2-2b:Q4_0 \
+geniex --data-dir "$GENIEX_DATA" infer local/cosmos-reason2-2b:Q4_0 \
   --compute npu \
   --ngl -1 \
   --nctx 4096 \
@@ -762,7 +794,7 @@ geniex infer local/cosmos-reason2-2b:Q4_0 \
   --prompt "$PROMPT" \
   2>&1 | tee cosmos_geniex_npu.log
 
-geniex infer local/cosmos-reason2-2b:Q4_0 \
+geniex --data-dir "$GENIEX_DATA" infer local/cosmos-reason2-2b:Q4_0 \
   --compute hybrid \
   --ngl -1 \
   --nctx 4096 \
@@ -804,10 +836,10 @@ The CLI can attach multiple ordered image files found in a prompt. This is a
 useful static-frame experiment, but it is not native video preprocessing:
 
 ```bash
-geniex infer local/cosmos-reason2-2b:Q4_0 \
+geniex --data-dir "$GENIEX_DATA" infer local/cosmos-reason2-2b:Q4_0 \
   --compute npu \
   --ngl -1 \
-  --nctx 16384 \
+  --nctx 4096 \
   --max-tokens 256 \
   --top-k 1 \
   --seed 42 \
@@ -838,12 +870,14 @@ intervention across the frozen scenes and negative controls.
 The direct llama.cpp test can request that budget with
 `--image-min-tokens 1024`. Current GenieX `llama_cpp` VLM plumbing appears not
 to honor its `image_max_length` field, so do not assume
-`--image-max-length 1024` has the same effect. Until backend logs prove
-otherwise, the practical GenieX experiment is to create deterministically
-upscaled copies of the frozen frames, record their dimensions and hashes, and
-use `--nctx 8192` or `16384` for the resulting visual tokens. Compare natural
-and upscaled inputs on both `--compute npu` and `--compute hybrid`; treat this
-as a workaround under test, not an established runtime contract.
+`--image-max-length 1024` has the same effect. The attempted workaround
+confirms the risk: one deterministic 1344 × 768 frame aborts both NPU-only and
+hybrid vision encoding with `ggml-hex: dspqueue_read failed: 0x0000002e`,
+even when the flag is left at its default. An `nctx=8192` run separately
+aborts during vision-model allocation. Keep the verified `nctx=4096`,
+384 × 216 grid for this package. If the relevant actor is too small, use a
+fixed region-of-interest policy and resize the crop back to 384 × 216; do not
+increase the Hexagon grid until a runtime update removes this failure.
 
 Increase `--nctx` only after checking memory headroom; each image adds visual
 tokens. The current GenieX CLI documents image paths, not encoded video.
@@ -864,11 +898,45 @@ five-second lathe smoke loaded 20 frames and described the scene, but its
 hazard response stayed at generic tool-slip/bolt language and missed the
 intended entanglement/unguarded-chuck risk, reinforcing that distinction.
 
-The Q4_0/F16 bundle is locally ready, but the EVK is currently offline.
-Consequently, no result yet proves that this exact Cosmos bundle loads through
-GenieX on QCS9075, reaches HTP, or matches GPU answers. When the board returns,
-run the NPU-only and hybrid commands on the exact frozen single-image and
-ordered-frame probes before changing the main QAIRT recommendation.
+The physical-board result is:
+
+| Probe | CPU | NPU-only | Hybrid |
+|---|---|---|---|
+| One image: identify the vehicle | `forklift`, 2.458 s TTFT | `forklift`, 0.657 s TTFT | Not needed |
+| Six frames: marker state and cause | Correct, 7.339 s TTFT | Correct, 1.754 s TTFT | Correct, 1.751 s TTFT |
+
+For the grounded event, CPU says that the blue forklift knocked the striped
+marker flat; NPU-only and hybrid produce the same material answer. The live
+successful NPU process maps `libggml-hexagon.so` and `libcdsprpc.so`, holds
+`/dev/fastrpc-cdsp-secure` and DMA-buffer descriptors, and therefore supplies
+direct HTP evidence beyond the `--compute npu` flag.
+
+The exact tracked four-scene wording scores 5/8 on this standard Q4_0 route,
+versus the recorded BF16 GPU's 7/8, with 6/8 exact answer parity. The two NPU
+misses against GPU are normal-order marker knockdown and shuffled box pickup.
+Changing the instruction to:
+
+```text
+Which event is shown in this chronological frame sequence?
+Give only the letter: ...
+```
+
+raises the NPU panel to 7/8 with answers `A/C`, `B/D`, `C/B`, and `C/A`;
+this happens to equal the recorded GPU answer sequence. Because the GPU
+reference used the longer benchmark wording, report this as a prompt-profile
+improvement, not exact same-prompt parity. For free-form edge tasks, a fixed
+256 × 144 ROI at `(64, 72)` resized back to 384 × 216 makes the box action
+explicit (`safe box pickup`), and the decisive first/final ROI pair makes the
+near-miss motion explicit (`The worker is running away from the forklift.`).
+The full task-specific profile passes 4/4, but it is intentionally narrower
+than a broad zero-shot benchmark.
+
+Use the standard Q4_0 main as the quality default. The pure-Q4_0 output head
+improves barrier decode speed from 20.9 to 26.3 tokens/s and total time from
+3.19 to 2.85 seconds, but it loses box detail on the full-frame free-form
+probe. Full commands, artifact hashes, all eight choice results, the 4/4 edge
+profile, and failure boundaries are recorded in
+[`iq9075_geniex_gguf_r6.json`](evidence/iq9075_geniex_gguf_r6.json).
 
 ## 5. Quantize a small W4A16 smoke checkpoint
 
@@ -2153,10 +2221,10 @@ python scripts/score_video_npu_results.py \
 ```
 
 The part-1 layers 0–6, 0–3, and 0–2 candidates are compiled but have no
-frozen-suite result while the EVK is offline. Full layers 0–6 passed a
-four-token HTP smoke; the two narrower variants still await EVK smoke. The
-balanced P1–P4 GPU extension scores 13/16 overall (6/8 on the new P3/P4
-half), but there is no balanced NPU score yet.
+frozen-suite result outside the resumed GenieX GGUF pilot. Full layers 0–6
+passed a four-token HTP smoke; the two narrower variants still await EVK
+smoke. The balanced P1–P4 GPU extension scores 13/16 overall (6/8 on the new
+P3/P4 half), but there is no balanced NPU score yet.
 
 Hosted shard screens provide a more precise diagnosis of the text path. Each
 screen reuses the exact AI Hub dataset produced by its quantized predecessor,

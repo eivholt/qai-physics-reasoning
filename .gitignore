@@ -226,6 +226,7 @@ __marimo__/
 /logs/
 /models/
 /.codex_diag*
+/.codex-remote-attachments/
 *.safetensors
 *.onnx
 *.data

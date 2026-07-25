@@ -62,6 +62,15 @@ using the 2B architecture. It must be validated on the physical board.
 ## Current result
 
 - The CPU GGUF vision path produces coherent output on the EVK.
+- Official GenieX v0.3.17 now runs the exact Q4_0/F16 Cosmos GGUF bundle
+  through the IQ-9075 Hexagon NPU. Live-process inspection confirms the
+  Hexagon library and secure CDSP FastRPC device are active. A grounded
+  six-frame forklift/marker prediction agrees with CPU while reducing TTFT
+  from 7.339 to 1.754 seconds. The exact-wording four-scene panel scores 5/8
+  versus recorded BF16 GPU 7/8; a shorter fixed deployment prompt reaches
+  7/8, and a narrower declared task-specific profile reaches 4/4. These are
+  ordered still-image results, not native encoded-video support or broad
+  GPU-equivalent accuracy.
 - Historical r1/r2 bring-up: the first all-W4A16 bundle compiles, links, and
   executes on QnnHtp, but its
   four-part text decoder is numerically incorrect. Bundled Genie 1.17 and
@@ -153,13 +162,13 @@ cosine similarity alone did not predict task accuracy: the combined
 FP16-weight candidate is numerically closer on the host yet scores one point
 below the boundary-only candidate.
 
-Three early-decoder W8 candidates are compiled but not yet scored because the
-EVK is offline. The full part-1 candidate (layers 0–6, 252 matrices) passed a
-four-token HTP smoke with AR128→AR1 shared weights; the layers 0–3 and
-layers 0–2 variants remain pending EVK smoke and frozen-suite execution.
-These are pending results, not inferred improvements. A balanced P1–P4 GPU
-extension scores 13/16 overall (the new P3/P4 half is 6/8); its NPU run is
-also pending the EVK's return.
+Three early-decoder W8 candidates are compiled but not yet scored. The full
+part-1 candidate (layers 0–6, 252 matrices) passed a four-token HTP smoke with
+AR128→AR1 shared weights; the layers 0–3 and layers 0–2 variants remain
+pending EVK smoke and frozen-suite execution outside the resumed GenieX GGUF
+pilot. These are pending results, not inferred improvements. A balanced
+P1–P4 GPU extension scores 13/16 overall (the new P3/P4 half is 6/8); its NPU
+run is also pending.
 
 For the complete reproducible workflow, measured job IDs, GenieX import,
 native-chain diagnosis, and failure guide, see
@@ -172,7 +181,8 @@ physical-board proof boundary for the
 [full-DeepStack GenieX report](docs/evidence/iq9075_video_deepstack_geniex_r2.json),
 [native-aspect parity report](docs/evidence/iq9075_video_aspect_native_parity_r3.json),
 [expanded four-scene report](docs/evidence/iq9075_video_four_scene_parity_r4.json),
-and [r5 precision report](docs/evidence/iq9075_video_precision_parity_r5.json).
+[r5 precision report](docs/evidence/iq9075_video_precision_parity_r5.json),
+and [r6 GenieX GGUF report](docs/evidence/iq9075_geniex_gguf_r6.json).
 
 No earlier independent public proof was found for the exact Cosmos-Reason2-2B
 checkpoint on IQ-9075. NVIDIA's

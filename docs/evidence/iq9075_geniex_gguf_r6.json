@@ -1,0 +1,246 @@
+{
+  "schema_version": 1,
+  "report_id": "iq9075_geniex_gguf_r6",
+  "created_date": "2026-07-25",
+  "model": {
+    "checkpoint": "nvidia/Cosmos-Reason2-2B",
+    "conversion_llama_cpp_commit": "910196f6b3dfc6aca88fa732e2b02f270ff9b56b",
+    "standard_q4_0": {
+      "size_bytes": 1229455008,
+      "sha256": "90bd38f1a117b2d9738642165dfd8c0c6273a4bdfd214e1354d0502cff61e8a9",
+      "output_weight_type": "Q6_K"
+    },
+    "pure_q4_0": {
+      "size_bytes": 1149232800,
+      "sha256": "a2eeb9a09bc7e82f903ce243d18e93e0b686b8c8cc0616c7c2b089094b1305fc",
+      "output_weight_type": "Q4_0"
+    },
+    "f16_projector": {
+      "size_bytes": 819395424,
+      "sha256": "43df50be60fd6c9075548cd6d759e21253a3c62da69055bab7864cc64aa00c2c"
+    }
+  },
+  "target": {
+    "device": "physical Dragonwing IQ-9075 EVK",
+    "os": "Ubuntu 24.04 ARM64",
+    "geniex_version": "v0.3.17",
+    "qairt_runtime_version": "2.45.0.260326",
+    "llama_cpp_compute": "npu",
+    "context_tokens": 4096,
+    "determinism": {
+      "top_k": 1,
+      "seed": 42,
+      "thinking": false
+    }
+  },
+  "successful_npu_execution_evidence": {
+    "live_process_mapped_libraries": [
+      "libggml-hexagon.so",
+      "libcdsprpc.so.1.0.0"
+    ],
+    "live_process_accelerator_file_descriptors": [
+      "/dev/fastrpc-cdsp-secure",
+      "/dev/dma_heap/system",
+      "/dmabuf:"
+    ],
+    "interpretation": "The successful GenieX process had the Hexagon backend and CDSP FastRPC library mapped while holding the secure CDSP and DMA-heap descriptors. This supplements the compute=npu request and the measured CPU/NPU timing difference."
+  },
+  "single_image_smoke": {
+    "question": "What vehicle is visible? Answer with one noun.",
+    "cpu": {
+      "answer": "forklift",
+      "ttft_seconds": 2.458187,
+      "total_seconds": 2.572348
+    },
+    "npu": {
+      "answer": "forklift",
+      "ttft_seconds": 0.657146,
+      "total_seconds": 0.796208
+    },
+    "ttft_speedup_npu_over_cpu": 3.7407
+  },
+  "grounded_barrier_comparison": {
+    "input": "six ordered 384x216 RGB frames from video_barrier_knockdown_4fps",
+    "question": "Compare the first and final chronological frames. By the final frame, is the orange-and-white striped marker upright or knocked flat, and which vehicle contacted it?",
+    "standard_q4_0": {
+      "cpu": {
+        "answer": "In the final frame, the orange-and-white striped marker is knocked flat, and the blue forklift is the one that contacted it.",
+        "ttft_seconds": 7.338899,
+        "total_seconds": 8.359909,
+        "decode_tokens_per_second": 27.414455,
+        "pass": true
+      },
+      "npu": {
+        "answer": "In the final frame, the orange-and-white striped marker is knocked flat, and the blue and black forklift is the one that contacted it.",
+        "ttft_seconds": 1.753615,
+        "total_seconds": 3.188155,
+        "decode_tokens_per_second": 20.904292,
+        "pass": true
+      },
+      "hybrid": {
+        "answer": "In the final frame, the orange-and-white striped marker is knocked flat, and the blue and black forklift is the one that contacted it.",
+        "ttft_seconds": 1.750774,
+        "total_seconds": 3.178008,
+        "decode_tokens_per_second": 21.010699,
+        "pass": true
+      }
+    },
+    "pure_q4_0_npu": {
+      "answer": "In the final frame, the orange-and-white striped marker is knocked flat by the blue and black forklift, which made contact with it.",
+      "ttft_seconds": 1.749219,
+      "total_seconds": 2.851997,
+      "decode_tokens_per_second": 26.282567,
+      "pass": true
+    },
+    "interpretation": "NPU and CPU agree on the observable state change and its cause. NPU reduces standard-Q4_0 time to first token by about 4.19x. Pure Q4_0 accelerates decode, but the broader scene checks below make the standard Q4_0/Q6_K-head bundle the quality default."
+  },
+  "four_scene_choice_panel": {
+    "inputs": "six ordered natural-resolution RGB frames per scene",
+    "reference": "docs/evidence/iq9075_video_four_scene_parity_r4.json",
+    "exact_benchmark_wording": {
+      "description": "Uses the tracked four-scene prompt wording, including 'video' and 'letter plus one brief reason'. GenieX receives ordered still images rather than the native paired-video tensor used by the BF16 reference.",
+      "gpu_passed": 7,
+      "npu_passed": 5,
+      "total": 8,
+      "exact_gpu_npu_answer_parity": 6,
+      "results": [
+        {
+          "case": "barrier_knockdown",
+          "order": "normal",
+          "expected": "A",
+          "gpu": "A",
+          "npu": "C"
+        },
+        {
+          "case": "barrier_knockdown",
+          "order": "shuffled",
+          "expected": "C",
+          "gpu": "C",
+          "npu": "C"
+        },
+        {
+          "case": "routine_box_pickup",
+          "order": "normal",
+          "expected": "B",
+          "gpu": "B",
+          "npu": "B"
+        },
+        {
+          "case": "routine_box_pickup",
+          "order": "shuffled",
+          "expected": "D",
+          "gpu": "D",
+          "npu": "C"
+        },
+        {
+          "case": "near_miss_avoidance",
+          "order": "normal",
+          "expected": "C",
+          "gpu": "C",
+          "npu": "C"
+        },
+        {
+          "case": "near_miss_avoidance",
+          "order": "shuffled",
+          "expected": "B",
+          "gpu": "B",
+          "npu": "B"
+        },
+        {
+          "case": "worker_motion",
+          "order": "normal",
+          "expected": "D",
+          "gpu": "C",
+          "npu": "C"
+        },
+        {
+          "case": "worker_motion",
+          "order": "shuffled",
+          "expected": "A",
+          "gpu": "A",
+          "npu": "A"
+        }
+      ]
+    },
+    "deployment_prompt": {
+      "description": "Changes only the instruction prefix to identify a chronological frame sequence and requests one letter without a reason. Options, order, frames, model, and deterministic sampler are unchanged.",
+      "npu_passed": 7,
+      "total": 8,
+      "answers": [
+        "A",
+        "C",
+        "B",
+        "D",
+        "C",
+        "B",
+        "C",
+        "A"
+      ],
+      "recorded_gpu_reference_answers": [
+        "A",
+        "C",
+        "B",
+        "D",
+        "C",
+        "B",
+        "C",
+        "A"
+      ],
+      "caveat": "The answer pattern matches the recorded BF16 GPU panel, but the GPU was run with the exact benchmark wording rather than this shorter deployment wording. This is not an exact same-prompt parity claim."
+    }
+  },
+  "task_specific_edge_profile": {
+    "description": "Fixed, declared preprocessing and concise prompts improve the small-actor cases without increasing the Hexagon image grid.",
+    "passed": 4,
+    "total": 4,
+    "results": [
+      {
+        "case": "barrier_knockdown",
+        "preprocessing": "six full 384x216 frames",
+        "answer": "marker is knocked flat by the blue and black forklift",
+        "pass": true
+      },
+      {
+        "case": "routine_box_pickup",
+        "preprocessing": "fixed 256x144 ROI cropped at x=64,y=72 and resized to 384x216",
+        "answer": "safe box pickup",
+        "pass": true
+      },
+      {
+        "case": "near_miss_avoidance",
+        "preprocessing": "same fixed ROI; decisive first and final frames",
+        "answer": "The worker is running away from the forklift.",
+        "pass": true
+      },
+      {
+        "case": "worker_motion",
+        "preprocessing": "six full 384x216 frames",
+        "answer": "both workers change positions, one toward the center aisle and the other toward the left aisle",
+        "pass": true
+      }
+    ],
+    "caveat": "This is a task-specific deployment profile, not a broad zero-shot video benchmark. ROI selection must be fixed independently of the expected answer in a production evaluation."
+  },
+  "runtime_limits_observed": [
+    {
+      "setting": "nctx=8192",
+      "result": "abort while allocating the vision model buffer",
+      "error": "GGML_ASSERT(buffer) failed"
+    },
+    {
+      "setting": "one 1344x768 image on compute=npu",
+      "result": "abort during Hexagon vision encoding",
+      "error": "ggml-hex: dspqueue_read failed: 0x0000002e"
+    },
+    {
+      "setting": "one 1344x768 image on compute=hybrid",
+      "result": "same Hexagon vision-encoding abort",
+      "error": "ggml-hex: dspqueue_read failed: 0x0000002e"
+    },
+    {
+      "setting": "default image-max-length or explicit image-max-length",
+      "result": "did not downscale the 1344x768 input before the failing Hexagon path"
+    }
+  ],
+  "verdict": "Cosmos-Reason2-2B now runs image-conditioned inference through GenieX v0.3.17 and the IQ-9075 Hexagon NPU. Natural-resolution ordered-frame tests include correct realistic warehouse predictions and a 5/8 exact-wording panel versus BF16 GPU 7/8. A shorter fixed deployment prompt reaches 7/8, and a declared task-specific ROI/final-pair profile reaches 4/4. This proves useful experimental NPU execution, not native encoded-video support, vendor certification, or broad GPU-equivalent accuracy."
+}

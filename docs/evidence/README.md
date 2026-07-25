@@ -66,6 +66,14 @@ The result is narrower than vendor certification:
   GPU-correct retention. Its 873.5 ms TTFT mean covers only three
   timing-bearing logs and is not directly comparable with the complete
   candidate means.
+- The r6 report is an independent official-GenieX/GGUF route. GenieX v0.3.17
+  loads the exact standard Q4_0 main and F16 projector on the EVK. A live
+  successful process maps the GGML Hexagon and CDSP FastRPC libraries while
+  holding the secure CDSP and DMA-heap descriptors. The exact-wording
+  four-scene panel scores NPU 5/8 versus recorded BF16 GPU 7/8, with 6/8
+  answer parity. A shorter declared deployment prompt reaches NPU 7/8; a
+  task-specific ROI/final-pair profile reaches 4/4. The latter two are
+  explicitly not broad same-prompt GPU-parity claims.
 - Hosted P1 chunk-0 screens compare five candidates with BF16 vision and three
   candidates with the production boundary-FP16 NPU vision output. W8 layers
   0–6 ranks first in both completed screens, but these hidden-state and
@@ -94,7 +102,7 @@ evidence for the Cosmos-Reason2-2B checkpoint. We found no earlier independent
 public IQ-9075 result for the exact Cosmos model, so the report here should be
 described as project evidence for a new experimental port.
 
-The six tracked summaries are:
+The seven tracked summaries are:
 
 - [`iq9075_npu_smoke_r1.json`](iq9075_npu_smoke_r1.json), the historical text
   and single-image bundle evidence;
@@ -115,7 +123,11 @@ The six tracked summaries are:
 - [`iq9075_video_precision_parity_r5.json`](iq9075_video_precision_parity_r5.json),
   the frozen 20-probe precision sweep, exact AI Hub artifact lineage,
   completed physical-board comparisons, balanced GPU extension, and
-  explicitly pending EVK work.
+  explicitly pending EVK work; and
+- [`iq9075_geniex_gguf_r6.json`](iq9075_geniex_gguf_r6.json), the official
+  GenieX v0.3.17 Q4_0/F16 deployment, direct live-process Hexagon evidence,
+  CPU/NPU timing controls, exact and shortened four-scene panels, targeted
+  edge profile, and measured image/context failure boundaries.
 
 ## Reproduce the report
 
