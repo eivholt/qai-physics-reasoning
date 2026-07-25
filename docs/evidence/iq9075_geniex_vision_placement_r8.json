@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "report_id": "iq9075-geniex-vision-placement-r8",
+  "created_date": "2026-07-25",
+  "extends": "iq9075-geniex-cpu-npu-parity-r7",
+  "model": {
+    "repository": "nvidia/Cosmos-Reason2-2B",
+    "main_precision": "standard Q4_0 with Q6_K vocabulary projection",
+    "multimodal_projector_precision": "F16",
+    "runtime": "GenieX v0.3.17 llama_cpp",
+    "llama_cpp_commit": "ae9291e16b976514bf1f3d7f1616da7db3459496",
+    "target": "Dragonwing IQ-9075 EVK, Hexagon v73"
+  },
+  "problem_localization": {
+    "observed_regression": "On the long-prompt shuffled routine-box probe, same-GGUF CPU returns the correct D while stock full NPU returns C.",
+    "ngl_zero_semantics": "GenieX classifies n_gpu_layers=0 as CPU and also sets mtmd_context_params.use_gpu=false.",
+    "first_offload_semantics": "At n_gpu_layers=1, the pinned llama.cpp offloads the final output layer but no repeating decoder block, while GenieX simultaneously enables accelerator placement for the multimodal projector.",
+    "layer_count_sweep": {
+      "n_gpu_layers_0": "D",
+      "n_gpu_layers_1": "C",
+      "n_gpu_layers_2": "C",
+      "n_gpu_layers_4": "C",
+      "n_gpu_layers_6": "C",
+      "n_gpu_layers_7": "C",
+      "n_gpu_layers_14": "C",
+      "n_gpu_layers_21": "C",
+      "n_gpu_layers_27": "C",
+      "n_gpu_layers_28": "C",
+      "n_gpu_layers_all": "C"
+    },
+    "interpretation": "The answer changes at the first accelerator-placement boundary. The stock CLI couples output-layer and projector placement, so an instrumented build was required to separate them."
+  },
+  "controlled_component_ablation": {
+    "raw_result_sha256": "ff1373657eb5c2b51bfeca3f4739e5a4aa41c3ee1dfd28f7ae64e89d3966ec7f",
+    "settings": {
+      "compute": "npu",
+      "n_gpu_layers": -1,
+      "context": 4096,
+      "max_tokens": 64,
+      "top_k": 1,
+      "seed": 42,
+      "thinking": false,
+      "expected": "D"
+    },
+    "results": [
+      {
+        "placement": "stock full NPU",
+        "answer": "C",
+        "ttft_seconds": 1.751672,
+        "total_inference_seconds": 1.798277
+      },
+      {
+        "placement": "CPU output layer, NPU projector and repeating decoder layers",
+        "answer": "C",
+        "ttft_seconds": 1.753761,
+        "total_inference_seconds": 1.801608
+      },
+      {
+        "placement": "CPU projector, NPU output and repeating decoder layers",
+        "answer": "D",
+        "ttft_seconds": 6.458355,
+        "total_inference_seconds": 6.502692
+      },
+      {
+        "placement": "CPU projector and output layer, NPU repeating decoder layers",
+        "answer": "D",
+        "ttft_seconds": 6.373358,
+        "total_inference_seconds": 6.417136
+      }
+    ],
+    "conclusion": "Moving the output layer does not affect the answer. Moving the multimodal projector to CPU restores the correct answer, independently of output-layer placement."
+  },
+  "quality_first_panel": {
+    "raw_result_sha256": "564fb050f86da4d8b03be2dc2927522e6851b901a944746eaeef789f955cc7f6",
+    "placement": "CPU multimodal projector; all 28 repeating decoder layers and output layer on NPU",
+    "answer_order": [
+      "barrier_knockdown_normal",
+      "barrier_knockdown_shuffled",
+      "routine_box_pickup_normal",
+      "routine_box_pickup_shuffled",
+      "near_miss_avoidance_normal",
+      "near_miss_avoidance_shuffled",
+      "worker_motion_normal",
+      "worker_motion_shuffled"
+    ],
+    "expected_answers": [
+      "A",
+      "C",
+      "B",
+      "D",
+      "C",
+      "B",
+      "D",
+      "A"
+    ],
+    "recorded_bf16_gpu_answers": [
+      "A",
+      "C",
+      "B",
+      "D",
+      "C",
+      "B",
+      "C",
+      "A"
+    ],
+    "corrected_npu_answers": [
+      "A",
+      "C",
+      "B",
+      "D",
+      "C",
+      "B",
+      "C",
+      "A"
+    ],
+    "score": {
+      "corrected_npu": {
+        "passed": 7,
+        "total": 8
+      },
+      "recorded_bf16_gpu": {
+        "passed": 7,
+        "total": 8
+      }
+    },
+    "gpu_answer_parity": {
+      "matched": 8,
+      "total": 8
+    },
+    "mean_ttft_seconds": 6.402353,
+    "all_cpu_mean_ttft_seconds": 7.6875,
+    "speedup_over_all_cpu": 1.2007
+  },
+  "fast_stock_profile": {
+    "configuration": "Unmodified official GenieX v0.3.17 with GGML_HEXAGON_OPFILTER=GELU",
+    "raw_focused_ablation_sha256": "fe9f84ca9ce064fed795edb90ce5db78eb45227c4a4ce164d4f5838c8c8fd619",
+    "focused_shuffled_box_results": [
+      {
+        "hexagon_opfilter": "NORM",
+        "answer": "C",
+        "ttft_seconds": 2.04018
+      },
+      {
+        "hexagon_opfilter": "GELU",
+        "answer": "D",
+        "ttft_seconds": 2.061779
+      },
+      {
+        "hexagon_opfilter": "NORM|GELU",
+        "answer": "D",
+        "ttft_seconds": 2.270182
+      },
+      {
+        "hexagon_opfilter": "FLASH_ATTN_EXT",
+        "answer": "C",
+        "ttft_seconds": 7.557554
+      }
+    ],
+    "raw_panel_sha256": "f745833953fc425e2867af35d9736caecf59bf6335762da37fa05ed532eda300",
+    "panel_answers": [
+      "C",
+      "C",
+      "B",
+      "D",
+      "C",
+      "B",
+      "C",
+      "A"
+    ],
+    "same_gguf_cpu_answers": [
+      "C",
+      "C",
+      "B",
+      "D",
+      "C",
+      "B",
+      "C",
+      "A"
+    ],
+    "score": {
+      "passed": 6,
+      "total": 8
+    },
+    "same_gguf_cpu_answer_parity": {
+      "matched": 8,
+      "total": 8
+    },
+    "recorded_bf16_gpu_answer_parity": {
+      "matched": 7,
+      "total": 8
+    },
+    "mean_ttft_seconds": 2.145953,
+    "stock_full_npu_mean_ttft_seconds": 1.8,
+    "ttft_overhead_vs_stock_full_npu_percent": 19.22,
+    "speedup_over_all_cpu": 3.5823,
+    "interpretation": "GELU fallback removes the one answer regression attributable to NPU execution in the r7 same-GGUF control. Because changing operator placement also changes scheduling and intermediate rounding, this localizes the issue to behavior affected by Hexagon GELU placement; it does not by itself prove an isolated GELU kernel defect."
+  },
+  "additional_barrier_search": {
+    "raw_individual_sha256": "cbdfcded07378f6f73c49b77cdadac1d0cd31dc5305ec1f3a866dfdeabab6f8b",
+    "raw_grouped_sha256": "3160c18c586bba02bf0eca310f2e51610bc67efd81b1b1d9fa4ec6695f898cd5",
+    "individual_filters_tested": [
+      "NORM",
+      "NORM|GELU",
+      "ROPE",
+      "SOFT_MAX",
+      "ADD",
+      "MUL"
+    ],
+    "grouped_filter": "NORM|GELU|ROPE|SOFT_MAX|ADD|SUB|MUL|DIV|SQR|SQRT|SUM_ROWS",
+    "result": "All return C for barrier-normal. None recovers the recorded BF16 GPU answer A.",
+    "decision": "Stop the low-cost search. The CPU-projector placement remains the measured quality leader; disabling Hexagon flash attention is already slower than that profile on the focused box probe and does not fix that probe."
+  },
+  "direct_npu_process_evidence": {
+    "quality_first": {
+      "raw_result_sha256": "474f4255beec3f7ca526f08a666108e45e73a873e4efe395b1b5523a843ca1c1",
+      "answer": "D",
+      "mapped_components": [
+        "instrumented libgeniex.so",
+        "instrumented llama_cpp/libgeniex_plugin.so",
+        "llama_cpp/libggml-hexagon.so",
+        "instrumented llama_cpp/libllama.so"
+      ],
+      "open_descriptors": [
+        "/dev/fastrpc-cdsp-secure",
+        "/dev/dma_heap/system"
+      ]
+    },
+    "fast_stock": {
+      "raw_result_sha256": "0ab880f1a0953e233a79388f3516fc568b58260743108d3245b8dc3a414ee9ec",
+      "answer": "D",
+      "mapped_components": [
+        "stock libgeniex.so",
+        "stock llama_cpp/libgeniex_plugin.so",
+        "stock llama_cpp/libggml-hexagon.so",
+        "stock llama_cpp/libllama.so"
+      ],
+      "open_descriptors": [
+        "/dev/fastrpc-cdsp-secure",
+        "/dev/dma_heap/system"
+      ]
+    },
+    "interpretation": "Both corrected profiles retain direct Hexagon/CDSP execution evidence. CPU orchestration, media loading, sampling, and the explicitly selected fallback work remain on CPU."
+  },
+  "verdict": "The original long-prompt NPU regression is not caused by the final output layer. It is controlled by multimodal-projector placement and, more narrowly, by behavior affected when GELU is allowed or disallowed on Hexagon. The quality-first CPU-projector/NPU-decoder profile scores 7/8 and matches all eight recorded BF16 GPU answers on this bounded ordered-frame panel. The unmodified stock GELU-fallback profile scores 6/8, exactly matches same-GGUF CPU answers, and retains most of the stock NPU speed. Neither result proves tensor equivalence, native encoded-video support, broad accuracy, or safety qualification."
+}

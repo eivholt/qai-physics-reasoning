@@ -132,13 +132,36 @@ This path consumes ordered independent images, not native Qwen3-VL temporal
 pairs. With the exact r4 four-scene wording it scores 5/8 versus recorded BF16
 GPU 7/8. The exact same-GGUF isolation scores CPU 6/8 and NPU 5/8 with 7/8
 CPU/NPU answer parity, attributing one additional shuffled-box error to NPU
-execution. A shorter fixed deployment user prompt reaches NPU 7/8; BF16 GPU
-rerun with the same user prompt also scores 7/8 and matches all eight NPU
-answers. Declared ROI/final-pair preprocessing reaches 4/4 on four targeted
-tasks. These improvements are useful deployment evidence but do not replace
-the native-pair parity benchmark. See
+execution. A controlled placement build shows that moving the final output
+layer to CPU does not change that error, while moving the vision `mmproj`
+context to CPU restores the correct box answer.
+
+Two corrected profiles result:
+
+| Profile | Long-prompt score | BF16 GPU letter parity | Mean TTFT |
+|---|---:|---:|---:|
+| Stock full NPU | 5/8 | 6/8 | 1.800 s |
+| Stock v0.3.17 with `GGML_HEXAGON_OPFILTER=GELU` | 6/8 | 7/8 | 2.146 s |
+| CPU vision context, NPU decoder | **7/8** | **8/8** | 6.402 s |
+
+The GELU fallback exactly matches all eight same-GGUF CPU letters and needs
+no custom build. The quality-first CPU-vision/NPU-decoder profile matches the
+recorded BF16 GPU answer sequence `A C B D C B C A`; its 6.402-second mean
+TTFT remains below the 7.688-second all-CPU mean. Direct process inspection
+for both profiles still maps `libggml-hexagon.so` and holds the secure CDSP
+plus DMA-heap descriptors. The GELU result localizes the original regression
+to behavior affected by that operator's Hexagon placement, but does not alone
+prove an isolated kernel defect.
+
+A shorter fixed deployment user prompt reaches stock NPU 7/8; BF16 GPU rerun
+with the same user prompt also scores 7/8 and matches all eight NPU answers.
+Declared ROI/final-pair preprocessing reaches 4/4 on four targeted tasks.
+These improvements are useful deployment evidence but do not replace the
+native-pair parity benchmark. See
 [`iq9075_geniex_gguf_r6.json`](evidence/iq9075_geniex_gguf_r6.json) and
-[`iq9075_geniex_cpu_npu_parity_r7.json`](evidence/iq9075_geniex_cpu_npu_parity_r7.json).
+[`iq9075_geniex_cpu_npu_parity_r7.json`](evidence/iq9075_geniex_cpu_npu_parity_r7.json),
+plus
+[`iq9075_geniex_vision_placement_r8.json`](evidence/iq9075_geniex_vision_placement_r8.json).
 
 The measured safe boundary is also narrower than the nominal CLI flags:
 `nctx=8192` aborts during vision-model allocation, and a single 1344 × 768

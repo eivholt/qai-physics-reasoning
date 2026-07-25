@@ -66,13 +66,19 @@ using the 2B architecture. It must be validated on the physical board.
   through the IQ-9075 Hexagon NPU. Live-process inspection confirms the
   Hexagon library and secure CDSP FastRPC device are active. A grounded
   six-frame forklift/marker prediction agrees with CPU while reducing TTFT
-  from 7.339 to 1.754 seconds. On the exact long-prompt panel, same-GGUF
-  GenieX CPU scores 6/8 and NPU 5/8 with 7/8 answer parity, so NPU execution
-  adds one observed error while most of the GPU gap is already present before
-  NPU offload. With the shorter fixed user prompt, BF16 GPU and GenieX NPU
-  both score 7/8 and match all eight answers. A narrower declared
-  task-specific profile reaches 4/4. These are ordered still-image NPU
-  results, not native encoded-video support or broad GPU-equivalent accuracy.
+  from 7.339 to 1.754 seconds. The stock exact long-prompt panel scores 5/8.
+  A component ablation localizes its one same-GGUF CPU/NPU regression to
+  behavior affected by Hexagon execution of the vision `mmproj` context, not
+  the final output layer. Two corrected profiles are now measured. Unmodified
+  GenieX with `GGML_HEXAGON_OPFILTER=GELU` scores 6/8, exactly matches the
+  all-CPU letters, and averages 2.146 seconds TTFT. The quality-first profile
+  keeps the vision encoder/projector on CPU while all decoder layers remain on
+  NPU; it scores 7/8, matches all eight recorded BF16 GPU letters, and
+  averages 6.402 seconds TTFT versus 7.688 seconds all-CPU. The shorter fixed
+  prompt also gives stock NPU and BF16 GPU 7/8 with eight-answer parity, while
+  a narrower task-specific profile reaches 4/4. These are bounded ordered
+  still-image results, not native encoded-video support, tensor equivalence,
+  or broad GPU-equivalent accuracy.
 - Historical r1/r2 bring-up: the first all-W4A16 bundle compiles, links, and
   executes on QnnHtp, but its
   four-part text decoder is numerically incorrect. Bundled Genie 1.17 and
@@ -184,8 +190,10 @@ physical-board proof boundary for the
 [native-aspect parity report](docs/evidence/iq9075_video_aspect_native_parity_r3.json),
 [expanded four-scene report](docs/evidence/iq9075_video_four_scene_parity_r4.json),
 [r5 precision report](docs/evidence/iq9075_video_precision_parity_r5.json),
-[r6 GenieX GGUF report](docs/evidence/iq9075_geniex_gguf_r6.json), and
-[r7 CPU/NPU isolation report](docs/evidence/iq9075_geniex_cpu_npu_parity_r7.json).
+[r6 GenieX GGUF report](docs/evidence/iq9075_geniex_gguf_r6.json),
+[r7 CPU/NPU isolation report](docs/evidence/iq9075_geniex_cpu_npu_parity_r7.json),
+and
+[r8 vision-placement report](docs/evidence/iq9075_geniex_vision_placement_r8.json).
 
 No earlier independent public proof was found for the exact Cosmos-Reason2-2B
 checkpoint on IQ-9075. NVIDIA's

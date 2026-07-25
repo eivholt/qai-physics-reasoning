@@ -81,6 +81,14 @@ The result is narrower than vendor certification:
   BF16 GPU rerun with the shorter deployment user prompt scores 7/8 and
   matches all eight NPU answers. The report also records loss of the CDSP
   FastRPC device node after repeated one-shot model creation.
+- The r8 report separates the output layer from the vision `mmproj` context.
+  CPU output placement does not fix the shuffled-box error; CPU vision
+  placement does. The quality-first CPU-vision/NPU-decoder panel scores 7/8
+  and matches all eight recorded BF16 GPU letters at 6.402 seconds mean TTFT.
+  Unmodified stock v0.3.17 with `GGML_HEXAGON_OPFILTER=GELU` scores 6/8,
+  matches all eight same-GGUF CPU letters, and averages 2.146 seconds TTFT.
+  Live-process evidence confirms that both corrected profiles retain the
+  Hexagon backend and secure CDSP access.
 - Hosted P1 chunk-0 screens compare five candidates with BF16 vision and three
   candidates with the production boundary-FP16 NPU vision output. W8 layers
   0–6 ranks first in both completed screens, but these hidden-state and
@@ -109,7 +117,7 @@ evidence for the Cosmos-Reason2-2B checkpoint. We found no earlier independent
 public IQ-9075 result for the exact Cosmos model, so the report here should be
 described as project evidence for a new experimental port.
 
-The eight tracked summaries are:
+The nine tracked summaries are:
 
 - [`iq9075_npu_smoke_r1.json`](iq9075_npu_smoke_r1.json), the historical text
   and single-image bundle evidence;
@@ -138,7 +146,11 @@ The eight tracked summaries are:
 - [`iq9075_geniex_cpu_npu_parity_r7.json`](iq9075_geniex_cpu_npu_parity_r7.json),
   the same-GGUF CPU/NPU isolation panel, same-user-prompt BF16 GPU rerun,
   answer-level attribution of the remaining gap, and repeated-process
-  FastRPC lifecycle observation.
+  FastRPC lifecycle observation; and
+- [`iq9075_geniex_vision_placement_r8.json`](iq9075_geniex_vision_placement_r8.json),
+  the independent output/vision placement controls, stock GELU fallback,
+  full corrected panels, latency tradeoffs, negative operator ablations, and
+  direct Hexagon/CDSP process evidence.
 
 ## Reproduce the report
 

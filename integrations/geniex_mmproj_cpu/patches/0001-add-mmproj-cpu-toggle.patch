@@ -1,0 +1,17 @@
+diff --git a/sdk/plugins/llama_cpp/src/vlm.cpp b/sdk/plugins/llama_cpp/src/vlm.cpp
+index 4b6d9af..f429210 100644
+--- a/sdk/plugins/llama_cpp/src/vlm.cpp
++++ b/sdk/plugins/llama_cpp/src/vlm.cpp
+@@ -6,2 +6,3 @@
+ #include <cstring>
++#include <cstdlib>
+ #include <nlohmann/json.hpp>
+@@ -83,6 +84,7 @@ int32_t LlamaVlm::create(const geniex_VlmCreateInput* input) {
+     if (input->mmproj_path) {
+         mtmd_context_params mparams = mtmd_context_params_default();
+-        mparams.use_gpu             = config.n_gpu_layers != 0;
++        const bool force_mmproj_cpu = std::getenv("GENIEX_EXPERIMENT_MMPROJ_CPU") != nullptr;
++        mparams.use_gpu             = config.n_gpu_layers != 0 && !force_mmproj_cpu;
+         mparams.print_timings       = false;
+         mparams.n_threads           = 4;
+         // Zack TODO: elegant fix this error:  no member named 'verbosity' in 'mtmd_context_params'

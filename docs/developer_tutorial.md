@@ -62,11 +62,15 @@ MP4 ingestion remains unsupported. A CPU GGUF path is included as an
 independent correctness baseline. The second NPU route uses the official
 GenieX `llama_cpp` runtime with Qualcomm's GGML Hexagon backend. This route is
 now verified on the physical EVK with GenieX v0.3.17: the exact Cosmos GGUF
-loads, image-conditioned CPU/NPU answers agree on a grounded warehouse event,
-and the live successful process maps the Hexagon backend while holding the
-secure CDSP FastRPC device. Cosmos-Reason2-2B retains Qwen3-VL-2B's model
-structure, so this route also keeps DeepStack and visual-mask wiring inside
-llama.cpp instead of exposing those tensors at a split QAIRT boundary.
+loads, and live successful processes map the Hexagon backend while holding the
+secure CDSP FastRPC device. A placement ablation also identifies and corrects
+the one stock-NPU regression in the controlled same-GGUF panel. The
+quality-first placement keeps the vision encoder/projector on CPU and all
+decoder layers on NPU; it scores 7/8 and matches all eight recorded BF16 GPU
+letters on the bounded long-prompt panel. Cosmos-Reason2-2B retains
+Qwen3-VL-2B's model structure, so this route also keeps DeepStack and
+visual-mask wiring inside llama.cpp instead of exposing those tensors at a
+split QAIRT boundary.
 
 The NPU integration is experimental. Qualcomm AI Hub Models 0.58.0 publishes
 a GenieX llama.cpp recipe for Qwen3-VL-2B, but its public Python package only
@@ -103,6 +107,8 @@ Status below is current as of 2026-07-25.
 | GenieX single-image CPU/NPU control | Both answer `forklift`; NPU TTFT is 0.657 s versus CPU 2.458 s |
 | GenieX grounded six-frame barrier control | CPU, NPU-only, hybrid, and pure-Q4_0 all correctly state that the forklift knocked the striped marker flat; standard NPU TTFT is 1.754 s versus CPU 7.339 s |
 | GenieX exact-wording four-scene panel | Standard Q4_0 CPU scores 6/8 and NPU 5/8 with 7/8 CPU/NPU answer parity; recorded BF16 GPU scores 7/8, while ordered GenieX stills are not the GPU runner's native paired-video tensors |
+| GenieX stock GELU-fallback profile | Unmodified v0.3.17 with `GGML_HEXAGON_OPFILTER=GELU` scores 6/8, matches all eight same-GGUF CPU letters, and averages 2.146 s TTFT |
+| GenieX quality-first placement | CPU vision `mmproj` context plus NPU decoder scores 7/8, matches all eight recorded BF16 GPU letters, and averages 6.402 s TTFT versus 7.688 s all-CPU |
 | GenieX shorter deployment prompt | BF16 GPU and standard Q4_0 NPU both score 7/8 and match all eight answers with the same user prompt and option order; chat templates, numerical precision, and visual preprocessing still differ |
 | GenieX task-specific edge profile | 4/4 across marker knockdown, safe box pickup, near-miss avoidance, and worker motion using fixed prompts plus declared ROI/final-pair preprocessing for the two small-actor scenes |
 | GenieX large-image/context limits | `nctx=8192` aborts during vision-model allocation; one 1344 × 768 image aborts NPU and hybrid vision encoding with `dspqueue_read 0x2e`; `image-max-length` did not downscale it |
@@ -194,16 +200,25 @@ The independent GenieX GGUF route is now a real second baseline rather than a
 paper design. With the exact tracked four-scene wording, same-GGUF GenieX CPU
 scores 6/8 and NPU 5/8, matching 7/8 answers. One of the two BF16-GPU/NPU
 differences therefore exists before NPU offload; NPU adds one observed
-shuffled-box error. Changing the instruction prefix to identify a
-chronological frame sequence and requesting one letter raises the NPU result
-to 7/8. BF16 GPU was rerun with that same user prompt and also scores 7/8,
-matching all eight NPU answers. Visual preprocessing, chat wrappers, and
-precision still differ, so this is end-answer parity rather than tensor-level
-equivalence. A declared task-specific profile reaches 4/4 by using fixed ROI
-preprocessing for the small worker/box cases and only the decisive first/final
-pair for near-miss motion. See the
+shuffled-box error. Independent output-layer and vision-context placement
+controls show that the final output layer is not responsible: CPU output plus
+NPU vision remains wrong, while CPU vision plus NPU decoder restores the
+correct box answer. Across all eight long-prompt cases, that quality-first
+placement scores 7/8 and exactly matches the recorded BF16 GPU letter
+sequence. Unmodified GenieX with the documented
+`GGML_HEXAGON_OPFILTER=GELU` instead matches all eight same-GGUF CPU letters
+at much lower latency. Changing the instruction prefix to identify a
+chronological frame sequence and requesting one letter also raises stock NPU
+to 7/8; BF16 GPU rerun with that same user prompt scores 7/8 with all eight
+answers equal. Visual preprocessing, chat wrappers, and precision still
+differ, so each is answer-level parity rather than tensor-level equivalence.
+A declared task-specific profile reaches 4/4 by using fixed ROI preprocessing
+for the small worker/box cases and only the decisive first/final pair for
+near-miss motion. See the
 [`r6 GenieX GGUF report`](evidence/iq9075_geniex_gguf_r6.json) and
-[`r7 isolation report`](evidence/iq9075_geniex_cpu_npu_parity_r7.json).
+[`r7 isolation report`](evidence/iq9075_geniex_cpu_npu_parity_r7.json), plus
+the
+[`r8 vision-placement report`](evidence/iq9075_geniex_vision_placement_r8.json).
 
 No earlier independent public result was found for the exact
 `nvidia/Cosmos-Reason2-2B` checkpoint on IQ-9075. NVIDIA's published hardware
@@ -836,6 +851,156 @@ treated as "unset" and replaced by the llama.cpp default temperature `0.8` in
 [`build_sampling_params`](https://github.com/qualcomm/GenieX/blob/main/sdk/plugins/llama_cpp/src/params.cpp).
 Top-k one leaves a single candidate regardless of that fallback.
 
+### Quality versus latency placement profiles
+
+The r7 same-GGUF control left one genuine CPU/NPU disagreement: shuffled
+routine box pickup was the correct `D` on CPU but `C` with full NPU offload.
+Layer-count testing showed that the answer changed as soon as
+`--n-gpu-layers` moved from zero to one. That boundary is less specific than
+it first appears:
+
+- GenieX treats zero layers as CPU and disables accelerator use for the
+  multimodal `mmproj` context.
+- Any nonzero value enables accelerator use for that vision context.
+- In the pinned llama.cpp, the first model offload unit is the final output
+  layer; no repeating decoder block is offloaded at `--ngl 1`.
+
+The stock CLI therefore changes the output layer and vision context together.
+An instrumented v0.3.17 build separated them:
+
+| Full-decoder experiment on shuffled box pickup | Answer | TTFT |
+|---|---:|---:|
+| Stock NPU vision and decoder | `C` | 1.752 s |
+| CPU output layer only | `C` | 1.754 s |
+| CPU vision `mmproj` context only | `D` | 6.458 s |
+| CPU vision context and output layer | `D` | 6.373 s |
+
+The output layer is not the offender in this probe. The behavior changes with
+the vision encoder/projector placement. A second ablation used llama.cpp's
+documented
+[`GGML_HEXAGON_OPFILTER`](https://github.com/ggml-org/llama.cpp/blob/ae9291e16b976514bf1f3d7f1616da7db3459496/docs/backend/snapdragon/README.md#environment-variables)
+control. Falling back only `GELU` to CPU also restores `D`, at 2.062 seconds
+TTFT. `NORM` alone remains `C`; `FLASH_ATTN_EXT` remains `C` and takes 7.558
+seconds. Because fallback changes both placement and scheduling, this strongly
+localizes the regression to behavior affected by Hexagon GELU placement but
+does not by itself prove an isolated GELU kernel defect.
+
+For the fast profile, no custom build is necessary. Set the filter before the
+GenieX process starts:
+
+```bash
+export GENIEX_DATA=/home/ubuntu/geniex-cosmos-v0317-data
+export GGML_HEXAGON_OPFILTER=GELU
+
+geniex --data-dir "$GENIEX_DATA" \
+  --skip-update \
+  infer local/cosmos-reason2-2b:Q4_0 \
+  --compute npu \
+  --ngl -1 \
+  --nctx 4096 \
+  --max-tokens 64 \
+  --top-k 1 \
+  --seed 42 \
+  --think=false \
+  --prompt "$PROMPT"
+```
+
+This stock-v0.3.17 profile fixes the only NPU-specific r7 error, scores 6/8,
+and matches all eight same-GGUF CPU letters. Its mean TTFT is 2.146 seconds,
+19.2% above stock full NPU but 3.58× faster than the 7.688-second all-CPU
+mean.
+
+For maximum measured answer parity, apply the repository's opt-in
+[CPU-mmproj patch](../integrations/geniex_mmproj_cpu/patches/0001-add-mmproj-cpu-toggle.patch)
+to a clean GenieX v0.3.17 checkout:
+
+```bash
+REPO_ROOT=/path/to/qai-physics-reasoning
+GENIEX_SOURCE=/path/to/GenieX-v0.3.17
+
+git clone --branch v0.3.17 https://github.com/qualcomm/GenieX.git \
+  "$GENIEX_SOURCE"
+git -C "$GENIEX_SOURCE" submodule update --init --recursive
+git -C "$GENIEX_SOURCE" apply \
+  "$REPO_ROOT/integrations/geniex_mmproj_cpu/patches/0001-add-mmproj-cpu-toggle.patch"
+
+docker run --rm \
+  --volume "$GENIEX_SOURCE:/workspace" \
+  --workdir /workspace \
+  --env CCACHE_DIR=/workspace/.ccache \
+  --platform linux/amd64 \
+  docker.io/qualcomm/geniex-toolchain-linux:v0.1.0 \
+  bash -c '
+    cmake -S sdk --preset arm64-linux-snapdragon-release \
+      -DGENIEX_VERSION=v0.3.17-mmproj-cpu
+    cmake --build sdk/build-arm64-linux-snapdragon-release -j "$(nproc)"
+    cmake --install sdk/build-arm64-linux-snapdragon-release \
+      --prefix sdk/pkg-geniex-mmproj-cpu
+  '
+```
+
+Deploy it beside the stock installation so rollback is just an environment
+change:
+
+```bash
+PLACEMENT_PREFIX=/home/ubuntu/geniex-cosmos-v0317-mmproj-cpu
+
+ssh ubuntu@<EVK IP> "mkdir -p '$PLACEMENT_PREFIX'"
+scp "$GENIEX_SOURCE/sdk/pkg-geniex-mmproj-cpu/lib/libgeniex.so" \
+  ubuntu@<EVK IP>:"$PLACEMENT_PREFIX/"
+scp -r "$GENIEX_SOURCE/sdk/pkg-geniex-mmproj-cpu/lib/llama_cpp" \
+  ubuntu@<EVK IP>:"$PLACEMENT_PREFIX/"
+```
+
+Run the stock v0.3.17 CLI against those side-by-side libraries:
+
+```bash
+STOCK_PREFIX=/home/ubuntu/geniex-cosmos-v0317
+PLACEMENT_PREFIX=/home/ubuntu/geniex-cosmos-v0317-mmproj-cpu
+GENIEX_DATA=/home/ubuntu/geniex-cosmos-v0317-data
+
+LD_LIBRARY_PATH="$PLACEMENT_PREFIX:$PLACEMENT_PREFIX/llama_cpp" \
+GENIEX_PLUGIN_PATH="$PLACEMENT_PREFIX" \
+GENIEX_EXPERIMENT_MMPROJ_CPU=1 \
+"$STOCK_PREFIX/geniex" \
+  --data-dir "$GENIEX_DATA" \
+  --skip-update \
+  infer local/cosmos-reason2-2b:Q4_0 \
+  --compute npu \
+  --ngl -1 \
+  --nctx 4096 \
+  --max-tokens 64 \
+  --top-k 1 \
+  --seed 42 \
+  --think=false \
+  --prompt "$PROMPT"
+```
+
+This moves the complete vision encoder/projector context to CPU, not just its
+last linear projection. All 28 repeating text layers and the output layer
+remain eligible for Hexagon offload. Live inspection in this configuration
+maps `libggml-hexagon.so` and holds `/dev/fastrpc-cdsp-secure` plus the system
+DMA heap.
+
+The exact long-prompt comparison is:
+
+| Profile | Eight answers | Correct | BF16 GPU answer parity | Mean TTFT |
+|---|---|---:|---:|---:|
+| Recorded BF16 GPU, native temporal pairs | `A C B D C B C A` | 7/8 | Reference | Not comparable |
+| GenieX all CPU | `C C B D C B C A` | 6/8 | 7/8 | 7.688 s |
+| Stock GenieX full NPU | `C C B C C B C A` | 5/8 | 6/8 | 1.800 s |
+| Stock GenieX, CPU GELU fallback | `C C B D C B C A` | 6/8 | 7/8 | 2.146 s |
+| CPU vision context, NPU decoder | `A C B D C B C A` | **7/8** | **8/8** | 6.402 s |
+
+Use the stock GELU profile when latency is primary and same-GGUF CPU parity
+is sufficient. Use the CPU-vision/NPU-decoder profile when this measured
+answer parity is more important than latency. The BF16 GPU still uses native
+three-pair video preprocessing, a different chat wrapper, and different
+precision, so 8/8 letter parity on eight probes is not numerical equivalence
+or a general safety claim. Full sanitized data and negative ablations are in
+the
+[`r8 vision-placement report`](evidence/iq9075_geniex_vision_placement_r8.json).
+
 The CLI can attach multiple ordered image files found in a prompt. This is a
 useful static-frame experiment, but it is not native video preprocessing:
 
@@ -915,10 +1080,17 @@ successful NPU process maps `libggml-hexagon.so` and `libcdsprpc.so`, holds
 `/dev/fastrpc-cdsp-secure` and DMA-buffer descriptors, and therefore supplies
 direct HTP evidence beyond the `--compute npu` flag.
 
-The exact tracked four-scene wording scores 5/8 on this standard Q4_0 route,
-versus the recorded BF16 GPU's 7/8, with 6/8 exact answer parity. The two NPU
-misses against GPU are normal-order marker knockdown and shuffled box pickup.
-Changing the instruction to:
+Stock full offload scores 5/8 on the exact tracked four-scene wording, versus
+the recorded BF16 GPU's 7/8, with 6/8 exact answer parity. The placement work
+in
+[Quality versus latency placement profiles](#quality-versus-latency-placement-profiles)
+separates those two misses. CPU fallback for Hexagon `GELU` removes the
+NPU-specific shuffled-box error and gives 8/8 parity with same-GGUF CPU at a
+2.146-second mean TTFT. Moving the complete vision context to CPU while
+retaining the NPU decoder also changes barrier-normal, giving 7/8 accuracy
+and all eight recorded BF16 GPU letters at a 6.402-second mean TTFT.
+
+Changing the stock-runtime instruction to:
 
 ```text
 Which event is shown in this chronological frame sequence?
@@ -937,12 +1109,13 @@ motion explicit (`The worker is running away from the forklift.`). The full
 task-specific profile passes 4/4, but it is intentionally narrower than a
 broad zero-shot benchmark.
 
-The same-GGUF long-prompt isolation scores CPU 6/8 and NPU 5/8 with 7/8
-answer parity. CPU and NPU disagree only on shuffled box pickup: CPU returns
-the correct `D`, while NPU returns `C`. Mean TTFT from the rounded CLI output
-is 7.688 seconds on CPU and 1.800 seconds on NPU, a 4.27× reduction. This
-shows that NPU execution contributes one additional observed error, while the
-barrier-normal difference from BF16 GPU is already present on GenieX CPU.
+The original same-GGUF isolation scores CPU 6/8 and stock NPU 5/8 with 7/8
+CPU/NPU answer parity. CPU and NPU disagree only on shuffled box pickup:
+CPU returns the correct `D`, while NPU returns `C`. Mean TTFT from the rounded
+CLI output is 7.688 seconds on CPU and 1.800 seconds on stock NPU, a 4.27×
+reduction. The later placement ablation shows that moving the output layer
+does not affect that error; CPU vision placement or the narrower stock GELU
+fallback does.
 
 Use the standard Q4_0 main as the quality default. The pure-Q4_0 output head
 improves barrier decode speed from 20.9 to 26.3 tokens/s and total time from
@@ -953,6 +1126,9 @@ profile, and failure boundaries are recorded in
 controlled CPU/NPU matrix, same-user-prompt BF16 GPU rerun, and lifecycle
 failure are recorded in
 [`iq9075_geniex_cpu_npu_parity_r7.json`](evidence/iq9075_geniex_cpu_npu_parity_r7.json).
+The independent component placement, GELU fallback, full corrected panels,
+timings, and direct process proof are recorded in
+[`iq9075_geniex_vision_placement_r8.json`](evidence/iq9075_geniex_vision_placement_r8.json).
 
 For automation, avoid launching a new GenieX process indefinitely. In the r7
 matrix, one CPU and one NPU model creation needed a bounded retry. Subsequent
@@ -2337,6 +2513,8 @@ for the design boundary and runtime support matrix.
 | `llama-mtmd-cli` rejects `--no-display-prompt` | An older baseline script passed a flag unsupported by the current EVK build | Remove that flag; it is not required for inference |
 | GenieX imports the local directory but selects the wrong main GGUF | The staging directory also contains the intermediate BF16 main model | Keep only `Cosmos-Reason2-2B-Q4_0.gguf` and `mmproj-Cosmos-Reason2-2B-F16.gguf` in the imported directory |
 | `--temperature 0` still samples | GenieX treats zero as an unset sampler field and substitutes temperature `0.8` | Use `--top-k 1 --seed 42` for deterministic greedy-equivalent comparisons |
+| Stock NPU changes shuffled box pickup from CPU `D` to `C` | The regression follows accelerator placement of the vision context; output-layer CPU fallback does not change it | For the fast profile, start stock v0.3.17 with `GGML_HEXAGON_OPFILTER=GELU`; for maximum measured parity, use the opt-in CPU-mmproj patch and retain `--compute npu --ngl -1` for the decoder |
+| `GENIEX_EXPERIMENT_MMPROJ_CPU=1` has no effect | The environment switch exists only in this repository's opt-in v0.3.17 patch, not the stock binary | Build and load the side-by-side patched llama plugin and dependencies, set `GENIEX_PLUGIN_PATH` to the parent containing `llama_cpp`, and verify loaded paths through `/proc/<PID>/maps` |
 | Multiple GenieX images disagree with the native video reference | Ordered still-image attachment does not reproduce native video sampling and timestamps | Decode at 2 FPS and use the custom per-pair pipeline for parity tests; treat the GenieX multi-image result as exploratory |
 | Q4_0 repeats one option across shuffled image choices | The visual budget may be too small; the host barrier probe repeated `C` at 84 tokens/image | Re-run natural and deterministically upscaled inputs with a larger context; require correctness in both option orders and more than one scene |
 | QAIRT 2.45 and 2.47 libraries appear in one run | An inherited environment mixed installations | Rebuild a clean `PATH`/`LD_LIBRARY_PATH` rooted only at the artifact's matching QAIRT release |
