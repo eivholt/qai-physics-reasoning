@@ -10,9 +10,9 @@ The result is an experimental deployment, not a Qualcomm- or NVIDIA-certified
 model. On the frozen encoded-video panel, the recommended 2 FPS profile scored
 7/8 with a 1.453-second mean warm request time. The task-specific warehouse
 classifier scored 4/4 at about 2.90 seconds per clip. See the
-[engineering appendix](engineering_appendix.md) for the failed approaches,
-precision and placement ablations, full benchmark history, and unresolved
-runtime limits.
+[engineering appendix](https://github.com/eivholt/qai-physics-reasoning/blob/main/docs/engineering_appendix.md)
+in the project repository for the failed approaches, precision and placement
+experiments, full benchmark history, and unresolved runtime limits.
 
 ## What Cosmos-Reason2-2B is
 
@@ -46,6 +46,70 @@ final vision output. GenieX/llama.cpp keeps that multimodal wiring internal,
 which is one reason this route proved more practical than exposing those
 tensors across separately compiled QAIRT graphs.
 
+## What we had to solve
+
+Getting the files to load on the EVK was only the first part of the work. A
+vision-language model can execute successfully and still give much worse
+answers than the original GPU model. We had to address five practical
+problems:
+
+1. **Keep the visual information connected to the language model.** The first
+   Qualcomm AI Runtime (QAIRT) deployment split the model into several
+   compiled sections. Qualcomm's older Genie interface could not pass all of
+   Qwen3-VL's visual masks and intermediate vision features between those
+   sections. Removing those inputs made the graph easier to run, but also
+   removed information the model had been trained to use. The current
+   GenieX/llama.cpp route keeps these connections inside one runtime.
+2. **Feed the same scene the model expects.** Small differences in resize,
+   aspect ratio, frame order, timestamps, or temporal frame pairing can change
+   the answer. We also found and restored a learned vision-layer bias that was
+   missing from an early export.
+3. **Quantize without losing the answer.** Four-bit weights make the model
+   practical on the EVK, but aggressive quantization of every value caused
+   plausible-looking yet incorrect predictions. We compared the NPU output
+   with a higher-precision GPU reference on fixed, order-shuffled tests and
+   kept higher precision where it materially helped.
+4. **Choose NPU placement based on measured quality.** The first full-NPU
+   GGUF run was fast but introduced a vision-side error. Moving vision back to
+   CPU recovered quality but lost most of the speed. The final native-video
+   configuration instead keeps vision and text on the NPU and samples the
+   video at 2 FPS, which recovered the best bounded result at much lower
+   latency.
+5. **Make repeated video requests reliable.** Stock encoded-video handling
+   retained decoder resources and left `ffmpeg`/`ffprobe` processes behind.
+   The four repository patches fix those leaks, expose the frame-sampling
+   controls, and make constrained-choice output work. A remaining long-run
+   stall means the service should still be supervised and periodically
+   recycled.
+
+The measured progression is summarized below. These rows come from different
+diagnostic panels as the investigation narrowed each problem, so they should
+not be read as one common leaderboard. TTFT means time to the first generated
+token.
+
+| Deployment stage | Measured quality | Mean latency or main finding |
+|---|---:|---|
+| Early split-QAIRT, aggressively quantized | Unusable, incoherent text | Successful NPU initialization did not imply usable output |
+| Corrected full-vision split-QAIRT test | NPU 4/8; reference GPU 7/8 | About 0.74 s NPU TTFT |
+| Best split-QAIRT precision mix | NPU 13/20; reference GPU 16/20 | About 0.86 s NPU TTFT |
+| Standard GGUF, all CPU | 6/8 | 7.688 s TTFT |
+| Standard GGUF, stock full NPU | 5/8 | 1.800 s TTFT; fast, but with an NPU-specific vision error |
+| NPU with one operation class returned to CPU | 6/8 | 2.146 s TTFT |
+| Ordered frames, CPU vision with NPU language decoder | 7/8 | 6.402 s TTFT |
+| Native MP4, CPU vision with NPU language decoder | 7/8 | 6.8–7.3 s warm request time |
+| Recommended native MP4, full NPU at 2 FPS | 7/8 | 1.453 s warm request mean |
+| Two-request warehouse classifier | 4/4 | About 2.90 s per clip; task-specific rather than general zero-shot accuracy |
+
+The important outcome is that the final 2 FPS profile matches the slower
+native-video CPU-vision/NPU-decoder profile's 7/8 answer sequence while being
+about 4.8 times faster. It does not prove general GPU equivalence: the GPU and
+GenieX paths use different video processing and numerical precision, and a
+harder balanced direct-choice diagnostic scored 10/16.
+
+The complete low-level investigation, artifact identifiers, negative
+experiments, and Qualcomm-facing diagnostics are in the repository's
+[engineering appendix](https://github.com/eivholt/qai-physics-reasoning/blob/main/docs/engineering_appendix.md).
+
 ## Before you start
 
 You need:
@@ -62,6 +126,12 @@ You need:
 
 All host commands below run in Linux or WSL. Choose new output directories if
 you already have files at these paths.
+
+Clone this repository if it is not already available:
+
+```bash
+git clone https://github.com/eivholt/qai-physics-reasoning.git
+```
 
 ```bash
 export REPO_ROOT=/path/to/qai-physics-reasoning
@@ -502,4 +572,4 @@ For the complete investigation—including the split QAIRT export, DeepStack
 and `visual_pos_masks` issue, vision-bias repair, precision sweeps, CPU/NPU
 placement study, native-video leak fixes, benchmark evolution, and failure
 guide—continue with the
-[engineering appendix](engineering_appendix.md).
+[engineering appendix](https://github.com/eivholt/qai-physics-reasoning/blob/main/docs/engineering_appendix.md).
