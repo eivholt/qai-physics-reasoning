@@ -31,8 +31,10 @@ GENIE_CONFIG_FILENAME = "genie_config.json"
 MARKER_FILENAME = "geniex_compat.json"
 QAIRT245_COMPAT_MARKER = "qairt_245_compat.json"
 W4_FP16_MARKER = "w4_fp16.json"
+TEXT_W8_MARKER = "text_w8_matrices.json"
 DEFAULT_MODEL_ID = "qwen3_vl_cosmos_reason2_2b"
 PART1_CONTEXT = "part1_of_4.bin"
+PART1_CONTEXT_REPORT = "part1_of_4.context.json"
 VISION_CONTEXT = "vision_encoder.bin"
 VISION_PROFILE_FILES = (
     "img-enc-htp.json",
@@ -56,6 +58,25 @@ DEEPSTACK_INPUTS = {
     "deepstack_visual_embeds_0",
     "deepstack_visual_embeds_1",
     "deepstack_visual_embeds_2",
+}
+DEEPSTACK_INPUT_ORDER = (
+    "visual_pos_masks",
+    "deepstack_visual_embeds_0",
+    "deepstack_visual_embeds_1",
+    "deepstack_visual_embeds_2",
+)
+PART1_PRECISION_MARKERS = (
+    W4_FP16_MARKER,
+    TEXT_W8_MARKER,
+)
+EXPECTED_PART1_GRAPH_ORDER = (
+    "ar128_cl512_1_of_4",
+    "ar1_cl512_1_of_4",
+)
+QNN_EXTERNAL_DTYPES = {
+    "float32": "QNN_DATATYPE_FLOAT_32",
+    "bool": "QNN_DATATYPE_BOOL_8",
+    "bool8": "QNN_DATATYPE_BOOL_8",
 }
 
 
@@ -116,7 +137,9 @@ def _validate_bundle(source: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     return metadata, config
 
 
-def _validate_part1_replacement(source: Path) -> dict[str, Any]:
+def _validate_part1_replacement(
+    source: Path,
+) -> tuple[dict[str, Any], tuple[str, ...]]:
     context = source / PART1_CONTEXT
     if not source.is_dir() or not context.is_file():
         raise ValueError(
@@ -155,6 +178,15 @@ def _validate_part1_replacement(source: Path) -> dict[str, Any]:
             "Replacement part-1 input order puts a DeepStack auxiliary before "
             "inputs_embeds; this is unsafe for GenieX graph-spec inference"
         )
+    actual_deepstack_order = tuple(
+        name for name in inputs if name in DEEPSTACK_INPUTS
+    )
+    if actual_deepstack_order != DEEPSTACK_INPUT_ORDER:
+        raise ValueError(
+            "Replacement part-1 DeepStack inputs are not in the required "
+            f"order {list(DEEPSTACK_INPUT_ORDER)}: "
+            f"{list(actual_deepstack_order)}"
+        )
 
     mask = inputs["visual_pos_masks"]
     if (
@@ -163,6 +195,10 @@ def _validate_part1_replacement(source: Path) -> dict[str, Any]:
     ):
         raise ValueError(
             "Replacement visual_pos_masks shape must be [1, 1] or [1, 128]"
+        )
+    if mask.get("dtype") not in {"bool", "bool8"}:
+        raise ValueError(
+            "Replacement visual_pos_masks external dtype must be bool/bool8"
         )
     deepstack_shape: list[int] | None = None
     for name in sorted(DEEPSTACK_INPUTS - {"visual_pos_masks"}):
@@ -177,6 +213,10 @@ def _validate_part1_replacement(source: Path) -> dict[str, Any]:
             raise ValueError(
                 f"Replacement {name} shape is {shape!r}; expected "
                 "[positive visual capacity, 2048]"
+            )
+        if tensor.get("dtype") != "float32":
+            raise ValueError(
+                f"Replacement {name} external dtype must be float32"
             )
         if deepstack_shape is None:
             deepstack_shape = shape
@@ -212,7 +252,51 @@ def _validate_part1_replacement(source: Path) -> dict[str, Any]:
             f"Replacement {W4_FP16_MARKER} has no supplementary_files "
             "metadata entry"
         )
-    return metadata
+    precision_markers = [W4_FP16_MARKER]
+    text_w8_path = source / TEXT_W8_MARKER
+    text_w8_declared = (
+        isinstance(supplementary, dict)
+        and TEXT_W8_MARKER in supplementary
+    )
+    if text_w8_path.is_file() != text_w8_declared:
+        raise ValueError(
+            f"Replacement {TEXT_W8_MARKER} file and supplementary_files "
+            "metadata entry must either both be present or both be absent"
+        )
+    if text_w8_path.is_file():
+        text_w8 = _load_json(text_w8_path, TEXT_W8_MARKER)
+        selected_parts = text_w8.get("selected_parts")
+        if (
+            not isinstance(selected_parts, list)
+            or PART1_CONTEXT.removesuffix(".bin") not in selected_parts
+        ):
+            raise ValueError(
+                f"Replacement {TEXT_W8_MARKER} does not prove that "
+                "part1_of_4 was promoted to W8"
+            )
+        export_contract = text_w8.get("export_contract")
+        if not isinstance(export_contract, dict):
+            raise ValueError(
+                f"Replacement {TEXT_W8_MARKER} has no export_contract"
+            )
+        expected_contract = {
+            "activation_precision": "FP16",
+            "context_length": 512,
+            "sequence_lengths": [128, 1],
+            "deepstack_inputs": list(DEEPSTACK_INPUT_ORDER),
+            "external_tensor_precision": (
+                "FP32, except visual_pos_masks BOOL"
+            ),
+        }
+        for field, expected in expected_contract.items():
+            if export_contract.get(field) != expected:
+                raise ValueError(
+                    f"Replacement {TEXT_W8_MARKER} export_contract.{field} "
+                    f"is {export_contract.get(field)!r}; expected "
+                    f"{expected!r}"
+                )
+        precision_markers.append(TEXT_W8_MARKER)
+    return metadata, tuple(precision_markers)
 
 
 def _validate_vision_replacement(
@@ -302,11 +386,200 @@ def _validate_vision_text_capacity(
         )
 
 
+def _part1_sequence_length(model_file: dict[str, Any], label: str) -> int:
+    try:
+        tensor = model_file["inputs"]["inputs_embeds"]
+        shape = tensor["shape"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"{label} has no inputs_embeds shape") from exc
+    if (
+        not isinstance(shape, list)
+        or len(shape) != 3
+        or shape[0] != 1
+        or shape[2] != 2048
+        or shape[1] not in (1, 128)
+    ):
+        raise ValueError(
+            f"{label} inputs_embeds shape is {shape!r}; expected "
+            "[1, 1|128, 2048]"
+        )
+    return int(shape[1])
+
+
+def _metadata_tensor_contract(
+    tensors: Any,
+    *,
+    label: str,
+) -> list[dict[str, Any]]:
+    if not isinstance(tensors, dict):
+        raise ValueError(f"{label} must be an ordered object")
+    contract: list[dict[str, Any]] = []
+    for name, tensor in tensors.items():
+        if not isinstance(tensor, dict):
+            raise ValueError(f"{label}.{name} must be an object")
+        shape = tensor.get("shape")
+        dtype = tensor.get("dtype")
+        if (
+            not isinstance(shape, list)
+            or not all(
+                isinstance(value, int)
+                and not isinstance(value, bool)
+                and value > 0
+                for value in shape
+            )
+        ):
+            raise ValueError(f"{label}.{name} has invalid shape {shape!r}")
+        qnn_dtype = QNN_EXTERNAL_DTYPES.get(dtype)
+        if qnn_dtype is None:
+            raise ValueError(
+                f"{label}.{name} has unsupported external dtype {dtype!r}"
+            )
+        contract.append(
+            {
+                "name": name,
+                "dataType": qnn_dtype,
+                "dimensions": shape,
+            }
+        )
+    return contract
+
+
+def _qnn_graph_tensor_contract(
+    graph_info: dict[str, Any],
+    *,
+    field: str,
+    label: str,
+) -> list[dict[str, Any]]:
+    tensors = graph_info.get(field)
+    if not isinstance(tensors, list):
+        raise ValueError(f"{label}.{field} must be a list")
+    contract: list[dict[str, Any]] = []
+    for index, tensor_wrapper in enumerate(tensors):
+        tensor = (
+            tensor_wrapper.get("info")
+            if isinstance(tensor_wrapper, dict)
+            else None
+        )
+        if not isinstance(tensor, dict):
+            raise ValueError(f"{label}.{field}[{index}] has no info object")
+        contract.append(
+            {
+                "name": tensor.get("name"),
+                "dataType": tensor.get("dataType"),
+                "dimensions": tensor.get("dimensions"),
+            }
+        )
+    return contract
+
+
+def _validate_qnn_graph_against_metadata(
+    graph_info: dict[str, Any],
+    model_file: dict[str, Any],
+    *,
+    label: str,
+) -> None:
+    for qnn_field, metadata_field in (
+        ("graphInputs", "inputs"),
+        ("graphOutputs", "outputs"),
+    ):
+        actual = _qnn_graph_tensor_contract(
+            graph_info,
+            field=qnn_field,
+            label=label,
+        )
+        expected = _metadata_tensor_contract(
+            model_file.get(metadata_field),
+            label=f"{label}.{metadata_field}",
+        )
+        if actual != expected:
+            raise ValueError(
+                f"{label} {metadata_field} do not exactly match the "
+                "metadata name/order/dtype/shape contract"
+            )
+
+
+def _load_part1_context_report(
+    replacement_source: Path,
+    report_path: Path | None,
+) -> tuple[dict[str, Any] | None, Path | None]:
+    selected = (
+        report_path.expanduser().resolve()
+        if report_path is not None
+        else replacement_source / PART1_CONTEXT_REPORT
+    )
+    if not selected.is_file():
+        return None, None
+    envelope = _load_json(selected, "part-1 QNN context report")
+    if envelope.get("schema_version") != 1:
+        raise ValueError("Part-1 QNN context report schema_version must be 1")
+    if envelope.get("context_filename") != PART1_CONTEXT:
+        raise ValueError(
+            f"Part-1 QNN context report must name {PART1_CONTEXT}"
+        )
+    actual_context_hash = sha256_file(replacement_source / PART1_CONTEXT)
+    if envelope.get("context_sha256") != actual_context_hash:
+        raise ValueError(
+            "Part-1 QNN context report is not bound to the replacement "
+            "context SHA-256"
+        )
+    qnn_info = envelope.get("qnn_context_binary_info")
+    if not isinstance(qnn_info, dict):
+        raise ValueError(
+            "Part-1 QNN context report has no qnn_context_binary_info"
+        )
+    try:
+        artifact_type = qnn_info["header"]["artifact_type"]
+        info = qnn_info["info"]
+        build_id = info["buildId"]
+        graphs = info["graphs"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(
+            "Part-1 QNN context report is incomplete"
+        ) from exc
+    if artifact_type != "CONTEXT_BINARY_INFO":
+        raise ValueError(
+            "Part-1 QNN context report is not context-binary information"
+        )
+    if not isinstance(build_id, str) or not build_id.startswith("v2.45.0."):
+        raise ValueError(
+            f"Part-1 QNN context was not inspected with QAIRT 2.45: "
+            f"{build_id!r}"
+        )
+    if not isinstance(graphs, list) or len(graphs) != 2:
+        raise ValueError(
+            "Replacement part 1 must contain exactly two linked graphs"
+        )
+    graph_infos: list[dict[str, Any]] = []
+    for index, graph in enumerate(graphs):
+        graph_info = graph.get("info") if isinstance(graph, dict) else None
+        if not isinstance(graph_info, dict):
+            raise ValueError(
+                f"Part-1 QNN context graph {index} has no info object"
+            )
+        graph_infos.append(graph_info)
+    graph_order = tuple(graph.get("graphName") for graph in graph_infos)
+    if graph_order != EXPECTED_PART1_GRAPH_ORDER:
+        raise ValueError(
+            "Replacement part-1 linked graph order is "
+            f"{list(graph_order)}; expected "
+            f"{list(EXPECTED_PART1_GRAPH_ORDER)}"
+        )
+    return {
+        "envelope": envelope,
+        "build_id": build_id,
+        "graph_infos": graph_infos,
+        "graph_order": list(graph_order),
+        "report_sha256": sha256_file(selected),
+        "context_sha256": actual_context_hash,
+    }, selected
+
+
 def _validate_part1_compatibility(
     source_metadata: dict[str, Any],
     replacement_metadata: dict[str, Any],
     vision_metadata: dict[str, Any] | None = None,
-) -> None:
+    context_report: dict[str, Any] | None = None,
+) -> bool:
     """Fail before copying if the partial export cannot join the base bundle."""
 
     try:
@@ -342,21 +615,116 @@ def _validate_part1_compatibility(
             "Source/replacement part-1 and vision contracts must be objects"
         )
 
-    replacement_base_inputs = [
-        (name, tensor)
-        for name, tensor in replacement_inputs.items()
-        if name not in DEEPSTACK_INPUTS
+    source_sequence = _part1_sequence_length(
+        source_part1, "Source part 1"
+    )
+    replacement_sequence = _part1_sequence_length(
+        replacement_part1, "Replacement part 1"
+    )
+    retain_source_metadata = False
+    if replacement_sequence == source_sequence:
+        source_base_inputs = [
+            (name, tensor)
+            for name, tensor in source_inputs.items()
+            if name not in DEEPSTACK_INPUTS
+        ]
+        replacement_base_inputs = [
+            (name, tensor)
+            for name, tensor in replacement_inputs.items()
+            if name not in DEEPSTACK_INPUTS
+        ]
+        if source_base_inputs != replacement_base_inputs:
+            raise ValueError(
+                "Replacement part-1 base input contract does not exactly "
+                "match the source bundle"
+            )
+        if list(source_outputs.items()) != list(replacement_outputs.items()):
+            raise ValueError(
+                "Replacement part-1 output contract does not exactly match "
+                "the source bundle"
+            )
+    elif source_sequence == 1 and replacement_sequence == 128:
+        if context_report is None:
+            raise ValueError(
+                "Replacement metadata describes AR128 while the source "
+                "bundle describes AR1; provide a SHA-bound QAIRT 2.45 "
+                f"{PART1_CONTEXT_REPORT} proving both linked graph contracts "
+                "and AR128-before-AR1 order"
+            )
+        graph_infos = context_report["graph_infos"]
+        _validate_qnn_graph_against_metadata(
+            graph_infos[0],
+            replacement_part1,
+            label=EXPECTED_PART1_GRAPH_ORDER[0],
+        )
+        _validate_qnn_graph_against_metadata(
+            graph_infos[1],
+            source_part1,
+            label=EXPECTED_PART1_GRAPH_ORDER[1],
+        )
+        source_input_names = list(source_inputs)
+        replacement_input_names = list(replacement_inputs)
+        if source_input_names != replacement_input_names:
+            raise ValueError(
+                "AR128 and AR1 part-1 input names/order differ"
+            )
+        if list(source_outputs) != list(replacement_outputs):
+            raise ValueError(
+                "AR128 and AR1 part-1 output names/order differ"
+            )
+        for name in source_input_names:
+            if source_inputs[name].get("dtype") != replacement_inputs[
+                name
+            ].get("dtype"):
+                raise ValueError(
+                    f"AR128 and AR1 external input dtype differs for {name}"
+                )
+        for name in source_outputs:
+            if source_outputs[name].get("dtype") != replacement_outputs[
+                name
+            ].get("dtype"):
+                raise ValueError(
+                    f"AR128 and AR1 external output dtype differs for {name}"
+                )
+        retain_source_metadata = True
+    else:
+        raise ValueError(
+            "Unsupported source/replacement part-1 metadata graph views: "
+            f"AR{source_sequence} and AR{replacement_sequence}"
+        )
+
+    source_deepstack_names = [
+        name for name in source_inputs if name in DEEPSTACK_INPUTS
     ]
-    if list(source_inputs.items()) != replacement_base_inputs:
+    if source_deepstack_names and set(source_deepstack_names) != DEEPSTACK_INPUTS:
         raise ValueError(
-            "Replacement part-1 base input contract does not exactly match "
-            "the source bundle"
+            "Source part 1 has an incomplete DeepStack input contract: "
+            f"{source_deepstack_names}"
         )
-    if list(source_outputs.items()) != list(replacement_outputs.items()):
-        raise ValueError(
-            "Replacement part-1 output contract does not exactly match "
-            "the source bundle"
-        )
+    if source_deepstack_names:
+        if source_deepstack_names != list(DEEPSTACK_INPUT_ORDER):
+            raise ValueError(
+                "Source part-1 DeepStack inputs are not in the required "
+                f"order {list(DEEPSTACK_INPUT_ORDER)}: "
+                f"{source_deepstack_names}"
+            )
+        for name in DEEPSTACK_INPUT_ORDER:
+            source_tensor = source_inputs[name]
+            replacement_tensor = replacement_inputs[name]
+            if name == "visual_pos_masks" and retain_source_metadata:
+                compatible = (
+                    source_tensor.get("dtype")
+                    == replacement_tensor.get("dtype")
+                    and source_tensor.get("shape") == [1, 1]
+                    and replacement_tensor.get("shape") == [1, 128]
+                )
+            else:
+                compatible = source_tensor == replacement_tensor
+            if not compatible:
+                raise ValueError(
+                    "Replacement part-1 DeepStack capacity/external contract "
+                    f"for {name} does not exactly match the source bundle"
+                )
 
     part1_visual_shape = replacement_inputs[
         "deepstack_visual_embeds_0"
@@ -386,6 +754,13 @@ def _validate_part1_compatibility(
                 "is incompatible with replacement DeepStack capacity "
                 f"{part1_visual_shape!r}"
             )
+        if vision_shape[0] > part1_visual_shape[0]:
+            raise ValueError(
+                f"Source vision output {name} has {vision_shape[0]} rows, "
+                "which exceeds replacement part-1 DeepStack capacity "
+                f"{part1_visual_shape[0]}"
+            )
+    return retain_source_metadata
 
 
 def _replace_file_atomically(
@@ -408,6 +783,7 @@ def prepare_bundle(
     model_id: str = DEFAULT_MODEL_ID,
     hardlink: bool = False,
     part1_replacement_bundle: Path | None = None,
+    part1_context_report: Path | None = None,
     vision_replacement_bundle: Path | None = None,
 ) -> Path:
     """Copy a bundle and select GenieX's Qwen3-VL runtime dispatcher."""
@@ -424,6 +800,10 @@ def prepare_bundle(
     metadata, _ = _validate_bundle(source)
     replacement_source: Path | None = None
     replacement_metadata: dict[str, Any] | None = None
+    replacement_precision_markers: tuple[str, ...] = ()
+    replacement_context_report: dict[str, Any] | None = None
+    replacement_context_report_path: Path | None = None
+    retain_source_part1_metadata = False
     vision_source: Path | None = None
     vision_metadata: dict[str, Any] | None = None
     vision_profile: VisionProfile | None = None
@@ -434,11 +814,26 @@ def prepare_bundle(
         )
     if part1_replacement_bundle is not None:
         replacement_source = part1_replacement_bundle.expanduser().resolve()
-        replacement_metadata = _validate_part1_replacement(replacement_source)
-        _validate_part1_compatibility(
+        (
+            replacement_metadata,
+            replacement_precision_markers,
+        ) = _validate_part1_replacement(replacement_source)
+        (
+            replacement_context_report,
+            replacement_context_report_path,
+        ) = _load_part1_context_report(
+            replacement_source,
+            part1_context_report,
+        )
+        retain_source_part1_metadata = _validate_part1_compatibility(
             metadata,
             replacement_metadata,
             vision_metadata=vision_metadata,
+            context_report=replacement_context_report,
+        )
+    elif part1_context_report is not None:
+        raise ValueError(
+            "--part1-context-report requires --part1-replacement-bundle"
         )
     if vision_profile is not None:
         _validate_vision_text_capacity(
@@ -539,21 +934,17 @@ def prepare_bundle(
                         )
 
         if replacement_source is not None and replacement_metadata is not None:
-            replacement_model_file = replacement_metadata["model_files"][
-                PART1_CONTEXT
-            ]
+            replacement_model_file = (
+                metadata["model_files"][PART1_CONTEXT]
+                if retain_source_part1_metadata
+                else replacement_metadata["model_files"][PART1_CONTEXT]
+            )
             patched_metadata["model_files"][PART1_CONTEXT] = replacement_model_file
 
             _replace_file_atomically(
                 replacement_source / PART1_CONTEXT,
                 destination / PART1_CONTEXT,
                 copy_function=copy_function,
-            )
-            replacement_marker = replacement_source / W4_FP16_MARKER
-            _replace_file_atomically(
-                replacement_marker,
-                destination / W4_FP16_MARKER,
-                copy_function=shutil.copy2,
             )
             replacement_supplementary = replacement_metadata[
                 "supplementary_files"
@@ -564,9 +955,34 @@ def prepare_bundle(
                 if isinstance(supplementary, dict)
                 else {}
             )
-            patched_metadata["supplementary_files"][W4_FP16_MARKER] = (
-                replacement_supplementary[W4_FP16_MARKER]
+            for filename in PART1_PRECISION_MARKERS:
+                (destination / filename).unlink(missing_ok=True)
+                patched_metadata["supplementary_files"].pop(filename, None)
+            for filename in replacement_precision_markers:
+                _replace_file_atomically(
+                    replacement_source / filename,
+                    destination / filename,
+                    copy_function=shutil.copy2,
+                )
+                patched_metadata["supplementary_files"][filename] = (
+                    replacement_supplementary[filename]
+                )
+            (destination / PART1_CONTEXT_REPORT).unlink(missing_ok=True)
+            patched_metadata["supplementary_files"].pop(
+                PART1_CONTEXT_REPORT, None
             )
+            if replacement_context_report_path is not None:
+                _replace_file_atomically(
+                    replacement_context_report_path,
+                    destination / PART1_CONTEXT_REPORT,
+                    copy_function=shutil.copy2,
+                )
+                patched_metadata["supplementary_files"][
+                    PART1_CONTEXT_REPORT
+                ] = (
+                    "SHA-bound QAIRT 2.45 linked graph-order and external "
+                    "tensor contract report for part1_of_4.bin."
+                )
             compatibility_marker = destination / QAIRT245_COMPAT_MARKER
             compatibility_marker.unlink(missing_ok=True)
             supplementary = patched_metadata.get("supplementary_files")
@@ -583,13 +999,38 @@ def prepare_bundle(
         )
         temporary_metadata.replace(destination_metadata)
 
+        inherited_marker_path = source / MARKER_FILENAME
+        inherited_marker = (
+            _load_json(inherited_marker_path, "source geniex_compat.json")
+            if inherited_marker_path.is_file()
+            else None
+        )
         marker = {
-            "schema_version": 2,
+            "schema_version": 3,
             "purpose": "Select Qualcomm GenieX's Qwen3-VL QAIRT pipeline",
             "source_bundle_name": source.name,
             "source_metadata_sha256": sha256_file(source / METADATA_FILENAME),
+            "source_compatibility_marker": (
+                {
+                    "sha256": sha256_file(inherited_marker_path),
+                    "schema_version": inherited_marker.get("schema_version"),
+                    "part1_replacement": inherited_marker.get(
+                        "part1_replacement"
+                    ),
+                    "vision_replacement": inherited_marker.get(
+                        "vision_replacement"
+                    ),
+                }
+                if inherited_marker is not None
+                else None
+            ),
             "original_model_id": original_model_id,
             "geniex_model_id": model_id,
+            "final_metadata_sha256": sha256_file(destination_metadata),
+            "final_context_sha256": {
+                filename: sha256_file(destination / filename)
+                for filename in sorted(REQUIRED_CONTEXTS)
+            },
             "qwen3_vl_contract": {
                 "rope_type": "qwen3vl-mrope",
                 "mrope_section": [24, 20, 20],
@@ -606,6 +1047,48 @@ def prepare_bundle(
                         replacement_source / METADATA_FILENAME
                     ),
                     "deepstack_inputs": sorted(DEEPSTACK_INPUTS),
+                    "deepstack_visual_shape": replacement_metadata[
+                        "model_files"
+                    ][PART1_CONTEXT]["inputs"][
+                        "deepstack_visual_embeds_0"
+                    ]["shape"],
+                    "visual_pos_masks_shape": replacement_metadata[
+                        "model_files"
+                    ][PART1_CONTEXT]["inputs"]["visual_pos_masks"]["shape"],
+                    "precision_provenance": {
+                        filename: {
+                            "sha256": sha256_file(
+                                replacement_source / filename
+                            ),
+                            "metadata_description": replacement_metadata[
+                                "supplementary_files"
+                            ][filename],
+                        }
+                        for filename in replacement_precision_markers
+                    },
+                    "context_report": (
+                        {
+                            "sha256": replacement_context_report[
+                                "report_sha256"
+                            ],
+                            "context_sha256": replacement_context_report[
+                                "context_sha256"
+                            ],
+                            "qairt_build_id": replacement_context_report[
+                                "build_id"
+                            ],
+                            "graph_order": replacement_context_report[
+                                "graph_order"
+                            ],
+                            "final_metadata_graph_view": (
+                                "source_ar1"
+                                if retain_source_part1_metadata
+                                else "replacement"
+                            ),
+                        }
+                        if replacement_context_report is not None
+                        else None
+                    ),
                     "removed_compatibility_marker": QAIRT245_COMPAT_MARKER,
                 }
                 if replacement_source is not None
@@ -673,6 +1156,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--part1-context-report",
+        type=Path,
+        default=None,
+        help=(
+            "SHA-bound QAIRT 2.45 qnn-context-binary-utility report. "
+            "Required when replacement metadata presents the AR128 graph "
+            "while the source bundle presents AR1."
+        ),
+    )
+    parser.add_argument(
         "--vision-replacement-bundle",
         type=Path,
         default=None,
@@ -690,6 +1183,7 @@ def main() -> None:
         model_id=args.model_id,
         hardlink=args.hardlink,
         part1_replacement_bundle=args.part1_replacement_bundle,
+        part1_context_report=args.part1_context_report,
         vision_replacement_bundle=args.vision_replacement_bundle,
     )
     print(f"Prepared GenieX bundle: {output}")

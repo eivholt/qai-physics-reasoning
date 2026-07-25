@@ -40,10 +40,10 @@ token. Genie 1.17 and GenieX v0.3.16 hand off byte-identical buffers and
 reproduce the bad result, so the evidence does not point to orchestration,
 sampling, or split-buffer binding.
 
-The deployed solution replaces only the four text contexts with W4-weight,
-FP16-activation contexts and retains the original W4A16 vision context. That
-hybrid generates coherent text and image-conditioned text through `QnnHtp`.
-It remains the legacy image/text bring-up baseline.
+The historical legacy-Genie solution replaces only the four text contexts
+with W4-weight, FP16-activation contexts and retains the original W4A16
+vision context. That hybrid generates coherent text and image-conditioned
+text through `QnnHtp`. It remains the legacy image/text bring-up baseline.
 
 The video-parity audit found four additional issues and resolved their
 implementation side:
@@ -59,10 +59,13 @@ implementation side:
    distinct warehouse frame pairs.
 
 Those fixes eliminate known structural and input mismatches; they do not make
-the current integer vision graph numerically equivalent to BF16. The executed
-graph's paired calibration still used the older explicit-resize fallback, and
-strict free-form accuracy remains weak. Native-aligned integer and
-mixed-precision checkpoints require a new authorized compile and NPU run.
+the integer vision graph numerically equivalent to BF16. Strict free-form
+accuracy remains weak. The later r5 campaign compiled native-aspect integer
+and mixed-precision vision checkpoints and scored them on one frozen
+20-probe GPU/NPU suite. Those compiled candidates derive from the older
+paired/explicit-resize calibration checkpoint. Native Hugging Face runtime
+pixels are byte-identical between GPU and NPU, but this sweep does not prove
+native-HF-aligned calibration.
 
 The board has both QAIRT 2.45.0.260326 and 2.47.0.260601. QAI Hub Workbench
 currently offers 2.45 as its default compiler and 2.48 as latest, but not
@@ -84,7 +87,8 @@ decode and sample outside Genie
   -> group ordered RGB frames into temporal pairs
   -> native Hugging Face Qwen3-VL video processor at 224 × 384
   -> one pixel tensor [336, 1536], grid [1, 14, 24], per pair
-  -> bias-corrected W8/A16 vision context on QnnHtp
+  -> boundary-FP16 vision leader on QnnHtp
+     (W8 weights, FP16 internals, nine A16 boundaries)
   -> 84 primary + 3 × 84 DeepStack features per pair
   -> <|video_pad|> span + timestamped interleaved MRoPE record per pair
   -> visual_pos_masks + full-interface text part 1
@@ -98,10 +102,10 @@ prompts total 408 and 413 tokens and corrupt the NPU decode, while three-pair
 prompts span 313–360 in the current benchmark and remain coherent.
 Preparation, packaging, and runtime guards now enforce 384.
 
-The initial r3 controlled test used one answer set for a barrier video and a
+The historical r3 controlled test used one answer set for a barrier video and a
 routine-pickup video, then shuffled the same choices. BF16 GPU and NPU both
 answered `A`, `C`, `B`, `A`, but that narrow 4/4 result did not generalize.
-The stronger r4 control covers four scenes and four choices: BF16 GPU scores
+The historical r4 control covers four scenes and four choices: BF16 GPU scores
 7/8, NPU scores 4/8, and exact answers agree in 5/8 cases. Near-miss
 avoidance remains robust in both label orders, while box pickup is
 order-sensitive on NPU. Both strict three-pair free-form rubrics still fail,
@@ -112,12 +116,64 @@ and
 and
 [`iq9075_video_four_scene_parity_r4.json`](evidence/iq9075_video_four_scene_parity_r4.json).
 
-Host QuantSim ablation further identifies block-23 activation quantization as
-the dominant measured late-stage vision error. A mixed W8/A16 graph with that
-block's activations in FP16 raises primary-output cosine similarity against
-the corrected adapted BF16 reference from 0.950431 to 0.991453. This candidate
-has not been uploaded, compiled, or run on the NPU; those steps require
-explicit Qualcomm AI Hub upload authorization.
+### R5 precision result
+
+The r5 frozen suite joins the eight primary four-choice probes, eight compact
+probes, and four focused box/near-miss probes. BF16 GPU scores 16/20. The
+native-aspect W8/A16 baseline scores 11/20 on NPU; changing 925 internal
+vision activations to FP16 while retaining nine A16 graph boundaries raises
+the NPU result to 13/20. Exact GPU/NPU answer parity rises from 13/20 to
+15/20, and GPU-correct retention rises from 10/16 to 12/16. Mean TTFT rises
+from 738.070 to 857.510 ms.
+
+| Vision precision | NPU correct | Exact parity | GPU-correct retained | Mean TTFT |
+|---|---:|---:|---:|---:|
+| W8/A16 baseline | 11/20 | 13/20 | 10/16 | 738.070 ms |
+| W8, FP16 internals, nine A16 boundaries | **13/20** | **15/20** | **12/16** | 857.510 ms |
+| FP16 weights, A16 activations | 11/20 | 13/20 | 10/16 | 772.825 ms |
+| FP16 weights and internals, nine A16 boundaries | 12/20 | 14/20 | 11/16 | 686.080 ms |
+
+The boundary-only candidate is the completed accuracy leader. Host numerical
+similarity did not rank task accuracy reliably: converting the vision weights
+to FP16 as well produced a faster but one-point-worse 12/20 result. The
+remaining five boundary/GPU answer disagreements are therefore not explained
+by a single global vision-fidelity metric.
+
+The text tower remains W4/FP16 in that completed leader. A W8 part-4
+experiment scores 12/20 with 13/20 exact parity and retains 11/16 GPU-correct
+answers; its 873.5 ms TTFT mean covers only 3 of 20 timing-bearing logs and is
+not directly comparable with the complete means above. Three part-1 variants
+are compiled but unscored while the EVK is offline: layers 0–6 (252 W8
+matrices), layers 0–3 (144), and layers 0–2 (108). The full variant has passed
+a four-token HTP smoke; the narrower variants and all three frozen-suite
+scores remain pending.
+
+The benchmark also adds two more balanced option permutations per scene.
+BF16 GPU scores 13/16 across P1–P4 (6/8 on the new P3/P4 half): barrier 4/4,
+box 3/4, near miss 4/4, and fire/worker-motion 2/4. No balanced NPU result has
+been run while the EVK is offline.
+
+See
+[`iq9075_video_precision_parity_r5.json`](evidence/iq9075_video_precision_parity_r5.json)
+for the artifact-bound result sheet.
+
+### Text context linking contract
+
+Each text part is compiled twice, for AR128 prefill and AR1 decode, then
+linked into one context. A usable context must preserve graph order
+AR128→AR1 and must report an equal, nonzero shared-weight allocation for both
+graphs. AI Hub can reuse model identities aggressively enough that repeating
+a link returns the wrong AR1→AR128 order. `scripts/cache_bust_dlc.py` changes
+only a validated DLC/ZIP archive comment, producing a new artifact hash while
+leaving member payloads unchanged; uploading the cache-busted AR128 model
+before AR1 then allows a fresh ordered link.
+
+This identity workaround does not replace inspection. A local no-sharing
+part-1 link had the desired graph order but expanded to 711,176,192 bytes and
+failed on the EVK while mapping a 490,733,568-byte FastRPC buffer. It is
+rejected. The accepted full-W8 part-1 link is 357,736,448 bytes, reports
+353,431,552 shared-weight bytes for each graph, and passes a multi-token HTP
+smoke.
 
 ## Bring-up order
 
@@ -138,8 +194,11 @@ explicit Qualcomm AI Hub upload authorization.
    cross-scene/order controls.
 9. Keep four-pair CL512 prompts blocked when they exceed 384; use a
    longer-context text export before retrying them.
-10. Treat the mixed block-23-FP16 graph as a new candidate requiring its own
-    compile, physical-board run, and scored comparison.
+10. Generate each precision candidate with its fail-closed transform, compile
+    it as a new AI Hub artifact, and score it on the same frozen suite. Do not
+    select a deployment from host cosine alone.
+11. For each text link, prove AR128→AR1 order and equal nonzero shared weights.
+    Reject no-sharing contexts even if a one-token prefill appears to work.
 
 ## NPU proof
 
@@ -159,10 +218,14 @@ Functional proof and quality proof are separate:
   reasoning. Exact pixel/prompt parity narrows the diagnosis but is still not
   an accuracy result.
 - A controlled pass must change correctly with both video and answer ordering.
-  The narrow r3 control does so in 4/4 GPU/NPU cases, but the expanded r4
+  The historical narrow r3 control does so in 4/4 GPU/NPU cases, but the
+  historical expanded r4
   control scores GPU 7/8, NPU 4/8, with 5/8 exact answer parity. This is
   stronger evidence than a single matching label and also shows that broad
   parity has not been reached.
+- The completed r5 precision suite raises the best NPU score to 13/20 against
+  GPU 16/20, with 15/20 exact answer parity. It improves the deployment but
+  still does not establish GPU-equivalent video reasoning.
 - Free-form benchmark answers must still be scored against known outcomes and
   an upstream BF16 reference. Current three-pair free-form cases fail on both
   GPU and NPU.

@@ -607,6 +607,42 @@
           }
         },
         {
+          "id": "four_scene_event_choice_permutation_3",
+          "evaluation_role": "answer_position_balance_diagnostic",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a worker safely picks up a box; B) a forklift pushes a striped safety marker; C) two workers run out of warehouse aisles; D) a worker dodges an approaching forklift.",
+          "expected_letter": "B",
+          "expected_event_label": "forklift_safety_marker_knockdown",
+          "context_budget": {
+            "text_tokens": 108,
+            "visual_tokens": 252,
+            "prompt_tokens": 360,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 24,
+            "max_new_tokens": 64,
+            "total_tokens": 424,
+            "headroom_tokens": 88
+          }
+        },
+        {
+          "id": "four_scene_event_choice_permutation_4",
+          "evaluation_role": "answer_position_balance_diagnostic",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a worker dodges an approaching forklift; B) two workers run out of warehouse aisles; C) a worker safely picks up a box; D) a forklift pushes a striped safety marker.",
+          "expected_letter": "D",
+          "expected_event_label": "forklift_safety_marker_knockdown",
+          "context_budget": {
+            "text_tokens": 108,
+            "visual_tokens": 252,
+            "prompt_tokens": 360,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 24,
+            "max_new_tokens": 64,
+            "total_tokens": 424,
+            "headroom_tokens": 88
+          }
+        },
+        {
           "id": "four_scene_compact_choice",
           "evaluation_role": "prompt_compression_diagnostic",
           "option_order_control_id": "four_scene_compact_choice_order",
@@ -794,6 +830,42 @@
           "option_order_control_id": "four_scene_event_choice_order",
           "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) two workers run out of warehouse aisles; B) a worker dodges an approaching forklift; C) a forklift pushes a striped safety marker; D) a worker safely picks up a box.",
           "expected_letter": "D",
+          "expected_event_label": "routine_box_pickup",
+          "context_budget": {
+            "text_tokens": 105,
+            "visual_tokens": 252,
+            "prompt_tokens": 357,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 27,
+            "max_new_tokens": 64,
+            "total_tokens": 421,
+            "headroom_tokens": 91
+          }
+        },
+        {
+          "id": "four_scene_event_choice_permutation_3",
+          "evaluation_role": "answer_position_balance_diagnostic",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a worker safely picks up a box; B) a forklift pushes a striped safety marker; C) two workers run out of warehouse aisles; D) a worker dodges an approaching forklift.",
+          "expected_letter": "A",
+          "expected_event_label": "routine_box_pickup",
+          "context_budget": {
+            "text_tokens": 105,
+            "visual_tokens": 252,
+            "prompt_tokens": 357,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 27,
+            "max_new_tokens": 64,
+            "total_tokens": 421,
+            "headroom_tokens": 91
+          }
+        },
+        {
+          "id": "four_scene_event_choice_permutation_4",
+          "evaluation_role": "answer_position_balance_diagnostic",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a worker dodges an approaching forklift; B) two workers run out of warehouse aisles; C) a worker safely picks up a box; D) a forklift pushes a striped safety marker.",
+          "expected_letter": "C",
           "expected_event_label": "routine_box_pickup",
           "context_budget": {
             "text_tokens": 105,
@@ -1000,6 +1072,42 @@
           }
         },
         {
+          "id": "four_scene_event_choice_permutation_3",
+          "evaluation_role": "answer_position_balance_diagnostic",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a worker safely picks up a box; B) a forklift pushes a striped safety marker; C) two workers run out of warehouse aisles; D) a worker dodges an approaching forklift.",
+          "expected_letter": "D",
+          "expected_event_label": "forklift_human_near_miss",
+          "context_budget": {
+            "text_tokens": 105,
+            "visual_tokens": 252,
+            "prompt_tokens": 357,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 27,
+            "max_new_tokens": 64,
+            "total_tokens": 421,
+            "headroom_tokens": 91
+          }
+        },
+        {
+          "id": "four_scene_event_choice_permutation_4",
+          "evaluation_role": "answer_position_balance_diagnostic",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a worker dodges an approaching forklift; B) two workers run out of warehouse aisles; C) a worker safely picks up a box; D) a forklift pushes a striped safety marker.",
+          "expected_letter": "A",
+          "expected_event_label": "forklift_human_near_miss",
+          "context_budget": {
+            "text_tokens": 105,
+            "visual_tokens": 252,
+            "prompt_tokens": 357,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 27,
+            "max_new_tokens": 64,
+            "total_tokens": 421,
+            "headroom_tokens": 91
+          }
+        },
+        {
           "id": "four_scene_compact_choice",
           "evaluation_role": "prompt_compression_diagnostic",
           "option_order_control_id": "four_scene_compact_choice_order",
@@ -1179,6 +1287,42 @@
           "option_order_control_id": "four_scene_event_choice_order",
           "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) two workers run out of warehouse aisles; B) a worker dodges an approaching forklift; C) a forklift pushes a striped safety marker; D) a worker safely picks up a box.",
           "expected_letter": "A",
+          "expected_event_label": "warehouse_worker_evacuation_motion",
+          "context_budget": {
+            "text_tokens": 105,
+            "visual_tokens": 252,
+            "prompt_tokens": 357,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 27,
+            "max_new_tokens": 64,
+            "total_tokens": 421,
+            "headroom_tokens": 91
+          }
+        },
+        {
+          "id": "four_scene_event_choice_permutation_3",
+          "evaluation_role": "answer_position_balance_diagnostic",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a worker safely picks up a box; B) a forklift pushes a striped safety marker; C) two workers run out of warehouse aisles; D) a worker dodges an approaching forklift.",
+          "expected_letter": "C",
+          "expected_event_label": "warehouse_worker_evacuation_motion",
+          "context_budget": {
+            "text_tokens": 105,
+            "visual_tokens": 252,
+            "prompt_tokens": 357,
+            "prefill_safe_limit_tokens": 384,
+            "prefill_headroom_tokens": 27,
+            "max_new_tokens": 64,
+            "total_tokens": 421,
+            "headroom_tokens": 91
+          }
+        },
+        {
+          "id": "four_scene_event_choice_permutation_4",
+          "evaluation_role": "answer_position_balance_diagnostic",
+          "option_order_control_id": "four_scene_event_choice_order",
+          "prompt": "Which event is shown in this video? Give only the letter plus one brief reason: A) a worker dodges an approaching forklift; B) two workers run out of warehouse aisles; C) a worker safely picks up a box; D) a forklift pushes a striped safety marker.",
+          "expected_letter": "B",
           "expected_event_label": "warehouse_worker_evacuation_motion",
           "context_budget": {
             "text_tokens": 105,

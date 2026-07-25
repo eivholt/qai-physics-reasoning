@@ -31,16 +31,44 @@ not.
 
 The runner has executed the bias-corrected 224 × 384 full-DeepStack CL512
 bundle on a physical IQ-9075 through `QnnHtp`, with HTP v73 detected. The
-strongest result uses three temporal pairs and the same answer set for two
-videos, then shuffles that set. BF16 GPU and NPU both answer `A`, `C`, `B`,
-`A` across the barrier-normal, barrier-shuffled, box-normal, and box-shuffled
-cases. NPU vision-plus-prefill TTFT is 730.5–745.8 ms.
+historical r3 two-scene control answered `A`, `C`, `B`, `A` on both BF16 GPU
+and NPU, with NPU TTFT of 730.5–745.8 ms. The broader historical r4 suite
+showed that 4/4 result did not generalize.
 
-This 4/4 controlled result changes with both scene and option position, so it
-is evidence of video-conditioned NPU behavior rather than a fixed answer.
-It is not a general accuracy claim: a separate tailored barrier choice and
-both strict three-pair free-form rubrics fail. See the
-[sanitized r3 evidence](../../docs/evidence/iq9075_video_aspect_native_parity_r3.json).
+The completed r5 frozen suite contains 20 choice probes. BF16 GPU scores
+16/20. The original native-aspect W8/A16 NPU baseline scores 11/20 with
+13/20 exact GPU parity. The current NPU leader keeps nine graph boundaries at
+A16 and 925 internal vision activations at FP16; it scores 13/20, reaches
+15/20 exact GPU parity, retains 12/16 GPU-correct answers, and has mean TTFT
+857.510 ms. This is improved video-conditioned inference, not GPU
+equivalence. The r5 contexts still derive from the older
+paired/explicit-resize calibration checkpoint; only runtime GPU/NPU pixels
+use the byte-identical native Hugging Face path.
+
+The part-1 W8 full, layers-0–3, and layers-0–2 candidates and the balanced
+P1–P4 NPU extension remain pending only because the EVK is offline. No
+accuracy is inferred for them. See the
+[historical r3 evidence](../../docs/evidence/iq9075_video_aspect_native_parity_r3.json),
+[historical r4 evidence](../../docs/evidence/iq9075_video_four_scene_parity_r4.json),
+and
+[r5 precision evidence](../../docs/evidence/iq9075_video_precision_parity_r5.json).
+
+### Context contract for precision candidates
+
+Every text context used by this runner contains two graphs in the order
+AR128 prefill then AR1 decode. Both graphs must report the same nonzero
+shared-weight size. A no-sharing part-1 link expanded to 711,176,192 bytes and
+failed on the EVK while mapping a 490,733,568-byte FastRPC buffer, so graph
+order alone is insufficient.
+
+If AI Hub reuses an upload identity and restores the wrong graph order,
+`scripts/cache_bust_dlc.py` can create a new DLC hash by changing only its
+validated ZIP comment. Upload the resulting AR128 artifact before AR1, link
+the new identities, and reinspect the output. The accepted full-W8 part-1
+context is 357,736,448 bytes, SHA-256
+`8ea7ba19baaaa90cbb8e1ee34ab07f37ea982860d3718d96a2a3d3405a341125`,
+reports 353,431,552 shared-weight bytes for each graph, and passes a
+four-token HTP smoke. Its frozen-suite score remains pending.
 
 ## Why the small GenieX patch is required
 

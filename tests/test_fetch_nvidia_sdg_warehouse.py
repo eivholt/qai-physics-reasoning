@@ -171,6 +171,7 @@ class FetchNvidiaSdgWarehouseTests(unittest.TestCase):
             {
                 "primary_grounded_evaluation_gate",
                 "expanded_grounded_evaluation_gate",
+                "answer_position_balance_diagnostic",
                 "prompt_compression_diagnostic",
                 "box_near_discrimination_diagnostic",
             },
@@ -186,6 +187,7 @@ class FetchNvidiaSdgWarehouseTests(unittest.TestCase):
             {
                 "primary_grounded_evaluation_gate",
                 "expanded_grounded_evaluation_gate",
+                "answer_position_balance_diagnostic",
                 "prompt_compression_diagnostic",
             },
         )
@@ -209,6 +211,126 @@ class FetchNvidiaSdgWarehouseTests(unittest.TestCase):
                 for probe_id in shared_probe_ids
             },
         )
+
+        balanced_prompt_ids = (
+            "four_scene_event_choice",
+            "four_scene_event_choice_shuffled",
+            "four_scene_event_choice_permutation_3",
+            "four_scene_event_choice_permutation_4",
+        )
+        expected_prompts = {
+            "four_scene_event_choice": (
+                "Which event is shown in this video? Give only the letter plus "
+                "one brief reason: A) a forklift pushes a striped safety marker; "
+                "B) a worker safely picks up a box; C) a worker dodges an "
+                "approaching forklift; D) two workers run out of warehouse "
+                "aisles."
+            ),
+            "four_scene_event_choice_shuffled": (
+                "Which event is shown in this video? Give only the letter plus "
+                "one brief reason: A) two workers run out of warehouse aisles; "
+                "B) a worker dodges an approaching forklift; C) a forklift "
+                "pushes a striped safety marker; D) a worker safely picks up a "
+                "box."
+            ),
+            "four_scene_event_choice_permutation_3": (
+                "Which event is shown in this video? Give only the letter plus "
+                "one brief reason: A) a worker safely picks up a box; B) a "
+                "forklift pushes a striped safety marker; C) two workers run "
+                "out of warehouse aisles; D) a worker dodges an approaching "
+                "forklift."
+            ),
+            "four_scene_event_choice_permutation_4": (
+                "Which event is shown in this video? Give only the letter plus "
+                "one brief reason: A) a worker dodges an approaching forklift; "
+                "B) two workers run out of warehouse aisles; C) a worker safely "
+                "picks up a box; D) a forklift pushes a striped safety marker."
+            ),
+        }
+        expected_letters = {
+            "video_barrier_knockdown_4fps": ("A", "C", "B", "D"),
+            "video_routine_box_pickup_4fps": ("B", "D", "A", "C"),
+            "video_near_miss_avoidance_4fps": ("C", "B", "D", "A"),
+            "video_fire_evacuation_4fps": ("D", "A", "C", "B"),
+        }
+        expected_event_labels = {
+            "video_barrier_knockdown_4fps": (
+                "forklift_safety_marker_knockdown"
+            ),
+            "video_routine_box_pickup_4fps": "routine_box_pickup",
+            "video_near_miss_avoidance_4fps": (
+                "forklift_human_near_miss"
+            ),
+            "video_fire_evacuation_4fps": (
+                "warehouse_worker_evacuation_motion"
+            ),
+        }
+        balanced_probes_by_case = {}
+        for case_id, case in videos.items():
+            probe_index = {
+                probe["id"]: probe for probe in case["choice_probes"]
+            }
+            balanced_probes = [
+                probe_index[prompt_id]
+                for prompt_id in balanced_prompt_ids
+            ]
+            balanced_probes_by_case[case_id] = balanced_probes
+            self.assertEqual(
+                tuple(
+                    probe["expected_letter"] for probe in balanced_probes
+                ),
+                expected_letters[case_id],
+            )
+            self.assertEqual(
+                {
+                    probe["expected_letter"] for probe in balanced_probes
+                },
+                {"A", "B", "C", "D"},
+            )
+            self.assertEqual(
+                {
+                    probe["expected_event_label"]
+                    for probe in balanced_probes
+                },
+                {expected_event_labels[case_id]},
+            )
+            for prompt_id, probe in zip(
+                balanced_prompt_ids, balanced_probes, strict=True
+            ):
+                self.assertEqual(
+                    probe["option_order_control_id"],
+                    "four_scene_event_choice_order",
+                )
+                self.assertEqual(
+                    probe["prompt"], expected_prompts[prompt_id]
+                )
+                expected_role = (
+                    "answer_position_balance_diagnostic"
+                    if prompt_id.endswith(("permutation_3", "permutation_4"))
+                    else "expanded_grounded_evaluation_gate"
+                )
+                self.assertEqual(
+                    probe["evaluation_role"], expected_role
+                )
+                self.assertEqual(
+                    probe["context_budget"],
+                    balanced_probes[0]["context_budget"],
+                )
+
+        for prompt_index, prompt_id in enumerate(balanced_prompt_ids):
+            event_by_letter = {
+                probes[prompt_index]["expected_letter"]: probes[
+                    prompt_index
+                ]["expected_event_label"]
+                for probes in balanced_probes_by_case.values()
+            }
+            self.assertEqual(set(event_by_letter), {"A", "B", "C", "D"})
+            self.assertEqual(
+                set(event_by_letter.values()),
+                set(expected_event_labels.values()),
+                msg=f"{prompt_id} must be a complete event permutation",
+            )
+
         for case in videos.values():
             for probe in case["choice_probes"]:
                 budget = probe["context_budget"]

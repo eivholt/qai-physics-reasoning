@@ -73,7 +73,7 @@ class RunVideoGpuBaselineTests(unittest.TestCase):
         self.assertEqual((device.type, device.index), ("cuda", 2))
         self.assertIs(FakeTorch.cuda.selected, device)
 
-    def test_selects_freeform_and_shared_normal_shuffled_probes(self) -> None:
+    def test_selects_freeform_and_shared_choice_probes(self) -> None:
         manifest, _ = load_benchmark(BENCHMARK)
         cases = select_video_cases(
             manifest,
@@ -87,7 +87,7 @@ class RunVideoGpuBaselineTests(unittest.TestCase):
             for case in cases
             for spec in prompt_specs_for_case(case, ["all"])
         ]
-        self.assertEqual(len(specs), 16)
+        self.assertEqual(len(specs), 20)
         expected = {
             (spec.case_id, spec.prompt_id): spec.expected.get("letter")
             for spec in specs
@@ -114,6 +114,14 @@ class RunVideoGpuBaselineTests(unittest.TestCase):
                 ): "C",
                 (
                     "video_barrier_knockdown_4fps",
+                    "four_scene_event_choice_permutation_3",
+                ): "B",
+                (
+                    "video_barrier_knockdown_4fps",
+                    "four_scene_event_choice_permutation_4",
+                ): "D",
+                (
+                    "video_barrier_knockdown_4fps",
                     "four_scene_compact_choice",
                 ): "A",
                 (
@@ -136,6 +144,14 @@ class RunVideoGpuBaselineTests(unittest.TestCase):
                     "video_routine_box_pickup_4fps",
                     "four_scene_event_choice_shuffled",
                 ): "D",
+                (
+                    "video_routine_box_pickup_4fps",
+                    "four_scene_event_choice_permutation_3",
+                ): "A",
+                (
+                    "video_routine_box_pickup_4fps",
+                    "four_scene_event_choice_permutation_4",
+                ): "C",
                 (
                     "video_routine_box_pickup_4fps",
                     "four_scene_compact_choice",

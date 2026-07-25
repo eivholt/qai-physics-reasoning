@@ -105,13 +105,18 @@ python scripts/run_video_gpu_baseline.py \
   --case video_near_miss_avoidance_4fps \
   --case video_fire_evacuation_4fps \
   --prompt four_scene_event_choice \
-  --prompt four_scene_event_choice_shuffled
+  --prompt four_scene_event_choice_shuffled \
+  --prompt four_scene_event_choice_permutation_3 \
+  --prompt four_scene_event_choice_permutation_4
 ```
 
 The runner fails closed if local tokenization exceeds the pinned CL512/AR128
 prefill-safe limit or differs from a manifest budget. Output JSON contains
 relative frame names and hashes; local absolute paths are omitted unless
 `--include-local-paths` is explicitly supplied.
+
+Use only the first two selectors to reproduce the historical r4 P1/P2
+result. The four selectors form the balanced P1–P4 extension.
 
 To reproduce the wording ablation, replace the two `--prompt` selectors with
 `four_scene_compact_choice` and `four_scene_compact_choice_shuffled`.
@@ -206,7 +211,7 @@ box-versus-near-miss prompt occupies 327 tokens. All remain below the pinned
 `benchmark.json` are the exact values passed to the input preparer before its
 documented one-decimal prompt formatting.
 
-### Recorded four-scene result
+### Historical r4 four-scene result
 
 The expanded control uses one four-choice answer set for all scenes and then
 shuffles it consistently. Normal order is marker `A`, box `B`, near miss `C`,
@@ -265,6 +270,52 @@ GPU scores 4/4, NPU scores 3/4, and exact answers agree in 3/4 cases.
 The NPU can distinguish box pickup when box is listed first, but it keeps
 option `A` after the box label moves to `B`. The failure is therefore
 order-sensitive, not complete visual confusion.
+
+### R5 precision comparison
+
+The frozen r5 candidate suite combines the historical eight P1/P2 primary
+probes above, their eight compact-prompt counterparts, and the four focused
+box/near-miss probes. Every candidate is scored against the same 20 expected
+letters and the same BF16 GPU outputs:
+
+| Candidate | NPU correct | Exact GPU parity | GPU-correct retained | Mean TTFT |
+|---|---:|---:|---:|---:|
+| Native-aspect W8/A16 baseline | 11/20 | 13/20 | 10/16 | 738.070 ms |
+| Boundary-FP16 vision | **13/20** | **15/20** | **12/16** | 857.510 ms |
+| FP16 vision weights / A16 activations | 11/20 | 13/20 | 10/16 | 772.825 ms |
+| FP16 weights + boundary-FP16 internals | 12/20 | 14/20 | 11/16 | 686.080 ms |
+| Boundary-FP16 + W8 text part 4 | 12/20 | 13/20 | 11/16 | 873.5 ms on 3/20 logs |
+
+BF16 GPU scores 16/20. Boundary-FP16 is the completed NPU leader at 13/20;
+it improves on baseline but does not match GPU. The part-1 W8 full,
+layers-0–3, and layers-0–2 candidates have no frozen-suite scores while the
+EVK is offline. Do not include them in a ranked result table until their
+physical-board logs are complete.
+
+The compiled r5 vision artifacts derive from the older
+paired/explicit-resize calibration checkpoint. GPU and NPU runtime pixels are
+native-HF-aligned and byte-identical; calibration equivalence is a separate,
+still-unmeasured variable.
+
+Score retained result directories without loading the model runtime:
+
+```bash
+python scripts/score_video_npu_results.py \
+  --gpu-results /path/to/gpu-primary \
+  --gpu-results /path/to/gpu-compact \
+  --gpu-results /path/to/gpu-pairwise \
+  --npu-results baseline=/path/to/npu-baseline \
+  --npu-results boundary=/path/to/npu-boundary \
+  --output /path/to/new-r5-comparison.json \
+  --require-complete
+```
+
+The balanced P1–P4 GPU extension is a separate 16-probe view. GPU scores
+13/16 overall and 6/8 on the newly added P3/P4 half: barrier 4/4, box 3/4,
+near miss 4/4, and fire/worker-motion 2/4. Balanced NPU execution is pending
+because the EVK is offline; there is no balanced NPU score yet. Exact
+artifact identifiers are recorded in the
+[`r5 evidence report`](../../docs/evidence/iq9075_video_precision_parity_r5.json).
 
 The predictive frame times are assumptions, not simulator ground truth. They
 are derived from each preview's decoded frame count divided by the scenario

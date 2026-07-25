@@ -9,55 +9,77 @@ attestation that an omitted binary produced an omitted log.
 
 The result is narrower than vendor certification:
 
-- The r1 report proves that the linked text and vision graphs in the
+- The historical r1 report proves that the linked text and vision graphs in the
   compatibility bundle initialized and executed through QAIRT's `QnnHtp`
   backend on a physical Dragonwing IQ-9075 EVK. It also records coherent text
   generation and image-conditioned generation for its smoke inputs.
-- The r2 report proves that one paired-frame temporal patch executed through
-  the primary vision output, all three restored DeepStack outputs, the
-  visual-position mask, and all four text partitions through GenieX on the
-  same class of NPU. It is retained as historical square-profile evidence.
-- The r3 report corrects three parity faults: the adapted patch projection now
-  retains Qwen3-VL's learned bias, the NPU uses the native Hugging Face video
-  pixels and `<|video_pad|>` prompt token, and the 224 × 384 vision graph is
-  calibrated with distinct warehouse frame pairs. Each pair produces 84
-  visual tokens.
-- The r3 exact-input one-pair NPU inference passes 0 of 5 strict units that
-  the BF16 GPU reference passes. Its three-pair workaround stays below the
-  text runtime's safe prefill limit and produces coherent output. The r3
-  two-scene, three-choice control records 4/4 GPU/NPU agreement in normal and
-  shuffled order (`A`, `C`, `B`, `A`). That result remains valid for that
-  narrow test.
-- The r4 report expands the same three-pair method to four scenes and four
-  choices. BF16 GPU scores 7/8, NPU scores 4/8, and exact answers agree in 5/8
-  cases. Across the first three unambiguous scenes, GPU scores 6/6 and NPU
-  scores 3/6. The near-miss scene passes both orders on both devices; the
-  earlier 4/4 result therefore does not establish broad parity. A
-  25-token-shorter prompt diagnostic moves errors but leaves NPU at 4/8 and
+- The historical r2 report proves that one paired-frame temporal patch
+  executed through the primary vision output, all three restored DeepStack
+  outputs, the visual-position mask, and all four text partitions through
+  GenieX on the same class of NPU. It is retained as historical
+  square-profile evidence.
+- The historical r3 report corrects three parity faults: the adapted patch
+  projection now retains Qwen3-VL's learned bias, the NPU uses the native
+  Hugging Face video pixels and `<|video_pad|>` prompt token, and the
+  224 × 384 vision graph is calibrated with distinct warehouse frame pairs.
+  Each pair produces 84 visual tokens.
+- The historical r3 exact-input one-pair NPU inference passes 0 of 5 strict
+  units that the BF16 GPU reference passes. Its three-pair workaround stays
+  below the text runtime's safe prefill limit and produces coherent output.
+  The r3 two-scene, three-choice control records 4/4 GPU/NPU agreement in
+  normal and shuffled order (`A`, `C`, `B`, `A`). That result remains valid
+  for that narrow test.
+- The historical r4 report expands the same three-pair method to four scenes
+  and four choices. BF16 GPU scores 7/8, NPU scores 4/8, and exact answers
+  agree in 5/8 cases. Across the first three unambiguous scenes, GPU scores
+  6/6 and NPU scores 3/6. The near-miss scene passes both orders on both
+  devices; the earlier 4/4 result therefore does not establish broad parity.
+  A 25-token-shorter prompt diagnostic moves errors but leaves NPU at 4/8 and
   exact parity at 5/8; both box-pickup orders remain NPU-only failures. A
-  focused box/near-miss control scores GPU 4/4 and NPU 3/4: NPU recognizes
-  box pickup when it is listed first but fails after its label moves.
+  focused box/near-miss control scores GPU 4/4 and NPU 3/4: NPU recognizes box
+  pickup when it is listed first but fails after its label moves.
 - Four-pair prompts of 408 and 413 tokens exceed the AR128/CL512 safe prefill
   limit of 384 and produce corrupted NPU text. The runner and packaging tools
   now reject that configuration. The same four-pair BF16 GPU diagnostics also
   fail their strict free-form rubrics, but do not corrupt.
-- A host QuantSim audit localizes the largest late-stage vision error to
+- A host QuantSim audit localized the largest late-stage vision error to
   activation quantization in vision block 23. A mixed W8/A16 candidate with
   block-23 activations in FP16 improves `image_features` cosine similarity
-  against the corrected adapted BF16 reference from 0.950431 to 0.991453.
-  This is a host-only numeric result: its QAI Hub upload, compile, and NPU run
-  are pending explicit authorization.
-- The executed integer graph used 20 distinct paired-frame calibration
-  samples, but that calibration used the older explicit-resize preprocessing.
-  Native-HF-aligned integer and mixed checkpoints exist locally; neither has
-  been compiled or run on the NPU yet.
+  against the corrected adapted BF16 reference from 0.950431 to 0.991453. That
+  result is retained as historical diagnosis. A valid full checkpoint later
+  compiled to a DLC, but QAIRT 2.45 context linking failed with exit code 14,
+  so there is no deployable block-23-only context or NPU accuracy result.
+- The r5 report compares four completed vision candidates on the same frozen
+  20 probes. BF16 GPU scores 16/20. NPU moves from 11/20 for the native-aspect
+  W8/A16 baseline to 13/20 for the boundary-FP16 leader, with exact GPU parity
+  improving from 13/20 to 15/20 and GPU-correct retention from 10/16 to
+  12/16. FP16 weights/A16 scores 11/20; FP16 weights plus FP16 internals and
+  A16 boundaries scores 12/20.
+- The frozen r5 artifacts derive from the older paired/explicit-resize
+  calibration checkpoint. Separate hosted IQ-9075 runs compare native-aligned
+  and older paired calibration on 12 exact temporal pairs. Boundary-FP16
+  reaches about 0.9849 `image_features` cosine against BF16 versus about
+  0.9592 for W8/A16, but native and paired calibration are effectively tied.
+  The native-aligned contexts have not been scored end to end on the frozen
+  20 probes.
+- A W8 part-4 text experiment scores 12/20 with 13/20 exact parity and 11/16
+  GPU-correct retention. Its 873.5 ms TTFT mean covers only three
+  timing-bearing logs and is not directly comparable with the complete
+  candidate means.
+- Hosted P1 chunk-0 screens compare five candidates with BF16 vision and three
+  candidates with the production boundary-FP16 NPU vision output. W8 layers
+  0–6 ranks first in both completed screens, but these hidden-state and
+  KV-cache measurements are not first-token or answer-accuracy results. Its
+  physical-board four-token smoke passes; the full first-token chain and all
+  P1 frozen-suite scores remain pending. The balanced P1–P4 GPU extension
+  scores 13/16, while its NPU execution is also pending.
 - It does not prove production accuracy, full upstream numerical equivalence,
   support for every prompt, or an official NVIDIA/Qualcomm product
   configuration.
 - CPU code still performs orchestration, tokenization, sampling, and file I/O;
   "NPU execution" refers to the compiled model graphs.
 
-As of 2026-07-24, NVIDIA's published Reason2 hardware validation list contains
+As of 2026-07-25, NVIDIA's published Reason2 hardware validation list contains
 NVIDIA GPUs and Jetson AGX Thor, not Qualcomm hardware:
 
 <https://docs.nvidia.com/cosmos/latest/prerequisites.html>
@@ -72,24 +94,28 @@ evidence for the Cosmos-Reason2-2B checkpoint. We found no earlier independent
 public IQ-9075 result for the exact Cosmos model, so the report here should be
 described as project evidence for a new experimental port.
 
-The five tracked summaries are:
+The six tracked summaries are:
 
-- [`iq9075_npu_smoke_r1.json`](iq9075_npu_smoke_r1.json), for the text and
-  single-image bundle evidence;
-- [`iq9075_video_smoke_r1.json`](iq9075_video_smoke_r1.json), for the two
+- [`iq9075_npu_smoke_r1.json`](iq9075_npu_smoke_r1.json), the historical text
+  and single-image bundle evidence;
+- [`iq9075_video_smoke_r1.json`](iq9075_video_smoke_r1.json), the historical two
   paired-frame warehouse runs through the compatibility graph and the BF16
   comparison;
 - [`iq9075_video_deepstack_geniex_r2.json`](iq9075_video_deepstack_geniex_r2.json),
-  for full-DeepStack paired-frame execution through GenieX, two failed
-  free-form rubrics, and the multiple-choice position-control result;
+  the historical full-DeepStack paired-frame execution through GenieX, two
+  failed free-form rubrics, and the multiple-choice position-control result;
 - [`iq9075_video_aspect_native_parity_r3.json`](iq9075_video_aspect_native_parity_r3.json),
-  for corrected native-aspect GPU/NPU parity, one- and three-pair accuracy
-  results, the four-pair prefill limit, and the host-only mixed-vision
-  diagnosis; and
+  the historical corrected native-aspect GPU/NPU parity, one- and three-pair
+  accuracy results, the four-pair prefill limit, and the host-only
+  mixed-vision diagnosis;
 - [`iq9075_video_four_scene_parity_r4.json`](iq9075_video_four_scene_parity_r4.json),
-  for the expanded four-scene choice suite, exact GPU/NPU input parity, all
-  eight primary answers and timings, the compact-prompt and focused pairwise
-  diagnostics, and the revised quality verdict.
+  the historical expanded four-scene choice suite, exact GPU/NPU input parity,
+  all eight primary answers and timings, the compact-prompt and focused
+  pairwise diagnostics, and the revised quality verdict; and
+- [`iq9075_video_precision_parity_r5.json`](iq9075_video_precision_parity_r5.json),
+  the frozen 20-probe precision sweep, exact AI Hub artifact lineage,
+  completed physical-board comparisons, balanced GPU extension, and
+  explicitly pending EVK work.
 
 ## Reproduce the report
 
@@ -135,8 +161,39 @@ concatenated pixel hashes. The tracked report remains sanitized;
 outside the repository. The fire-scenario choice is scored only on directly
 visible worker motion, not on recognizing the official fire cause.
 
+The r5 report is generated from retained metadata and scored result
+directories. Reproduce the lightweight scoring layer with:
+
+```bash
+python scripts/score_video_npu_results.py \
+  --gpu-results /path/to/gpu-primary \
+  --gpu-results /path/to/gpu-compact \
+  --gpu-results /path/to/gpu-pairwise \
+  --npu-results baseline=/path/to/npu-baseline \
+  --npu-results boundary=/path/to/npu-boundary \
+  --npu-results wfp16_a16=/path/to/npu-wfp16-a16 \
+  --npu-results combined=/path/to/npu-combined \
+  --npu-results w8_part4=/path/to/npu-w8-part4 \
+  --output /path/to/new-r5-score.json \
+  --require-complete
+```
+
+This reads JSON and text logs only; it does not run the model. Keep source
+results immutable and bind any newly completed candidate to its context
+SHA-256 before adding it to the tracked report.
+
+The same report also binds the 12-pair hosted vision comparison and both P1
+screen manifests to their output hashes and AI Hub job identifiers. The
+vision H5 files must be mapped by each group’s `name` attribute; numeric H5
+group order is not a stable output-name mapping.
+
+<!-- R5_PENDING_WINNER_UPDATE:
+Replace pending part-1 and balanced-NPU status only after complete,
+hash-bound EVK logs have been scored. Do not infer a winner from smoke output.
+-->
+
 The word *video* in these reports has a precise, limited meaning: ordered
 frames are fused in pairs into Qwen3-VL temporal patches and supplied as raw
-`PixelData`. The r3/r4 runner can interleave multiple timestamped pairs, but
+`PixelData`. The r3–r5 runner can interleave multiple timestamped pairs, but
 it still does not decode an MP4, consume a camera stream, or provide an
 unbounded video frontend.

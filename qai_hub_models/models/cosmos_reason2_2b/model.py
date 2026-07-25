@@ -78,6 +78,7 @@ SOURCE_CHECKPOINT_ENV = "COSMOS_SOURCE_CHECKPOINT"
 SOURCE_CHECKPOINT_MARKER = "source_checkpoint.json"
 QAIRT245_COMPAT_MARKER = "qairt_245_compat.json"
 W4_FP16_MARKER = "w4_fp16.json"
+TEXT_W8_MARKER = "text_w8_matrices.json"
 
 MIN_MEMORY_RECOMMENDED = 40
 
@@ -769,6 +770,10 @@ class Cosmos_Reason2_2B_Collection(Qwen3VLCollectionBase):
             ),
             W4_FP16_MARKER: (
                 "W4 text weights and FLOAT16 activation transform provenance."
+            ),
+            TEXT_W8_MARKER: (
+                "Selected text matrices independently promoted from W4 to "
+                "W8 provenance."
             ),
         }
         for filename, description in markers.items():

@@ -1,0 +1,770 @@
+{
+  "schema_version": 1,
+  "report_id": "iq9075_video_precision_parity_r5",
+  "created_date": "2026-07-25",
+  "model": "nvidia/Cosmos-Reason2-2B",
+  "extends": {
+    "report_id": "iq9075_video_four_scene_parity_r4",
+    "relationship": "This report adds a frozen 20-probe precision sweep, hosted IQ-9075 vision-tensor fidelity measurements, and hosted P1 intermediate screens. It does not alter the r1-r4 measurements."
+  },
+  "target": {
+    "board": "Qualcomm Dragonwing IQ-9075 EVK",
+    "accelerator_backend": "QnnHtp",
+    "htp_arch": "v73",
+    "runtime_family": "QAIRT 2.45",
+    "hosted_device_os": "1.7"
+  },
+  "scope": {
+    "summary": "Sanitized GPU-versus-NPU answer accuracy, NPU vision fidelity, and P1 numerical-screen evidence for the experimental Cosmos-Reason2-2B port.",
+    "response_scoring": "Exact expected choice letter. No rationale quality is claimed for the frozen suite.",
+    "npu_definition": "The compiled vision and decoder graphs execute on QnnHtp. CPU code still performs orchestration, tokenization, sampling, and file I/O.",
+    "not_claimed": [
+      "official NVIDIA or Qualcomm certification",
+      "production or safety-qualified accuracy",
+      "native MP4 decoding or camera-stream ingestion",
+      "CPU-free end-to-end execution",
+      "full numerical equivalence to upstream BF16",
+      "an end-to-end answer improvement from native-aligned calibration",
+      "an end-to-end answer improvement from any P1 W8 candidate",
+      "a completed first-token chain for any P1 W8 candidate",
+      "a deployable block-23-only FP16 vision context"
+    ]
+  },
+  "source_integrity": {
+    "benchmark_file": "benchmarks/nvidia_sdg_warehouse/benchmark.json",
+    "benchmark_sha256": "2581087b8e84efdc3564ce35f70e05dd3acd2f030804865e303f46887fe064d3",
+    "benchmark_source_revision": "d5b88d3abcf659f304a107f4336b71b4e2159133",
+    "frozen_suite_scorer": {
+      "file": "scripts/score_video_npu_results.py",
+      "sha256": "1677273d8016d1fbbc4a240b9cecdc3cad9f834d9e0534ba2bae42404e75f4b1"
+    },
+    "vision_fidelity_scorer": {
+      "file": "scripts/score_aihub_vision_outputs.py",
+      "sha256": "aeced54eb924c3bc4ac4b4b3888f9781d3ae507219f919c1c42a95137fb39dce"
+    },
+    "text_shard_reference_capture": {
+      "file": "scripts/capture_host_text_shard_reference.py",
+      "sha256": "d484a7f98c3064200769bc08fbca84e1992636d487a9b5e1832f9cdce1425299"
+    },
+    "text_shard_fidelity_scorer": {
+      "file": "scripts/score_aihub_text_shard_outputs.py",
+      "sha256": "a586b3d6ed25f095a01d5fbf17090b7254d67e2d0b27ef5a3bfdcb6e59bd1690"
+    },
+    "frozen_log_set_digest_definition": "For GPU, SHA-256 of UTF-8 lines source-file, tab, file-SHA-256, LF, sorted by source-file. For each NPU candidate, SHA-256 of UTF-8 lines case-id, tab, prompt-id, tab, log-SHA-256, LF, sorted by case-id then prompt-id.",
+    "vision_fidelity_report_sha256": "6ec0048aff493db95474e76a57606a14360e8739aaa2eeeea4ca87284aa09451",
+    "bf16_vision_reference": {
+      "sample_count": 12,
+      "index_sha256": "cfaca08f25ef3628be67742869064ad78f8c36e9ce2300d591a549d6a65209d3",
+      "npz_sha256": "7bc38d786cefc7209935d46c2e72937ec82fc297d5c9f183ccc8b99343d21f4c",
+      "geometry": {
+        "image_height": 224,
+        "image_width": 384,
+        "grid_thw": [
+          1,
+          14,
+          24
+        ],
+        "output_shape": [
+          84,
+          2048
+        ]
+      },
+      "canonical_float32_tensor_sha256": {
+        "image_features": "088889b2d3fe6e091339ddab51f1664da37c92ba3cfd4c7e11151cf13890af90",
+        "deepstack_visual_embeds_0": "046bcdb9a508311a66f0d248ae9ba35e55d6aff5e2e1d917b8323ce9b5ac6554",
+        "deepstack_visual_embeds_1": "3a8d29ee62f14438bdd2a3b616b3c7fef413efe7a168fcc58b626d42730270ad",
+        "deepstack_visual_embeds_2": "97af3f9211fac180301611e1c21ee5e0eba5a62ccf72f930d898c7c82018bd57"
+      }
+    }
+  },
+  "frozen_20_probe_suite": {
+    "status": "complete_for_listed_candidates",
+    "sampling": "greedy",
+    "probe_composition": {
+      "primary_four_scene": 8,
+      "compact_prompt": 8,
+      "focused_box_near_miss": 4,
+      "total": 20
+    },
+    "shared_text_context_sha256": {
+      "part1_of_4.bin": "7a59e6c83456cc93de4c84b9dbeb3acb9ef78b93c3f88eadfd33405eeded0d81",
+      "part2_of_4.bin": "f797ef8ab4219851e90d44d83b3a5731f254d6345fdd334edc12d96c05881358",
+      "part3_of_4.bin": "4c7a7e895d4ebbc7a27ffe5c42ccae660dd3bf0bbd8d70bc9b5fdb468e6cd772",
+      "part4_of_4.bin": "6d37b752d39ace353646817195789887c2c34fb689e295c179d3470e9680eabb"
+    },
+    "gpu_reference": {
+      "precision": "BF16",
+      "correct": 16,
+      "total": 20,
+      "accuracy": 0.8,
+      "source_set_digest_sha256": "e9c2f5129bcec440f1c00648844edbeba4d61ab5adcd62848e5305710e88fd03"
+    },
+    "npu_candidates": [
+      {
+        "id": "baseline",
+        "precision": "Vision W8 weights and A16 activations; original floating-activation text contexts",
+        "vision_context": {
+          "bytes": 421351424,
+          "sha256": "7af8418bb61e2581fc862ce2aabf320ab3f3bfae0a7c5400e7d43b7d386028bd"
+        },
+        "correct": 11,
+        "total": 20,
+        "accuracy": 0.55,
+        "exact_gpu_answer_parity": 13,
+        "exact_gpu_answer_parity_total": 20,
+        "gpu_correct_retained": 10,
+        "gpu_correct_total": 16,
+        "ttft_ms": {
+          "count": 20,
+          "mean": 738.07,
+          "median": 739.55,
+          "min": 731.1,
+          "max": 750.7
+        },
+        "source_log_set_digest_sha256": "16cf4e8b30bf9ea346e1b718a08097cd65b09b1aebab7194778470a4ff821eac"
+      },
+      {
+        "id": "boundary_fp16",
+        "precision": "Vision W8 weights, 925 FP16 internal activations, and nine A16 compiler boundaries; original floating-activation text contexts",
+        "vision_context": {
+          "bytes": 425918464,
+          "sha256": "6e217777c18cff6dd60ebff6a1422750b8e93d5c8ab05df1abb00eaaa17e2cac"
+        },
+        "correct": 13,
+        "total": 20,
+        "accuracy": 0.65,
+        "exact_gpu_answer_parity": 15,
+        "exact_gpu_answer_parity_total": 20,
+        "gpu_correct_retained": 12,
+        "gpu_correct_total": 16,
+        "ttft_ms": {
+          "count": 20,
+          "mean": 857.51,
+          "median": 855.4,
+          "min": 851.6,
+          "max": 867.5
+        },
+        "source_log_set_digest_sha256": "6ce9d0fbd44a89025fbce38bbfd10be577b2d7a3012e3fe5f9130d72b1e9b910"
+      },
+      {
+        "id": "vision_fp16_weights_a16",
+        "precision": "Vision FP16 weights and A16 activations; original floating-activation text contexts",
+        "vision_context": {
+          "bytes": 818913280,
+          "sha256": "70c2fc1b854a7950116c5a7c680c9bae4c9a01a2c0e66659da591191fa1351a9"
+        },
+        "correct": 11,
+        "total": 20,
+        "accuracy": 0.55,
+        "exact_gpu_answer_parity": 13,
+        "exact_gpu_answer_parity_total": 20,
+        "gpu_correct_retained": 10,
+        "gpu_correct_total": 16,
+        "ttft_ms": {
+          "count": 20,
+          "mean": 772.825,
+          "median": 771.2,
+          "min": 759.1,
+          "max": 781.3
+        },
+        "source_log_set_digest_sha256": "5a76a0f9bfbfd62d8f222ed37148289ee264c7ea0079b99efac16980ca70bcb9"
+      },
+      {
+        "id": "vision_fp16_weights_boundary_fp16",
+        "precision": "Vision FP16 weights, FP16 internal activations, and nine A16 compiler boundaries; original floating-activation text contexts",
+        "vision_context": {
+          "bytes": 821522432,
+          "sha256": "7ad306fc69273720c4dd7c86f8b7aa5e9688d7f9534eb8776b99db7cfd7adbb3"
+        },
+        "correct": 12,
+        "total": 20,
+        "accuracy": 0.6,
+        "exact_gpu_answer_parity": 14,
+        "exact_gpu_answer_parity_total": 20,
+        "gpu_correct_retained": 11,
+        "gpu_correct_total": 16,
+        "ttft_ms": {
+          "count": 20,
+          "mean": 686.08,
+          "median": 684.7,
+          "min": 678.2,
+          "max": 692.1
+        },
+        "source_log_set_digest_sha256": "1f108a48008cec9da44d1d16c78eca9387cc058d2b09f0ab36b3ac789fd8e533"
+      },
+      {
+        "id": "boundary_fp16_vision_w8_text_part4",
+        "precision": "Boundary-FP16 vision; W8 decoder matrices in text layers 21 through 27",
+        "vision_context": {
+          "bytes": 425918464,
+          "sha256": "6e217777c18cff6dd60ebff6a1422750b8e93d5c8ab05df1abb00eaaa17e2cac"
+        },
+        "part4_context": {
+          "bytes": 672043008,
+          "sha256": "f3a460e2310e425bfd8df0c56ee4dea35463bfe060fbd5692bb0a0f97ed3c604"
+        },
+        "correct": 12,
+        "total": 20,
+        "accuracy": 0.6,
+        "exact_gpu_answer_parity": 13,
+        "exact_gpu_answer_parity_total": 20,
+        "gpu_correct_retained": 11,
+        "gpu_correct_total": 16,
+        "ttft_ms": {
+          "count": 3,
+          "mean": 873.5,
+          "comparability": "Only three separately retained verbose logs contain timing. This mean is not directly comparable with the complete 20-log means."
+        },
+        "source_log_set_digest_sha256": "871d21295008a97d77f94c716ce4130a8ef12389e3c21f716d4c1d4c695c7cc2"
+      }
+    ],
+    "completed_result": {
+      "leader": "boundary_fp16",
+      "gpu_correct": 16,
+      "gpu_total": 20,
+      "leader_npu_correct": 13,
+      "leader_npu_total": 20,
+      "absolute_accuracy_gap": 0.15,
+      "leader_exact_gpu_answer_parity": 15,
+      "leader_gpu_correct_retention": 12,
+      "leader_gpu_correct_retention_total": 16,
+      "interpretation": "Boundary-FP16 improves the completed NPU result by two probes over baseline, but remains three probes below BF16 GPU. This is a useful improvement, not GPU/NPU parity."
+    }
+  },
+  "hosted_iq9075_vision_fidelity": {
+    "status": "complete",
+    "device": "Qualcomm Dragonwing IQ-9075 EVK, hosted service",
+    "sample_count": 12,
+    "input_scope": "Four warehouse scenes with three distinct temporal frame pairs per scene",
+    "metrics_reference": "Adapted Cosmos-Reason2-2B BF16 vision encoder",
+    "tensor_shape": [
+      12,
+      84,
+      2048
+    ],
+    "datasets": {
+      "baseline_four_input": "d9kvml4v2",
+      "boundary_five_input": "d2q45gy87"
+    },
+    "candidates": [
+      {
+        "id": "native_baseline",
+        "calibration": "Native-Hugging-Face-aligned 20-pair calibration",
+        "source_model": "mqk52x0zq",
+        "checkpoint_vision_encodings_sha256": "90d32db5ed45bbaeee317943a219f141e0617a159190ca1f0c314731a323833e",
+        "compile_job": "j5w46z36g",
+        "compiled_model": "mnl0rgrwn",
+        "inference_job": "jgd214qe5",
+        "runtime_log_sha256": "14e69cd7ee8d36d6e0f629e2f44f4b38413497fee864569723207fa3d9c434eb",
+        "h5_sha256": "953f7b438da9081494cee4469fa7dadb0795a0e7259815f7a868ee41d0721272",
+        "deployable_context": {
+          "link_job": "jg9dn2yl5",
+          "linked_model": "mm60g4gvm",
+          "bytes": 421351424,
+          "sha256": "6795076481be40b12a7d1c757f59fd507e9b6cb6011eda37d7fe5ba68868a428"
+        },
+        "metrics": {
+          "image_features": {
+            "cosine": 0.9591084334101673,
+            "relative_l2": 0.3233069482423355,
+            "mean_absolute_error": 0.13844301396627992
+          },
+          "deepstack_visual_embeds_0": {
+            "cosine": 0.9995683555004607,
+            "relative_l2": 0.030510938645540088,
+            "mean_absolute_error": 0.007046293369941178
+          },
+          "deepstack_visual_embeds_1": {
+            "cosine": 0.9974007392200568,
+            "relative_l2": 0.07219805885206468,
+            "mean_absolute_error": 0.014165914252513703
+          },
+          "deepstack_visual_embeds_2": {
+            "cosine": 0.9916756783780996,
+            "relative_l2": 0.1373857312079388,
+            "mean_absolute_error": 0.05689502161574128
+          }
+        }
+      },
+      {
+        "id": "paired_baseline",
+        "calibration": "Older paired-frame calibration with explicit resize",
+        "compile_job": "jgzndw66g",
+        "compiled_model": "mm55gz94m",
+        "inference_job": "j579rnllg",
+        "runtime_log_sha256": "4f01e316acc5c5d441466c22f42c835feb9dad9d23dc4a8e9ee57041629412fb",
+        "h5_sha256": "6ce2ca2249c197f0e7773cc53de6b3f80a08f85d15829db061e3b4057193d3b3",
+        "metrics": {
+          "image_features": {
+            "cosine": 0.959368545552018,
+            "relative_l2": 0.3225689157049075,
+            "mean_absolute_error": 0.13840520650971722
+          },
+          "deepstack_visual_embeds_0": {
+            "cosine": 0.9995673996407014,
+            "relative_l2": 0.030577077206512076,
+            "mean_absolute_error": 0.007057132942431821
+          },
+          "deepstack_visual_embeds_1": {
+            "cosine": 0.997385837631964,
+            "relative_l2": 0.0723762116358615,
+            "mean_absolute_error": 0.014133415131354101
+          },
+          "deepstack_visual_embeds_2": {
+            "cosine": 0.9917577753397215,
+            "relative_l2": 0.13675604959395377,
+            "mean_absolute_error": 0.056573572338118355
+          }
+        }
+      },
+      {
+        "id": "native_boundary",
+        "calibration": "Native-Hugging-Face-aligned 20-pair calibration",
+        "source_model": "mq2g3zvwm",
+        "checkpoint_vision_encodings_sha256": "4c959841d95574a2e226d180e5897f594f87092e1c3efbe4dc67c8eae08b1363",
+        "compile_job": "j5w46z26g",
+        "compiled_model": "mmr852vrn",
+        "inference_job": "jp3607vlp",
+        "runtime_log_sha256": "d0a9399a5df36692e984682303242a64f1658e7b8279858e02f26c1534a515d5",
+        "h5_sha256": "9c9dda0253ae753b1583ff0d10c1d04bfb159e26981213567ec7f1a4e65c3a09",
+        "deployable_context": {
+          "link_job": "jg9dn2jl5",
+          "linked_model": "mq92jg34m",
+          "bytes": 425918464,
+          "sha256": "1331e5d13d08d52c37084ccbf9f15ed8e2c6d5ede19273976ba4d4586f0a04a4"
+        },
+        "metrics": {
+          "image_features": {
+            "cosine": 0.9848278969967937,
+            "relative_l2": 0.17606778950523283,
+            "mean_absolute_error": 0.0614602840455657
+          },
+          "deepstack_visual_embeds_0": {
+            "cosine": 0.9994435772971781,
+            "relative_l2": 0.0343921999098672,
+            "mean_absolute_error": 0.007832587932107109
+          },
+          "deepstack_visual_embeds_1": {
+            "cosine": 0.9963425486955862,
+            "relative_l2": 0.09014802473319428,
+            "mean_absolute_error": 0.018947105056924977
+          },
+          "deepstack_visual_embeds_2": {
+            "cosine": 0.9957223473787126,
+            "relative_l2": 0.0933978205641919,
+            "mean_absolute_error": 0.034730797639410775
+          }
+        }
+      },
+      {
+        "id": "paired_boundary",
+        "calibration": "Older paired-frame calibration with explicit resize",
+        "compile_job": "jgk8x9m2g",
+        "compiled_model": "mq2g35wjm",
+        "inference_job": "jgo86wkxp",
+        "runtime_log_sha256": "0b0f0c7b1b4727f61a58b0ee876e9c4d5f73bc3c0fc2a3c02db2e650051478e6",
+        "h5_sha256": "105c04c5cfd955ad4c588d6cf4b2bbe8014ea913e47dcb46846f4aae45b55d00",
+        "deployable_context": {
+          "link_job": "j5qvqmo4g",
+          "linked_model": "mmr850l6n",
+          "bytes": 425918464,
+          "sha256": "6e217777c18cff6dd60ebff6a1422750b8e93d5c8ab05df1abb00eaaa17e2cac"
+        },
+        "metrics": {
+          "image_features": {
+            "cosine": 0.9848696376992523,
+            "relative_l2": 0.17581018558157835,
+            "mean_absolute_error": 0.0612553762555215
+          },
+          "deepstack_visual_embeds_0": {
+            "cosine": 0.9994432195832823,
+            "relative_l2": 0.03440220932199167,
+            "mean_absolute_error": 0.007833526358145613
+          },
+          "deepstack_visual_embeds_1": {
+            "cosine": 0.996336180779094,
+            "relative_l2": 0.09023131476248705,
+            "mean_absolute_error": 0.018954296346318313
+          },
+          "deepstack_visual_embeds_2": {
+            "cosine": 0.9957345643504986,
+            "relative_l2": 0.09327811565814058,
+            "mean_absolute_error": 0.03471775858741281
+          }
+        }
+      }
+    ],
+    "native_vs_paired_boundary": {
+      "image_features": {
+        "cosine": 0.9999469192434535,
+        "relative_l2": 0.010303435410357855,
+        "mean_absolute_error": 0.003519256872322838
+      },
+      "deepstack_visual_embeds_0": {
+        "cosine": 0.9999993394748945,
+        "relative_l2": 0.001149370849206202,
+        "mean_absolute_error": 0.00025827765514398746
+      },
+      "deepstack_visual_embeds_1": {
+        "cosine": 0.999995666586967,
+        "relative_l2": 0.002944186014688649,
+        "mean_absolute_error": 0.0007188760740951239
+      },
+      "deepstack_visual_embeds_2": {
+        "cosine": 0.9999777247894676,
+        "relative_l2": 0.006675417923535172,
+        "mean_absolute_error": 0.0017596708622524015
+      }
+    },
+    "interpretation": "Boundary-FP16 is a real NPU-side numeric improvement over the baseline for image_features and the late DeepStack outputs. Native-aligned and older paired calibration are extremely close; native alignment does not produce a consistent fidelity gain in these twelve pairs. No native-aligned context has yet been scored end to end on the frozen 20 probes."
+  },
+  "block23_fp16_deployability": {
+    "status": "rejected_for_current_stack",
+    "host_diagnosis": {
+      "scope": "One retained near-miss temporal pair",
+      "baseline_image_features_cosine": 0.950431,
+      "block23_fp16_image_features_cosine": 0.991453,
+      "meaning": "The host QuantSim ablation identified late vision activation quantization as important, but a host-only cosine gain is not a deployable NPU result."
+    },
+    "valid_checkpoint": {
+      "vision_onnx_sha256": "d656f3108b4faa4e6686ef8e33a68acb9d74db59333258a7332089e161976d72",
+      "vision_encodings_sha256": "2ec659f0294bf34bcc5c3a102df728804dbdfef27e43c18892d088ad451630da",
+      "host_numeric_report_sha256": "d76153342782c07ef1ef7779ddc85e205741d08c743c2993fd99c806dc0c62d0",
+      "onnx_full_check": "pass",
+      "source_model": "mn0ke9y8q"
+    },
+    "compile": {
+      "job": "jpeymxe15",
+      "status": "success",
+      "compiled_model": "mqyx8wrrm"
+    },
+    "link": {
+      "job": "jgzndyokg",
+      "status": "failed",
+      "placeholder_model": "mn7yvk1vn",
+      "failure": "Context conversion exited with code 14."
+    },
+    "invalid_preliminary_attempt": {
+      "compile_job": "jp2eyd04p",
+      "status": "failed",
+      "failure": "ONNX ShapeInference rejected a Div node with mixed FP32 and FP16 inputs.",
+      "exclusion_reason": "The scalar-rewrite directory was not a valid full AIMET checkpoint and is not deployment evidence."
+    },
+    "interpretation": "The valid block-23 candidate compiles to a DLC but cannot be linked into a deployable context with the current QAIRT 2.45 and GenieX route. It has no hosted or physical-NPU answer result."
+  },
+  "hosted_p1_intermediate_screens": {
+    "status": "complete_for_listed_jobs",
+    "purpose": "Rank the first text partition on one exact 128-token barrier-video prefill chunk. These are intermediate hidden-state and KV-cache comparisons, not generated-answer tests.",
+    "graph": "ar128_cl512_1_of_4",
+    "graph_selection": "--qnn_options context_enable_graphs=ar128_cl512_1_of_4",
+    "ranking_basis": "Lower relative RMSE against the same high-precision eager P1 reference is better. Hidden and mean-KV rankings agree in both completed screens.",
+    "candidate_builds": {
+      "baseline_w4_fp16": {
+        "linked_model": "mnj67lgdq",
+        "context_sha256": "7a59e6c83456cc93de4c84b9dbeb3acb9ef78b93c3f88eadfd33405eeded0d81"
+      },
+      "w8_layers_0_6": {
+        "source_model": "mnzgpplzq",
+        "ar128_compile_job": "jgjqn7lv5",
+        "ar128_compiled_model": "mqe411r5m",
+        "ar1_compile_job": "j5w46793g",
+        "ar1_compiled_model": "mqyx88zxm",
+        "link_job": "jpv7k21kp",
+        "linked_model": "mn7yvo34n",
+        "context_sha256": "8ea7ba19baaaa90cbb8e1ee34ab07f37ea982860d3718d96a2a3d3405a341125"
+      },
+      "w8_layers_0_3": {
+        "source_model": "mn7yvok3n",
+        "ar128_compile_job": "jp43redv5",
+        "ar128_compiled_model": "mm60go0dm",
+        "ar1_compile_job": "jpxxo061p",
+        "ar1_compiled_model": "mq3lgol9q",
+        "link_job": "jgnkv1mrg",
+        "linked_model": "mm55go5km",
+        "context_sha256": "eaeb2564ec11b9aca40aff914edc983f42f6858b89b6f43a305edd89cdec594a"
+      },
+      "w8_layers_0_2": {
+        "source_model": "mn7yvkl4n",
+        "ar128_compile_job": "jgzndyd6g",
+        "ar128_compiled_model": "mmdwp8yoq",
+        "ar1_compile_job": "j5w46z6jg",
+        "ar1_compiled_model": "mnw4r1erq",
+        "link_job": "jpxxork9p",
+        "linked_model": "mnzgp4vxq",
+        "context_sha256": "0a7a0642800aafec446fa6d7e90e1e1dc20959c12b028e75f7a1b214067b376d"
+      },
+      "w8_layers_1_3": {
+        "source_model": "mq3lg1y6q",
+        "ar128_compile_job": "j579rn0lg",
+        "ar128_compiled_model": "mno2p0ovq",
+        "ar1_compile_job": "jp43r4kv5",
+        "ar1_compiled_model": "mnj67ko1q",
+        "link_job": "jpxxorn1p",
+        "linked_model": "mqe41p2vm",
+        "context_sha256": "34a168aceef7a7b7274846bc0be762ecf9e0456124aa6da198136f116d67bf2a"
+      }
+    },
+    "bf16_vision_condition": {
+      "screen_manifest_sha256": "b8ef67d0207178bc367bea7c901bb429d59347626ce1ddb50146cbea79c67c8d",
+      "dataset_id": "d2q45gp87",
+      "dataset_fingerprint_sha256": "0545421000781ba5080bbceccd27c3ef9762b4567e4a5a4b1ea164dcca921d9b",
+      "vision_reference_npz_sha256": "7bc38d786cefc7209935d46c2e72937ec82fc297d5c9f183ccc8b99343d21f4c",
+      "p1_reference_sha256": "b35859c33840a5034ea9ad4eecee47a85892ad6fff291508c128f9882557ee42",
+      "ranking": [
+        {
+          "rank": 1,
+          "candidate": "w8_layers_0_6",
+          "inference_job": "jgo86wnxp",
+          "output_h5_sha256": "4650242c78c821c9f9c105c6374a37d22285e12865cbdf6cc142c416f6fcb35e",
+          "hidden_cosine": 0.9999176458097586,
+          "hidden_relative_rmse": 0.012961296225121747,
+          "kv_mean_cosine": 0.9998567055805737,
+          "kv_mean_relative_rmse": 0.014959920988511202
+        },
+        {
+          "rank": 2,
+          "candidate": "w8_layers_0_3",
+          "inference_job": "jpv7kmrjp",
+          "output_h5_sha256": "db31bf4341d9476fe6865a93e39462e7170098ffa09106e7e92084f50ecbbf8b",
+          "hidden_cosine": 0.9998971722700444,
+          "hidden_relative_rmse": 0.014451692361428212,
+          "kv_mean_cosine": 0.9939618154231009,
+          "kv_mean_relative_rmse": 0.07383472705753157
+        },
+        {
+          "rank": 3,
+          "candidate": "w8_layers_0_2",
+          "inference_job": "jgjqny2x5",
+          "output_h5_sha256": "617b406500df8d8b285d972a4b382a76aa531377040983c1c5f8e0f80071814e",
+          "hidden_cosine": 0.999892565205303,
+          "hidden_relative_rmse": 0.01476723718836592,
+          "kv_mean_cosine": 0.9912255055226868,
+          "kv_mean_relative_rmse": 0.09748581014116627
+        },
+        {
+          "rank": 4,
+          "candidate": "w8_layers_1_3",
+          "inference_job": "jpeymxw15",
+          "output_h5_sha256": "1d0bfcdbe14215063b44578ce6289726cff3fe0d110c9a628012707e290e4db1",
+          "hidden_cosine": 0.9998857189071878,
+          "hidden_relative_rmse": 0.018948577635589766,
+          "kv_mean_cosine": 0.9865336649717164,
+          "kv_mean_relative_rmse": 0.1441055530914125
+        },
+        {
+          "rank": 5,
+          "candidate": "baseline_w4_fp16",
+          "inference_job": "jp36071lp",
+          "output_h5_sha256": "721be03576b0f604c18d122a0855e64efb86439b158f7ad70282c750ce6e2f0d",
+          "hidden_cosine": 0.9988547447718134,
+          "hidden_relative_rmse": 0.0809872486751228,
+          "kv_mean_cosine": 0.9770424885436382,
+          "kv_mean_relative_rmse": 0.1914141198360785
+        }
+      ]
+    },
+    "production_boundary_npu_vision_condition": {
+      "screen_manifest_sha256": "9d712c6085caa2415d69a65648f056af00652f70cca87379dde109b44de3372b",
+      "dataset_id": "d2rl485p2",
+      "dataset_fingerprint_sha256": "31b84be8075953860bc7ff27d294e611e87c3a654553fbcfafd485f71012594e",
+      "vision_source": {
+        "inference_job": "jgo86wkxp",
+        "compiled_model": "mq2g35wjm",
+        "dataset_id": "d2q45gy87",
+        "h5_sha256": "105c04c5cfd955ad4c588d6cf4b2bbe8014ea913e47dcb46846f4aae45b55d00"
+      },
+      "p1_reference_manifest_sha256": "ab3eb98da906909c7f425b7c4b041985931f9e90c941603bc95a17dc4aa8b811",
+      "p1_reference_npz_sha256": "3eed44aebfeed548443446b16bc6a503a42dc764ad447e2dcf005e387afc985c",
+      "ranking": [
+        {
+          "rank": 1,
+          "candidate": "w8_layers_0_6",
+          "inference_job": "jgnkvq3rg",
+          "output_h5_sha256": "66818f9f17f3fad60755b71567e6b801f83416b5aaa5e734c4c35a5e7872026c",
+          "hidden_cosine": 0.9999176437045543,
+          "hidden_relative_rmse": 0.012961519628977208,
+          "kv_mean_cosine": 0.9998525140097992,
+          "kv_mean_relative_rmse": 0.01513653735869309
+        },
+        {
+          "rank": 2,
+          "candidate": "w8_layers_0_3",
+          "inference_job": "jprw3de95",
+          "output_h5_sha256": "9e824665dd1cbd03982d0542cedd83b48bb38921d09135be6349e4b55a7d97c0",
+          "hidden_cosine": 0.9998970921359608,
+          "hidden_relative_rmse": 0.014457314636072771,
+          "kv_mean_cosine": 0.9939443668464738,
+          "kv_mean_relative_rmse": 0.07397030875637299
+        },
+        {
+          "rank": 3,
+          "candidate": "baseline_w4_fp16",
+          "inference_job": "j5m8xk3wp",
+          "output_h5_sha256": "7678d86e6c9d1c28c6cfea3af78b4cbb85cc2a01c83d58d303239525c87e66a1",
+          "hidden_cosine": 0.9988547099876152,
+          "hidden_relative_rmse": 0.08098686092804129,
+          "kv_mean_cosine": 0.9770377659056917,
+          "kv_mean_relative_rmse": 0.19134174149832653
+        }
+      ],
+      "not_run_in_this_condition": [
+        "w8_layers_0_2",
+        "w8_layers_1_3"
+      ]
+    },
+    "interpretation": "W8 layers 0-6 is the clear P1 numerical leader in both the ideal BF16-vision screen and the completed production boundary-NPU-vision screen. The screen covers only chunk 0 and P1 intermediate tensors, so this ranking does not establish first-token or answer accuracy."
+  },
+  "hosted_middle_shard_intermediate_screens": {
+    "status": "complete_for_p2_and_p3",
+    "purpose": "Isolate decoder partitions 2 and 3 on the exact hosted chunk-0 inputs and compare their hidden-state and KV-cache outputs with eager BF16 references.",
+    "method": "Each BF16 reference consumes the exact quantized predecessor outputs from the reused AI Hub dataset. This measures the selected shard itself rather than pretending that earlier quantization error has disappeared.",
+    "shared_batch_labels": [
+      "baseline_w4_fp16",
+      "w8_layers_0_6",
+      "w8_layers_0_3"
+    ],
+    "part2_layers_7_through_13": {
+      "graph": "ar128_cl512_2_of_4",
+      "reference": {
+        "source_job": "j579rnnng",
+        "source_model": "mm60gk9vm",
+        "dataset_id": "d2q45gqo7",
+        "batch_fingerprint_sha256": "d5ead8cb114bd5f7ecfe3183965c3b50a5274730ebbd149d4096d946339deb03",
+        "manifest_sha256": "3ecd947aed24b43084c8441a2ac20929c212ba924517eb8693e89fd45eda23df",
+        "npz_sha256": "dcb9b78cf58a4de89c9b6bca18f9b0cfd47f0e5ce6422eef9b3cb864e4eef1f1"
+      },
+      "w8_context": {
+        "ar128_compile_job": "jp16z1rk5",
+        "ar1_compile_job": "jgd214jk5",
+        "link_job": "j579rnqqg",
+        "linked_model": "mn7yvydon",
+        "bytes": 357339136,
+        "sha256": "d65f751739ea4410920c7c04b06729f4f468e512e665c91577989653bdf0f50a"
+      },
+      "baseline": {
+        "inference_job": "j579rnnng",
+        "output_sha256": "101c842f41c342b505ec0902c45fff5246fd6de7b1969293cc07452a24f703ab",
+        "hidden_cosine": 0.9996729126719819,
+        "hidden_relative_rmse": 0.025585499901891934,
+        "kv_mean_cosine": 0.9739711218863576,
+        "kv_mean_relative_rmse": 0.21511615900473577
+      },
+      "w8": {
+        "inference_job": "jgk8x0nyg",
+        "output_sha256": "49385b773da68f30e55ab36682564cef618e1963f48932293dc2ba50d41632b0",
+        "hidden_cosine": 0.9999928231455,
+        "hidden_relative_rmse": 0.003810056067629753,
+        "kv_mean_cosine": 0.9998733125083045,
+        "kv_mean_relative_rmse": 0.015063983443610663
+      }
+    },
+    "part3_layers_14_through_20": {
+      "graph": "ar128_cl512_3_of_4",
+      "reference": {
+        "source_job": "jp81yrkq5",
+        "source_model": "mq3lg676q",
+        "dataset_id": "d74n806r2",
+        "batch_fingerprint_sha256": "25f2f130856c2b3f98aec9be510b2bb4bf4fce1dd919a20015effea3332a35ff",
+        "manifest_sha256": "36836df05e38d5dcd99dd2128a7371c3ce109bd583660a9cb5499c41411552bc",
+        "npz_sha256": "c16a35888c460c2995ef70afcb1df0bab540f4f3f213573553a858cc029c1cad"
+      },
+      "w8_context": {
+        "ar128_compile_job": "j5w46zozg",
+        "ar1_compile_job": "jg9dn2vq5",
+        "link_job": "jp16z10k5",
+        "linked_model": "mm55g599m",
+        "bytes": 357339136,
+        "sha256": "41b7e3d8576e3904f74714941360cf9dadb140905f287663de5044efb67689f9"
+      },
+      "baseline": {
+        "inference_job": "jp81yrkq5",
+        "output_sha256": "e644fea068f1a185b3d838bc03aa5aba08b6944f597088b2b81f1541990dbcdd",
+        "hidden_cosine": 0.9944780453740036,
+        "hidden_relative_rmse": 0.10518169783397527,
+        "kv_mean_cosine": 0.9569448325907913,
+        "kv_mean_relative_rmse": 0.28143068951416034
+      },
+      "w8": {
+        "inference_job": "j5qvq1k7g",
+        "output_sha256": "1a3aa8039d884ea3c5e41778e27fcceaf792674f77ed5f7e6406dce6458082ed",
+        "hidden_cosine": 0.9999692273152678,
+        "hidden_relative_rmse": 0.008278330165354111,
+        "kv_mean_cosine": 0.999783128206398,
+        "kv_mean_relative_rmse": 0.019484898036797985
+      }
+    },
+    "summary": {
+      "part2_hidden_error_reduction_factor": 6.715,
+      "part2_kv_error_reduction_factor": 14.28,
+      "part3_hidden_error_reduction_factor": 12.706,
+      "part3_kv_error_reduction_factor": 14.444
+    },
+    "interpretation": "Promoting the decoder matrices in layers 7-20 from W4 to independently derived W8 ranges removes most isolated P2/P3 numerical error for every tested P1 predecessor lane. These are strong promotion signals for final-choice testing, not generated-answer or frozen-suite accuracy results."
+  },
+  "balanced_gpu_extension": {
+    "status": "gpu_complete_npu_pending",
+    "scope": "Two additional Latin-balanced option permutations per scene",
+    "new_gpu_probes": {
+      "correct": 6,
+      "total": 8,
+      "summary_sha256": "7c01131ee51863d324cd299bfeea3ea8359f50b7aaf07dbef3d686b475a8d91b"
+    },
+    "combined_gpu_p1_through_p4": {
+      "correct": 13,
+      "total": 16,
+      "by_scene": {
+        "barrier": "4/4",
+        "box": "3/4",
+        "near_miss": "4/4",
+        "fire": "2/4"
+      }
+    },
+    "npu_status": "pending"
+  },
+  "pending_work": {
+    "hosted_first_token_chain": {
+      "status": "pending",
+      "required_scope": "Replay all three AR128 prefill chunks through P1, P2, P3, and P4 with per-shard KV history, then compare the final valid-token logits.",
+      "screen_selected_candidates": [
+        "w8_layers_0_6",
+        "w8_layers_0_3"
+      ],
+      "claim_boundary": "No first-token-chain result or generated-answer improvement is claimed from the chunk-0 P1 screen."
+    },
+    "physical_evk_frozen20_p1": {
+      "status": "pending",
+      "candidates": [
+        {
+          "id": "w8_layers_0_6",
+          "smoke_status": "four-token HTP smoke passed",
+          "frozen20_status": "not run"
+        },
+        {
+          "id": "w8_layers_0_3",
+          "smoke_status": "not run",
+          "frozen20_status": "not run"
+        },
+        {
+          "id": "w8_layers_0_2",
+          "smoke_status": "not run",
+          "frozen20_status": "not run"
+        },
+        {
+          "id": "w8_layers_1_3",
+          "smoke_status": "not run",
+          "frozen20_status": "not run"
+        }
+      ],
+      "claim_boundary": "A smoke output or hosted intermediate-tensor ranking must not be reported as frozen-suite accuracy."
+    },
+    "balanced_npu_extension": {
+      "status": "pending",
+      "required_scope": "Run the completed boundary-FP16 leader and any validated P1 winner on the eight new P3/P4 probes."
+    },
+    "native_calibration_end_to_end": {
+      "status": "pending",
+      "required_scope": "Score a native-aligned deployable context on the same frozen 20 probes before making an answer-quality claim."
+    }
+  },
+  "verdict": "The best completed end-to-end result remains BF16 GPU 16/20 versus boundary-FP16 NPU 13/20. Hosted IQ-9075 inference confirms that boundary-FP16 materially improves vision-tensor fidelity over the W8/A16 baseline, while native-aligned calibration is effectively tied with the older paired calibration. W8 layers 0-6 is the strongest P1 intermediate candidate, but neither a full first-token chain nor a physical-EVK frozen 20-probe answer run is complete, so no end-to-end P1 improvement is claimed."
+}

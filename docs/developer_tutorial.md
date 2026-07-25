@@ -59,7 +59,12 @@ full-interface W4/FP16 context, retaining the coherent parts 2-4, and running
 the result through a pinned GenieX lower-level `PixelData` integration. A
 globally-W4 vision export remains incompatible with legacy Genie, and native
 MP4 ingestion remains unsupported. A CPU GGUF path is included as an
-independent correctness baseline.
+independent correctness baseline. A second, currently unvalidated NPU route
+uses the official GenieX `llama_cpp` runtime with Qualcomm's GGML Hexagon
+backend. That route is architecturally plausible because Cosmos-Reason2-2B
+retains Qwen3-VL-2B's model structure, and it keeps DeepStack and visual-mask
+wiring inside llama.cpp instead of exposing those tensors at a split QAIRT
+boundary. It does not yet establish correct Cosmos inference on IQ-9075.
 
 The NPU integration is experimental. Qualcomm AI Hub Models 0.58.0 publishes
 a GenieX llama.cpp recipe for Qwen3-VL-2B, but its public Python package only
@@ -76,21 +81,25 @@ those reproducibility rules carry over unchanged.
 
 ## Current status
 
-Status below is current as of 2026-07-24.
+Status below is current as of 2026-07-25.
 
 | Item | Status |
 |---|---|
 | Adapter Python syntax, wheel contents, and dependency metadata | Verified locally |
 | Adapter imports and helper-call signatures against the exact QAI Hub Models 0.58.0 wheel | Verified statically |
 | 2B architecture constants against the public Qwen3-VL-2B config | Verified |
-| SSH access to the IQ-9075 EVK | Verified |
+| SSH access to the IQ-9075 EVK | Previously verified; EVK is currently offline, which blocks the explicitly pending r5 runs |
 | QAIRT `2.45.0.260326` gcc11.2/gcc8.2 host libraries, Genie executables, Hexagon v73 DSP files, and FastRPC access on the EVK | Verified |
 | QAIRT `2.47.0.260601` as a separately installed alternative runtime | Verified; Workbench does not currently offer a matching 2.47 compiler |
 | A non-Cosmos Genie context binary loading under QAIRT 2.47 on this EVK | Verified; this proves that installation, not the Cosmos port |
 | Qwen3-VL support in the EVK's `llama-mtmd-cli` and presence of both Cosmos GGUF files | Verified |
 | Cosmos GGUF end-to-end CPU vision inference | Verified with the existing Q4_K_M model and F16 projector |
+| Official-checkpoint Q4_0 GGUF and F16 projector conversion | Verified locally at pinned llama.cpp commit `910196f6b3dfc6aca88fa732e2b02f270ff9b56b`; sizes and SHA-256 hashes are recorded in Step 4 |
+| Host llama.cpp six-frame barrier probe | At 84 visual tokens/image, Q4_0 answers `C` in both option orders and passes only the shuffled case; BF16 passes the unshuffled case. At 1024 visual tokens/image, Q4_0 passes both orders. This is a bounded host diagnostic, not broad quality evidence |
+| Host llama.cpp encoded-video smoke | Mechanically successful on a five-second lathe clip, but its generic description/tool-slip framing missed the intended entanglement/unguarded-chuck hazard; this is not a quality pass |
+| GenieX `llama_cpp` Q4_0 on IQ-9075 | QCS9075 and Qwen3-VL GGUF are officially supported, but this exact Cosmos bundle's NPU-only and hybrid runs are pending while the EVK is offline |
 | Official gated Cosmos checkpoint download and architecture validation | Verified; all 15 files are present |
-| Cosmos text and vision quantization | Verified for CL512; the evaluated video graph is 224 × 384 W8/A16 with 20 distinct pairs, but its calibration used the old explicit-resize path; native-aligned checkpoints are not yet compiled |
+| Cosmos text and vision quantization | Verified for CL512; r5 compares the native-aspect 224 × 384 W8/A16 baseline with three compiled mixed-precision vision layouts, all derived from the older paired/explicit-resize calibration checkpoint |
 | QAIRT 2.45 compatibility checkpoint | Verified; ONNX checker passes, split points are unchanged, and the four unsupported auxiliary text inputs are removed |
 | Original all-W4A16 text contexts | Historical failure: all jobs succeed and execute on `QnnHtp`, but native p1→p4 drift changes the first token and Genie output is incoherent |
 | Official GenieX v0.3.16 against that original all-W4A16 artifact | Evaluated; local import succeeds but reproduces that artifact's incoherent Chinese/repeated `A`, so orchestration alone does not repair it |
@@ -100,24 +109,30 @@ Status below is current as of 2026-07-24.
 | All-FP16 AI Hub vision export | Failed at the QAIRT 2.45 vision link after the vision graph compiled; this is not a deployable bundle |
 | W4/FP16 text contexts | Verified; all four cache-controlled links have AR128→AR1 order and legacy Genie produces coherent English |
 | Globally-W4 mixed vision context | Compile `jpym3vrlp` and link `jp060e3np` succeed; direct EVK HTP execution succeeds in about 250 ms, but its external I/O is FP32 and legacy Genie rejects it |
-| Final hybrid bundle | Verified end to end: original W4A16 vision target `mngx5gv5q` plus the four W4/FP16 text targets |
+| Historical legacy hybrid bundle | Verified end to end: original W4A16 vision target `mngx5gv5q` plus the four W4/FP16 text targets |
 | Legacy Genie 1.17 text-only result | Verified coherent: 131.152 ms TTFT, 289.7711 prompt tok/s, 17.9982 generation tok/s, 2.489846 s query |
 | Cosmos image-to-text through legacy Genie | Verified; default script exits 0, accepts all five image inputs, and describes Qualcomm's `dog.jpg` as a white fluffy dog on green grass |
-| Native MP4/video-container input | Unsupported by legacy Genie, stock QAI Hub Models, and stock GenieX v0.3.16; the custom runner instead consumes a prepacked raw `PixelData` tensor |
+| Native MP4/video-container input | Unsupported by legacy Genie and stock QAI Hub Models; GenieX documents only images, while an undocumented llama.cpp fallback can reach its ffmpeg helper but leaks the video context and is not native-Qwen3-VL equivalent |
 | Learned temporal patch-projection bias | Fixed: the adapter now retains Qwen3-VL's learned 1024-element bias when adapting Conv3d to Conv2d |
-| Native video input parity | Verified: NPU preparation uses native Hugging Face processing; per-pair GPU/NPU pixel hashes match, and the runner uses `<|video_pad|>` |
+| Native video input parity | Verified: NPU preparation uses native Hugging Face processing; per-pair GPU/NPU pixel hashes match, and the runner uses upstream video-pad token `151656` |
 | Native-aspect vision profile | Verified on NPU: 224 × 384, `[336, 1536]` pixels, grid `[1, 14, 24]`, and 84 visual tokens per pair |
 | Full-DeepStack GenieX bundle | Verified: full-interface W4/FP16 part 1 restores `visual_pos_masks` and `deepstack_visual_embeds_0..2`; coherent W4/FP16 parts 2-4 feed the bias-corrected native-aspect W8/A16 vision context |
 | Full-DeepStack multi-pair NPU execution | Verified cleanly for one and three temporal pairs on `QnnHtp` / Hexagon v73 through the pinned GenieX lower `PixelData` API |
-| Exact one-pair quality | 0/5 strict units that the BF16 GPU reference passes |
-| Initial three-pair two-scene/order control | r3 records 4/4 GPU/NPU agreement (`A`, `C`, `B`, `A`); valid but too narrow to generalize |
-| Expanded three-pair four-scene/order control | BF16 GPU 7/8, NPU 4/8, exact answer parity 5/8; across marker, box, and near miss, GPU 6/6 and NPU 3/6 |
-| Robust realistic NPU example | Near-miss avoidance passes 2/2 on GPU and NPU as its correct label moves from `C` to `B` |
-| Compact-prompt diagnostic | Removing 25 prompt tokens moves errors but leaves NPU 4/8 and exact parity 5/8; both box orders remain NPU-only failures |
-| Focused box/near diagnostic | GPU 4/4, NPU 3/4; NPU recognizes box as option `A` but keeps `A` after box moves to `B`, exposing order sensitivity |
-| Three-pair free-form quality | Both strict NPU rubrics fail; the exact BF16 GPU diagnostics also fail both |
-| Four-pair CL512 diagnostic | Unsafe: 408/413-token prompts exceed the AR128 prefill-cache limit of 384 and corrupt NPU decode; guards now reject them |
-| Block-23 mixed vision candidate | Host `image_features` cosine improves 0.950431 → 0.991453; upload, compile, and NPU run are pending explicit authorization |
+| Historical r3 exact one-pair quality | 0/5 strict units that the BF16 GPU reference passes |
+| Historical initial three-pair two-scene/order control | r3 records 4/4 GPU/NPU agreement (`A`, `C`, `B`, `A`); valid but too narrow to generalize |
+| Historical expanded three-pair four-scene/order control | r4 records BF16 GPU 7/8, NPU 4/8, exact answer parity 5/8; across marker, box, and near miss, GPU 6/6 and NPU 3/6 |
+| Historical r4 robust realistic example | Near-miss avoidance passes 2/2 on GPU and NPU as its correct label moves from `C` to `B` |
+| Historical r4 compact-prompt diagnostic | Removing 25 prompt tokens moves errors but leaves NPU 4/8 and exact parity 5/8; both box orders remain NPU-only failures |
+| Historical r4 focused box/near diagnostic | GPU 4/4, NPU 3/4; NPU recognizes box as option `A` but keeps `A` after box moves to `B`, exposing order sensitivity |
+| Historical r3/r4 three-pair free-form quality | Both strict NPU rubrics fail; the exact BF16 GPU diagnostics also fail both |
+| Historical r3 four-pair CL512 diagnostic | Unsafe: 408/413-token prompts exceed the AR128 prefill-cache limit of 384 and corrupt NPU decode; guards now reject them |
+| R5 frozen suite | Completed for four vision candidates and W8 text part 4; BF16 GPU scores 16/20 |
+| Current completed NPU leader | Boundary-FP16 vision scores 13/20, exact GPU parity 15/20, GPU-correct retention 12/16, mean TTFT 857.510 ms |
+| Other completed r5 vision candidates | W8/A16 baseline 11/20; W-FP16/A16 11/20; combined FP16 weights/internals with A16 boundaries 12/20 |
+| W8 text part 4 | 12/20, exact parity 13/20, GPU-correct retention 11/16; 873.5 ms mean TTFT covers only 3/20 timing-bearing logs |
+| W8 text part 1, layers 0–6 | AI Hub link and shared-weight contract verified; four-token HTP smoke passes; frozen 20 pending while EVK is offline |
+| W8 text part 1, layers 0–3 and 0–2 | Compiled/linked; their stated contract checks are recorded below; EVK smoke and frozen 20 pending |
+| Balanced P1–P4 extension | BF16 GPU 13/16 overall and 6/8 on new P3/P4; NPU pending while EVK is offline |
 | EVK deployment | Legacy hybrid and full-DeepStack GenieX artifacts use separate new directories; the old active bundle is untouched |
 
 The accumulated-drift diagnosis applies to the original all-W4A16 text
@@ -136,7 +151,7 @@ text graph, which is why the original vision context can feed the FP16 text
 contexts. The successful image-conditioned answer, exit status, five bound
 image inputs, and profile together establish end-to-end execution.
 
-The temporal result now has a more useful but still bounded interpretation.
+The historical r3/r4 temporal result has a useful but bounded interpretation.
 The current full-DeepStack runner interleaves one or three native Qwen3-VL
 temporal pairs with timestamps. Exact native-processor pixels and
 `<|video_pad|>` prompt construction match the BF16 reference. One-pair NPU
@@ -154,6 +169,17 @@ and the
 [`native-aspect parity report`](evidence/iq9075_video_aspect_native_parity_r3.json)
 and
 [`expanded four-scene report`](evidence/iq9075_video_four_scene_parity_r4.json).
+
+The r5 precision sweep is the current comparison. Its frozen 20 probes
+combine the r4 primary set, compact-prompt set, and focused box/near-miss set.
+GPU scores 16/20. The original NPU baseline scores 11/20; boundary-FP16
+vision improves to 13/20 and agrees exactly with 15/20 GPU letters. It retains
+12 of the 16 GPU-correct answers, versus 10/16 for baseline. This is the best
+completed NPU result, but it remains three correctness points behind GPU.
+The combined FP16-weight/internal candidate has the lowest mean TTFT
+(686.080 ms) but scores 12/20, so host numerical fidelity and speed do not
+substitute for end-task scoring. See the
+[`r5 precision report`](evidence/iq9075_video_precision_parity_r5.json).
 
 No earlier independent public result was found for the exact
 `nvidia/Cosmos-Reason2-2B` checkpoint on IQ-9075. NVIDIA's published hardware
@@ -183,7 +209,7 @@ The adapter expects:
 | Deep-stack injection layers | 3 |
 | Current 224 × 384 visual tokens | 84 |
 | Temporal patch | 2 frames, grid `[1, 14, 24]`, 84 tokens |
-| Evaluated video precision | Bias-corrected W8/A16 vision + W4/FP16 text |
+| Current completed accuracy leader | Bias-corrected W8 vision, 925 FP16 internal activations, nine A16 boundaries + W4/FP16 text |
 
 In practical terms, the model has two cooperating towers. The 24-layer vision
 transformer repeatedly turns small image regions into increasingly contextual
@@ -211,7 +237,8 @@ nvidia/Cosmos-Reason2-2B
   -> Qwen3-VL-2B adapter
   |-> preserve learned temporal patch-projection bias
   -> AIMET-ONNX text + 224 x 384 paired-frame vision calibration
-  |-> W8/A16 vision link, including three DeepStack outputs
+  |-> boundary-FP16 vision leader or W8/A16 baseline
+  |    `-> primary + three DeepStack outputs
   |-> W4/FP16 text links
   |    |-> legacy compatibility p1-p4, auxiliary inputs removed
   |    `-> full-interface replacement p1, auxiliary inputs restored
@@ -255,6 +282,23 @@ Target:
   independent orchestration comparison. Its bundled runtime is QAIRT
   `2.45.0.260326`. The custom raw runner does not modify or reuse this
   directory; its deploy step copies a separate pinned build.
+- The official GenieX CLI installed separately for the GGUF pilot. Qualcomm
+  documents native Linux ARM64 support for Dragonwing QCS9075 and access to
+  Hexagon through the board's Qualcomm driver packages. Do not replace the
+  pinned v0.3.16 raw-runner tree with this installation.
+
+Qualcomm's
+[v0.3.16-to-v0.3.17 comparison](https://github.com/qualcomm/GenieX/compare/v0.3.16...v0.3.17)
+was reviewed as well. The relevant point is not that v0.3.17 introduced a new
+VLM runtime: `sdk/plugins/llama_cpp/{llm,vlm}` and its tests were already
+present in v0.3.16. The route-specific value of the v0.3.17 material is
+documentation and discoverability, not a new VLM implementation. Its general
+catalog/cache and device-detection changes, plus the subsequent
+documentation-only main-branch change, do not alter the multimodal arithmetic.
+Neither release repairs the split-QAIRT artifact's `PixelData`, DeepStack,
+visual-mask, or quantized arithmetic. Keep the measured raw-runner evidence
+pinned to v0.3.16, and evaluate the separately installed `llama_cpp` runtime
+as a distinct GGUF experiment.
 
 The EVK had about 34 GiB RAM, no swap, and 42 GiB free disk when inspected.
 Recheck before copying a new bundle:
@@ -569,6 +613,263 @@ test -f "$COSMOS_OFFICIAL/preprocessor_config.json"
 The validator rejects a checkpoint whose model type or text/vision dimensions
 do not match the adapter. Do not bypass it by editing `config.json`.
 
+### 4A. Convert and stage a Q4_0 GGUF bundle for GenieX
+
+This is an alternative to the split-QAIRT flow in Steps 5–12, not a
+replacement for its measured evidence. NVIDIA states that Cosmos-Reason2-2B
+is post-trained from `Qwen3-VL-2B-Instruct` and follows the same architecture.
+llama.cpp can therefore convert the text model and multimodal projector using
+its Qwen3-VL converter. Qualcomm's
+[GenieX model guide](https://geniex.aihub.qualcomm.com/en/models/supported)
+documents Qwen3-VL as a `vlm`, a main GGUF next to `mmproj-*.gguf`, and
+`Q4_0` as the format with the best Hexagon NPU support. Architecture
+compatibility makes the experiment reasonable; it is not evidence that the
+converted model is accurate on Hexagon.
+
+Pin the converter before producing either file:
+
+```bash
+LLAMA_CPP="$HOME/src/llama.cpp-910196f6"
+COSMOS_GGUF_BUILD="$HOME/models/cosmos_reason2_2b_gguf_build"
+MODEL_DIR="$HOME/models/cosmos_reason2_2b_geniex_q4_0"
+
+git clone https://github.com/ggml-org/llama.cpp.git "$LLAMA_CPP"
+git -C "$LLAMA_CPP" checkout 910196f6b3dfc6aca88fa732e2b02f270ff9b56b
+
+python3 -m pip install -r "$LLAMA_CPP/requirements.txt"
+cmake -S "$LLAMA_CPP" -B "$LLAMA_CPP/build" \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DLLAMA_CURL=OFF
+cmake --build "$LLAMA_CPP/build" \
+  --config Release \
+  --target llama-quantize llama-mtmd-cli \
+  -j "$(nproc)"
+
+mkdir -p "$COSMOS_GGUF_BUILD" "$MODEL_DIR"
+
+python3 "$LLAMA_CPP/convert_hf_to_gguf.py" \
+  "$COSMOS_OFFICIAL" \
+  --outfile "$COSMOS_GGUF_BUILD/Cosmos-Reason2-2B-BF16.gguf" \
+  --outtype bf16
+
+python3 "$LLAMA_CPP/convert_hf_to_gguf.py" \
+  "$COSMOS_OFFICIAL" \
+  --mmproj \
+  --outfile "$MODEL_DIR/mmproj-Cosmos-Reason2-2B-F16.gguf" \
+  --outtype f16
+
+"$LLAMA_CPP/build/bin/llama-quantize" \
+  "$COSMOS_GGUF_BUILD/Cosmos-Reason2-2B-BF16.gguf" \
+  "$MODEL_DIR/Cosmos-Reason2-2B-Q4_0.gguf" \
+  Q4_0
+
+sha256sum \
+  "$MODEL_DIR/Cosmos-Reason2-2B-Q4_0.gguf" \
+  "$MODEL_DIR/mmproj-Cosmos-Reason2-2B-F16.gguf"
+```
+
+The pinned conversion completed locally. Its two deployable files are:
+
+| File | Bytes | SHA-256 |
+|---|---:|---|
+| `Cosmos-Reason2-2B-Q4_0.gguf` | 1,229,455,008 | `90bd38f1a117b2d9738642165dfd8c0c6273a4bdfd214e1354d0502cff61e8a9` |
+| `mmproj-Cosmos-Reason2-2B-F16.gguf` | 819,395,424 | `43df50be60fd6c9075548cd6d759e21253a3c62da69055bab7864cc64aa00c2c` |
+
+The default Q4_0 recipe intentionally leaves `output.weight`, the
+311,164,928-element vocabulary projection, in Q6_K. GenieX's pinned Hexagon
+backend does not advertise Q6_K, so that tensor is expected to fall back from
+HTP. Prepare a separate, experimental all-Q4_0 candidate for an on-device
+residency/speed A/B:
+
+```bash
+"$LLAMA_CPP/build/bin/llama-quantize" \
+  --pure \
+  "$COSMOS_GGUF_BUILD/Cosmos-Reason2-2B-BF16.gguf" \
+  "$COSMOS_GGUF_BUILD/Cosmos-Reason2-2B-Q4_0-pure.gguf" \
+  Q4_0
+```
+
+That candidate is 1,149,232,800 bytes with SHA-256
+`a2eeb9a09bc7e82f903ce243d18e93e0b686b8c8cc0616c7c2b089094b1305fc`.
+It preserves both 1024-token barrier answer-order passes (`A`, then `C`) in
+the limited host smoke. It is not the default because quantizing the output
+head can still change other answers; score the full frozen suite before
+trading the standard artifact's Q6_K quality for broader HTP eligibility.
+
+Keep only the Q4_0 main model and F16 projector in `MODEL_DIR` when importing
+it. In particular, do not leave the intermediate BF16 main model beside them,
+because an inferred local layout with two possible main GGUFs is ambiguous.
+The weights remain subject to NVIDIA's license and are not committed to this
+repository.
+
+Copy that directory to a separate EVK location:
+
+```bash
+EVK_IP="<EVK IP>"
+EVK_USER=ubuntu
+EVK_SSH_KEY=/mnt/c/path/to/evk_ssh_key
+EVK_TARGET="${EVK_USER}@${EVK_IP}"
+
+ssh -i "$EVK_SSH_KEY" "$EVK_TARGET" \
+  'mkdir -p /home/ubuntu/models/cosmos_reason2_2b_geniex_q4_0'
+
+scp -i "$EVK_SSH_KEY" \
+  "$MODEL_DIR/Cosmos-Reason2-2B-Q4_0.gguf" \
+  "$MODEL_DIR/mmproj-Cosmos-Reason2-2B-F16.gguf" \
+  "${EVK_TARGET}:/home/ubuntu/models/cosmos_reason2_2b_geniex_q4_0/"
+```
+
+On the EVK, install the current official CLI in a separate location, following
+Qualcomm's
+[Linux ARM64 instructions](https://geniex.aihub.qualcomm.com/en/run/cli/install).
+The IQ9075 Ubuntu image normally has the Qualcomm PPA preconfigured:
+
+```bash
+ssh -i "$EVK_SSH_KEY" "$EVK_TARGET"
+
+sudo apt update
+sudo apt install -y \
+  libatomic1 \
+  libglib2.0-0 \
+  ocl-icd-libopencl1
+sudo apt-get install -y qcom-adreno1 qcom-fastrpc1 libqnn1
+
+curl -fsSL \
+  https://qaihub-public-assets.s3.us-west-2.amazonaws.com/qai-hub-geniex/install.sh \
+  | sh -s -- --version v0.3.17
+
+geniex --version
+```
+
+Register the local VLM once, then run the same frozen image and prompt on the
+two relevant compute modes:
+
+```bash
+MODEL_DIR=/home/ubuntu/models/cosmos_reason2_2b_geniex_q4_0
+PROMPT="Describe the scene and identify imminent hazards. /absolute/path/to/frame.png"
+
+geniex pull local/cosmos-reason2-2b:Q4_0 \
+  --local-path "$MODEL_DIR" \
+  --model-type vlm
+
+geniex infer local/cosmos-reason2-2b:Q4_0 \
+  --compute npu \
+  --ngl -1 \
+  --nctx 4096 \
+  --max-tokens 256 \
+  --top-k 1 \
+  --seed 42 \
+  --prompt "$PROMPT" \
+  2>&1 | tee cosmos_geniex_npu.log
+
+geniex infer local/cosmos-reason2-2b:Q4_0 \
+  --compute hybrid \
+  --ngl -1 \
+  --nctx 4096 \
+  --max-tokens 256 \
+  --top-k 1 \
+  --seed 42 \
+  --prompt "$PROMPT" \
+  2>&1 | tee cosmos_geniex_hybrid.log
+```
+
+For `llama_cpp`, `--compute npu` pins execution to Hexagon `HTP0`.
+`--compute hybrid` leaves the device ID empty and enables llama.cpp's
+per-tensor HTP-plus-CPU scheduler with all layers eligible for offload;
+Qualcomm's
+[platform and runtime guide](https://geniex.aihub.qualcomm.com/en/get-started/platforms)
+documents hybrid as the faster Snapdragon path. `--ngl -1` makes the all-layer
+intent explicit. The flag is still only a request: preserve logs and
+backend/profile output that actually identifies Hexagon before calling a run
+NPU-proven.
+
+GenieX v0.3.17 pins llama.cpp commit `ae9291e16`, while the converter and host
+smokes above use `910196f6`, 104 commits newer. The older pin has the required
+Qwen3-VL, DeepStack, M-RoPE, and frame-pair loaders, so no GGUF schema blocker
+was found. It predates upstream commit
+[`b4aa7dd477acf065a3b9c6a8cf324c904da1a834`](https://github.com/ggml-org/llama.cpp/commit/b4aa7dd477acf065a3b9c6a8cf324c904da1a834),
+which changes Qwen3-VL learned-position interpolation to
+`align_corners=True` to match Transformers. This can move grounding
+coordinates on non-square inputs. If stock v0.3.17 differs from the current
+host result, test a GenieX rebuild with that fix before blaming Hexagon
+numerics.
+
+Use `--top-k 1 --seed 42` for deterministic comparisons. Do not rely on
+`--temperature 0` as a greedy setting in this GenieX implementation: zero is
+treated as "unset" and replaced by the llama.cpp default temperature `0.8` in
+[`build_sampling_params`](https://github.com/qualcomm/GenieX/blob/main/sdk/plugins/llama_cpp/src/params.cpp).
+Top-k one leaves a single candidate regardless of that fallback.
+
+The CLI can attach multiple ordered image files found in a prompt. This is a
+useful static-frame experiment, but it is not native video preprocessing:
+
+```bash
+geniex infer local/cosmos-reason2-2b:Q4_0 \
+  --compute npu \
+  --ngl -1 \
+  --nctx 16384 \
+  --max-tokens 256 \
+  --top-k 1 \
+  --seed 42 \
+  --prompt "The following frames are chronological. Predict the next safety-relevant event. /absolute/path/to/frame_000.png /absolute/path/to/frame_001.png /absolute/path/to/frame_002.png /absolute/path/to/frame_003.png"
+```
+
+The exact six-frame barrier probe reveals an important visual-budget
+interaction:
+
+| Host model | Visual tokens/image | Choice order | Expected | Returned |
+|---|---:|---|---:|---:|
+| Q4_0 main + F16 projector | 84 | Primary | `A` | `C` |
+| Q4_0 main + F16 projector | 84 | Shuffled | `C` | `C` |
+| BF16 main + F16 projector | 84 | Primary | `A` | `A` |
+| Q4_0 main + F16 projector | 256 | Primary | `A` | `C` |
+| Q4_0 main + F16 projector | 512 | Primary | `A` | `C` |
+| Q4_0 main + F16 projector | 1024 | Primary | `A` | `A` |
+| Q4_0 main + F16 projector | 1024 | Shuffled | `C` | `C` |
+
+At the natural 384 × 216 input size, Q4_0's two `C` answers expose a
+letter-C bias rather than robust grounding. Raising the llama.cpp visual
+budget to 256 and then 512 tokens/image does not change the wrong primary
+answer; 1024 fixes both orders for this one probe. The BF16 result at 84
+tokens shows that quantization sensitivity contributes to the low-budget
+failure. Do not generalize from two passing permutations: repeat the same
+intervention across the frozen scenes and negative controls.
+
+The direct llama.cpp test can request that budget with
+`--image-min-tokens 1024`. Current GenieX `llama_cpp` VLM plumbing appears not
+to honor its `image_max_length` field, so do not assume
+`--image-max-length 1024` has the same effect. Until backend logs prove
+otherwise, the practical GenieX experiment is to create deterministically
+upscaled copies of the frozen frames, record their dimensions and hashes, and
+use `--nctx 8192` or `16384` for the resulting visual tokens. Compare natural
+and upscaled inputs on both `--compute npu` and `--compute hybrid`; treat this
+as a workaround under test, not an established runtime contract.
+
+Increase `--nctx` only after checking memory headroom; each image adds visual
+tokens. The current GenieX CLI documents image paths, not encoded video.
+Source inspection shows that an `.mp4` can nevertheless fall through the
+generic media loader into pinned llama.cpp's ffmpeg-backed video helper.
+That wrapper discards the returned video-context owner while retaining its
+lazy bitmap callback, leaking the context and making lifetime behavior
+unsuitable as a supported or repeatable interface. Use ordered extracted
+frames for GenieX evaluation; reserve direct MP4 for an explicitly labeled
+one-shot diagnostic. The pinned helper can fuse consecutive Qwen-VL frames.
+The
+[pinned helper interface](https://github.com/ggml-org/llama.cpp/blob/910196f6b3dfc6aca88fa732e2b02f270ff9b56b/tools/mtmd/mtmd-helper.h)
+defaults to 4 FPS with a timestamp text chunk every five seconds, whereas this
+project's native-Qwen3-VL reference uses 2 FPS and a timestamp for every
+temporal pair. Direct `llama-mtmd-cli` video output is therefore an
+exploratory smoke, not GPU-equivalent preprocessing. The completed
+five-second lathe smoke loaded 20 frames and described the scene, but its
+hazard response stayed at generic tool-slip/bolt language and missed the
+intended entanglement/unguarded-chuck risk, reinforcing that distinction.
+
+The Q4_0/F16 bundle is locally ready, but the EVK is currently offline.
+Consequently, no result yet proves that this exact Cosmos bundle loads through
+GenieX on QCS9075, reaches HTP, or matches GPU answers. When the board returns,
+run the NPU-only and hybrid commands on the exact frozen single-image and
+ordered-frame probes before changing the main QAIRT recommendation.
+
 ## 5. Quantize a small W4A16 smoke checkpoint
 
 Start with context length 512 and fewer calibration samples. This reduces
@@ -774,6 +1075,93 @@ sessions and emits `Hello,`. The W4/FP16 text checkpoint has the same text
 so that result validates its text side as well. The physical-NPU proof comes
 from the four linked text contexts documented below.
 
+### Generate the r5 precision checkpoints
+
+The r5 transforms are deterministic, fail closed on the expected tensor
+counts and calibration provenance, and write a marker beside each derived
+checkpoint. Use new destination directories:
+
+```bash
+python scripts/make_vision_a16_boundary_checkpoint.py \
+  /path/to/all-fp16-native-aspect \
+  /path/to/native-aspect-w8a16 \
+  /path/to/new-boundary-fp16
+
+python scripts/make_vision_fp16_weight_checkpoint.py \
+  /path/to/native-aspect-w8a16 \
+  /path/to/new-wfp16-a16
+
+python scripts/make_vision_fp16_weight_boundary_checkpoint.py \
+  /path/to/new-wfp16-a16 \
+  /path/to/new-boundary-fp16 \
+  /path/to/new-wfp16-boundary
+```
+
+The boundary checkpoint keeps all 205 calibrated vision parameter encodings
+at W8, keeps nine graph-facing activations at A16, and sets 925 internal
+activations to FP16. The weight transform changes the 205 vision parameter
+encodings to canonical FP16 while preserving all 934 A16 activations. The
+combined transform uses FP16 parameters and internals with the same nine A16
+boundaries.
+
+Promote decoder matrices to independently derived W8 ranges from the external
+FP32 ONNX initializers:
+
+```bash
+python scripts/make_text_w8_matrix_checkpoint.py \
+  /path/to/w4-fp16-full-deepstack-cl512 \
+  /path/to/new-w8-part1-full \
+  --parts part1_of_4 \
+  --image-size 224 384
+
+python scripts/make_text_w8_matrix_checkpoint.py \
+  /path/to/w4-fp16-full-deepstack-cl512 \
+  /path/to/new-w8-part1-layers-0-3 \
+  --parts part1_of_4 \
+  --layers 0 1 2 3 \
+  --image-size 224 384
+
+python scripts/make_text_w8_matrix_checkpoint.py \
+  /path/to/w4-fp16-full-deepstack-cl512 \
+  /path/to/new-w8-part1-layers-0-2 \
+  --parts part1_of_4 \
+  --layers 0 1 2 \
+  --image-size 224 384
+
+python scripts/make_text_w8_matrix_checkpoint.py \
+  /path/to/w4-fp16-full-deepstack-cl512 \
+  /path/to/new-w8-part4-full \
+  --parts part4_of_4 \
+  --image-size 224 384
+```
+
+The tool recomputes every selected W8 range; it does not scale a W4 encoding.
+Before publishing the destination it requires that the same AIMET calculation
+reproduce the source W4 ranges. Part 1 layers 0–6 changes 252 matrices,
+layers 0–3 changes 144, layers 0–2 changes 108, and part 4 layers 21–27
+changes 252.
+
+Compare the vision candidates against the adapted BF16 encoder on exactly the
+manifest-bound pixels before cloud export:
+
+```bash
+python scripts/compare_vision_checkpoints.py \
+  --source-checkpoint /path/to/Cosmos-Reason2-2B \
+  --candidate-checkpoint baseline=/path/to/native-aspect-w8a16 \
+  --candidate-checkpoint boundary=/path/to/new-boundary-fp16 \
+  --candidate-checkpoint wfp16_a16=/path/to/new-wfp16-a16 \
+  --candidate-checkpoint combined=/path/to/new-wfp16-boundary \
+  --manifest /path/to/case-1/video_npu_manifest.json \
+  --manifest /path/to/case-2/video_npu_manifest.json \
+  --output-json /path/to/new-vision-comparison.json \
+  --device cuda \
+  --image-height 224 \
+  --image-width 384
+```
+
+The comparison validates the recorded shapes, byte counts, and SHA-256 values
+before loading a model. It is a diagnostic, not an NPU accuracy score.
+
 ## 7. Export vision and text separately, then assemble
 
 If the BF16 checkpoint has moved since quantization, override the stale path
@@ -824,9 +1212,9 @@ The 512-token smoke matrix links prompt/decode graphs with sequence lengths
 128 and 1. Use a new output and upload identity for every attempt, and record
 the Workbench URLs and returned target-model IDs.
 
-### Proven linked contexts
+### Historical legacy-Genie linked contexts
 
-The final text contexts are:
+The proven legacy-compatibility text contexts are:
 
 | Component | Link job | Target model | SHA-256 prefix | Graph order |
 |---|---|---|---|---|
@@ -842,7 +1230,7 @@ AR128 then AR1. If part 1 must be rebuilt, force a new upload/model identity
 before linking. A cached context with the wrong order can otherwise be
 silently reintroduced.
 
-The final vision context is the original W4A16 artifact:
+The corresponding legacy vision context is the original W4A16 artifact:
 
 | Component | Compile job | Link job | Target model | SHA-256 prefix |
 |---|---|---|---|---|
@@ -865,6 +1253,67 @@ Two vision alternatives were evaluated and are not the recommended context:
   it with `Unsupported input tensor full_attention_mask dtype
   QNN_DATATYPE_FLOAT_32`. Direct-QNN success therefore does not make this
   globally-W4 vision context legacy-Genie compatible.
+
+### R5 AI Hub artifact sheet
+
+The r5 vision candidates were uploaded, compiled, linked, downloaded, hashed,
+and then scored as distinct artifacts:
+
+| Candidate | Source model | Compile job → model | Link job → target | Bytes | SHA-256 |
+|---|---|---|---|---:|---|
+| W8/A16 baseline | `mqyx8ydvm` | [`jgzndw66g`](https://workbench.aihub.qualcomm.com/jobs/jgzndw66g/) → `mm55gz94m` | [`j5w46xkjg`](https://workbench.aihub.qualcomm.com/jobs/j5w46xkjg/) → `mn0ke303q` | 421,351,424 | `7af8418bb61e2581fc862ce2aabf320ab3f3bfae0a7c5400e7d43b7d386028bd` |
+| Boundary-FP16 | `mn7yvrv3n` | [`jgk8x9m2g`](https://workbench.aihub.qualcomm.com/jobs/jgk8x9m2g/) → `mq2g35wjm` | [`j5qvqmo4g`](https://workbench.aihub.qualcomm.com/jobs/j5qvqmo4g/) → `mmr850l6n` | 425,918,464 | `6e217777c18cff6dd60ebff6a1422750b8e93d5c8ab05df1abb00eaaa17e2cac` |
+| W-FP16/A16 | `mqpr1p9gm` | [`jp060vqep`](https://workbench.aihub.qualcomm.com/jobs/jp060vqep/) → `mn1xgp7zq` | [`jp81y4985`](https://workbench.aihub.qualcomm.com/jobs/jp81y4985/) → `mmdwpzo3q` | 818,913,280 | `70c2fc1b854a7950116c5a7c680c9bae4c9a01a2c0e66659da591191fa1351a9` |
+| Combined FP16 weights/internals + A16 boundaries | `mmxk9242n` | [`jgnkvkzjg`](https://workbench.aihub.qualcomm.com/jobs/jgnkvkzjg/) → `mm60gpodm` | [`jprw3wlk5`](https://workbench.aihub.qualcomm.com/jobs/jprw3wlk5/) → `mq3lgro9q` | 821,522,432 | `7ad306fc69273720c4dd7c86f8b7aa5e9688d7f9534eb8776b99db7cfd7adbb3` |
+
+The text experiments use separate AR128 and AR1 compiles:
+
+| Candidate | Source model | AR128 compile → model | AR1 compile → model | Link → target | Bytes | SHA-256 |
+|---|---|---|---|---|---:|---|
+| Part 1 layers 0–6 | `mnzgpplzq` | [`jgjqn7lv5`](https://workbench.aihub.qualcomm.com/jobs/jgjqn7lv5/) → `mqe411r5m` | [`j5w46793g`](https://workbench.aihub.qualcomm.com/jobs/j5w46793g/) → `mqyx88zxm` | [`jpv7k21kp`](https://workbench.aihub.qualcomm.com/jobs/jpv7k21kp/) → `mn7yvo34n` | 357,736,448 | `8ea7ba19baaaa90cbb8e1ee34ab07f37ea982860d3718d96a2a3d3405a341125` |
+| Part 1 layers 0–3 | `mn7yvok3n` | [`jp43redv5`](https://workbench.aihub.qualcomm.com/jobs/jp43redv5/) → `mm60go0dm` | [`jpxxo061p`](https://workbench.aihub.qualcomm.com/jobs/jpxxo061p/) → `mq3lgol9q` | [`jgnkv1mrg`](https://workbench.aihub.qualcomm.com/jobs/jgnkv1mrg/) → `mm55go5km` | 282,030,080 | `eaeb2564ec11b9aca40aff914edc983f42f6858b89b6f43a305edd89cdec594a` |
+| Part 1 layers 0–2 | `mn7yvkl4n` | [`jgzndyd6g`](https://workbench.aihub.qualcomm.com/jobs/jgzndyd6g/) → `mmdwp8yoq` | [`j5w46z6jg`](https://workbench.aihub.qualcomm.com/jobs/j5w46z6jg/) → `mnw4r1erq` | [`jpxxork9p`](https://workbench.aihub.qualcomm.com/jobs/jpxxork9p/) → `mnzgp4vxq` | 256,897,024 | `0a7a0642800aafec446fa6d7e90e1e1dc20959c12b028e75f7a1b214067b376d` |
+| Part 2 layers 7–13 | `mm55g5pym` | [`jp16z1rk5`](https://workbench.aihub.qualcomm.com/jobs/jp16z1rk5/) → `mn0kek7zq` | [`jgd214jk5`](https://workbench.aihub.qualcomm.com/jobs/jgd214jk5/) → `mqyx8x99m` | [`j579rnqqg`](https://workbench.aihub.qualcomm.com/jobs/j579rnqqg/) → `mn7yvydon` | 357,339,136 | `d65f751739ea4410920c7c04b06729f4f468e512e665c91577989653bdf0f50a` |
+| Part 3 layers 14–20 | `mm55g59ym` | [`j5w46zozg`](https://workbench.aihub.qualcomm.com/jobs/j5w46zozg/) → `mn0kek0zq` | [`jg9dn2vq5`](https://workbench.aihub.qualcomm.com/jobs/jg9dn2vq5/) → `mn7yvypon` | [`jp16z10k5`](https://workbench.aihub.qualcomm.com/jobs/jp16z10k5/) → `mm55g599m` | 357,339,136 | `41b7e3d8576e3904f74714941360cf9dadb140905f287663de5044efb67689f9` |
+| Part 4 layers 21–27 | `mqpr1w3lm` | [`jp81ye3k5`](https://workbench.aihub.qualcomm.com/jobs/jp81ye3k5/) → `mq92j4w0m` | [`jgk8x2lwg`](https://workbench.aihub.qualcomm.com/jobs/jgk8x2lwg/) → `mq87gwzgm` | [`j5qvql7ng`](https://workbench.aihub.qualcomm.com/jobs/j5qvql7ng/) → `mn1xg2krq` | 672,043,008 | `f3a460e2310e425bfd8df0c56ee4dea35463bfe060fbd5692bb0a0f97ed3c604` |
+
+Part-1 full initially hit an AI Hub identity-cache problem: ordinary relinks
+returned AR1→AR128 even when the requested input order was AR128 then AR1.
+Create byte-distinct but semantically identical upload artifacts by changing
+only the validated DLC/ZIP end-of-central-directory comment:
+
+```bash
+python scripts/cache_bust_dlc.py \
+  --marker cosmos-part1-ar128-r5 \
+  /path/to/ar128-compiled.dlc \
+  /path/to/new-ar128-cache-busted.dlc
+
+python scripts/cache_bust_dlc.py \
+  --marker cosmos-part1-ar1-r5 \
+  /path/to/ar1-compiled.dlc \
+  /path/to/new-ar1-cache-busted.dlc
+```
+
+The accepted full part-1 link used new upload model identities `mm55gov6m`
+(AR128) and `mn46jeo0q` (AR1), uploaded in that order. The helper validates
+the ZIP/ZIP64 structure, member metadata, compressed payloads, CRCs, and
+archive comment before atomically publishing the destination. It does not
+change a graph payload.
+
+After every link, inspect the context before assembly. Require graph order
+AR128→AR1 and an equal, nonzero `sharedWeightsSize` for both graphs. The full
+part-1 link reports 353,431,552 shared-weight bytes per graph and passed an
+EVK four-token smoke (`The safety marker is`), with 875.0 ms TTFT and
+11.34 tokens/s decode. A local no-sharing link also had the requested graph
+order, but its 711,176,192-byte binary failed on the EVK while mapping a
+490,733,568-byte FastRPC buffer. A one-token prefill from that artifact did
+not establish usable decode, so the no-sharing candidate is rejected.
+
+The layers-0–3 link reports 277,934,080 shared-weight bytes for each graph.
+The layers-0–2 AI Hub context also has the intended order/shared-weight
+configuration. Their EVK smokes and frozen-suite scores remain pending. The
+part-4 context passed a four-token HTP smoke and completed the frozen suite;
+its score is recorded in Step 12.
 
 ### Download and assemble the hybrid
 
@@ -1245,13 +1694,17 @@ validation creates no rollback action for that active path.
 
 ### Understand the supported input
 
-Neither legacy Genie nor stock GenieX decodes an MP4. Stock QAI Hub Models
-also rejects Qwen3-VL's `pixel_values_videos` and `video_grid_thw` inputs, and
-GenieX v0.3.16's public Qwen3-VL image frontend hardcodes a temporal grid of
-one. The repository's custom runner bypasses that image-path frontend and
-uses GenieX's lower-level `PixelData` API, but it still expects an already
-decoded and packed raw tensor. It is not an MP4 decoder or a native
-multi-clip video frontend.
+Neither legacy Genie nor the documented GenieX interface decodes an MP4. The
+CLI can attach one or more image paths. Its undocumented generic-media
+fallback can reach upstream llama.cpp's ffmpeg helper, but the current wrapper
+leaks the returned video context and is excluded from this reproducible path.
+Stock QAI Hub Models also rejects Qwen3-VL's
+`pixel_values_videos` and `video_grid_thw` inputs, and GenieX v0.3.16's public
+Qwen3-VL QAIRT image frontend hardcodes a temporal grid of one. The
+repository's custom runner bypasses that image-path frontend and uses
+GenieX's lower-level `PixelData` API, but it still expects an already decoded
+and packed raw tensor. It is not an MP4 decoder or a native multi-clip video
+frontend.
 
 Decode and sample video outside the runtime, then use the official local
 Hugging Face processor to pack consecutive frame pairs as Qwen3-VL temporal
@@ -1261,7 +1714,8 @@ patches. The current 224 × 384 graph contract for each pair is:
 2 RGB frames
   -> native HF pixel_values shape [336, 1536]
   -> video_grid_thw [1, 14, 24]
-  -> bias-corrected W8/A16 vision context on QnnHtp
+  -> selected bias-corrected vision context on QnnHtp
+     (r5 leader: W8 weights, FP16 internals, nine A16 boundaries)
   -> image_features + deepstack_visual_embeds_0..2
   -> 84 visual tokens with grid [1, 14, 24]
   -> timestamp + <|video_pad|> span
@@ -1287,7 +1741,7 @@ prunes their branches, and removes `visual_pos_masks` plus
 `deepstack_visual_embeds_0..2` from part 1. The GenieX experiment below uses a
 different part 1 whose full auxiliary interface is restored.
 
-### Prepare native-aligned paired calibration
+### Prepare a native-aligned paired-calibration candidate
 
 Do not calibrate temporal inputs by duplicating one still frame. Extract the
 pinned warehouse cases, create 20 distinct motion pairs, and quantize the
@@ -1316,17 +1770,21 @@ bash scripts/quantize_wsl.sh \
   "$COSMOS_VISION_CHECKPOINT"
 ```
 
-The executed integer bundle used the same distinct-pair manifest but the older
-explicit-resize preprocessing fallback. The code above uses the corrected
-native Hugging Face preprocessing; its output is a new checkpoint and must
-not be described as deployed until it has been compiled and run.
+The historical r3/r4 integer bundle and all four compiled r5 vision candidates
+derive from the same older paired/explicit-resize calibration checkpoint.
+Runtime input preparation now uses native Hugging Face processing and exact
+GPU/NPU pixel bytes match, but do not describe the r5 sweep as
+native-HF-aligned calibration. The code above produces a distinct checkpoint;
+it requires its own AI Hub lineage and physical-board comparison before it
+can resolve that remaining calibration question.
 
-For the host-only mixed candidate, add
+For the historical host-only block-23 candidate, add
 `VEG_FP16_LAST_BLOCK_ACTIVATIONS=1`. Host QuantSim raises the primary
 `image_features` cosine against the corrected adapted BF16 reference from
 0.950431 to 0.991453 by leaving the 36 activation quantizers in final vision
-block 23 as FP16. Upload and compile only after explicit Qualcomm AI Hub
-authorization.
+block 23 as FP16. The r5 sweep instead tests the broader fail-closed precision
+layouts from Step 6; its frozen-suite results supersede host cosine as the
+deployment selection criterion.
 
 ### Assemble the full-DeepStack GenieX bundle
 
@@ -1559,12 +2017,12 @@ ordered frames and timestamps for the one- and three-pair cases.
 
 ### Interpret the measured results
 
-Every recorded current run initializes the vision and four text contexts
+Every recorded run initializes the vision and four text contexts
 through `QnnHtp` on Hexagon v73. Exact native-processor pixel hashes match the
 BF16 inputs. Functional execution and input parity are therefore established
 separately from answer quality.
 
-For one pair, the NPU passes 0/5 strict units that the BF16 GPU reference
+For the historical r3 one-pair suite, the NPU passes 0/5 strict units that the BF16 GPU reference
 passes:
 
 | Gate | BF16 GPU | NPU | Verdict |
@@ -1575,7 +2033,7 @@ passes:
 | Observed near-miss avoidance | Worker steps back/forward | Worker jumps over forklift | Fail |
 | Routine box pickup | Carrying box; explicitly no accident | Carrying box only | Fail |
 
-The initial r3 three-pair control uses one shared three-choice answer set for
+The historical r3 three-pair control uses one shared three-choice answer set for
 two videos, then shuffles it identically:
 
 | Video | Order | Correct | BF16 GPU | NPU | NPU TTFT |
@@ -1589,7 +2047,7 @@ The NPU matches BF16 in all four r3 cases and changes its answer with both the
 video and option order. That result is valid for the controlled two-scene
 test, but the expanded r4 suite shows it does not generalize.
 
-The r4 suite uses the same four choices for marker knockdown, routine box
+The historical r4 suite uses the same four choices for marker knockdown, routine box
 pickup, near-miss avoidance, and two workers leaving aisles, then moves every
 correct label in the shuffled order:
 
@@ -1654,21 +2112,101 @@ A separate tailored barrier choice fails, and both three-pair free-form
 rubrics fail on NPU. The BF16 GPU diagnostics also fail those two strict
 free-form rubrics.
 
+#### R5 frozen-suite result
+
+The r5 comparison freezes the eight primary prompts, eight compact prompts,
+and four focused box/near-miss prompts. The BF16 GPU reference scores 16/20.
+Every NPU row below uses the same truth labels and GPU outputs:
+
+| Candidate | NPU correct | Exact GPU parity | GPU-correct retained | Mean TTFT |
+|---|---:|---:|---:|---:|
+| Native-aspect W8/A16 baseline | 11/20 | 13/20 | 10/16 | 738.070 ms |
+| Boundary-FP16 vision | **13/20** | **15/20** | **12/16** | 857.510 ms |
+| W-FP16/A16 vision | 11/20 | 13/20 | 10/16 | 772.825 ms |
+| Combined W-FP16 + boundary-FP16 | 12/20 | 14/20 | 11/16 | 686.080 ms |
+| Boundary-FP16 + W8 text part 4 | 12/20 | 13/20 | 11/16 | 873.5 ms on 3/20 logs |
+
+Boundary-FP16 is the best completed NPU result: 13/20 versus GPU 16/20.
+Its 15/20 exact-letter parity is higher than its benchmark accuracy because
+GPU and NPU agree on some wrong answers. Conversely, the NPU has one correct
+answer where GPU is wrong, so `NPU correct`, `exact parity`, and
+`GPU-correct retained` intentionally measure different things.
+
+The part-4 timing mean is incomplete because only three retained logs contain
+the required verbose TTFT field. Its 12/20 accuracy is complete. Do not use
+that timing mean as a 20-case latency comparison.
+
+Score the retained logs without loading Torch, AIMET, or a model runtime:
+
+```bash
+python scripts/score_video_npu_results.py \
+  --gpu-results /path/to/gpu-primary \
+  --gpu-results /path/to/gpu-compact \
+  --gpu-results /path/to/gpu-pairwise \
+  --npu-results baseline=/path/to/npu-baseline \
+  --npu-results boundary=/path/to/npu-boundary \
+  --npu-results wfp16_a16=/path/to/npu-wfp16-a16 \
+  --npu-results combined=/path/to/npu-combined \
+  --npu-results w8_part4=/path/to/npu-w8-part4 \
+  --output /path/to/new-r5-comparison.json \
+  --require-complete
+```
+
+The part-1 layers 0–6, 0–3, and 0–2 candidates are compiled but have no
+frozen-suite result while the EVK is offline. Full layers 0–6 passed a
+four-token HTP smoke; the two narrower variants still await EVK smoke. The
+balanced P1–P4 GPU extension scores 13/16 overall (6/8 on the new P3/P4
+half), but there is no balanced NPU score yet.
+
+Hosted shard screens provide a more precise diagnosis of the text path. Each
+screen reuses the exact AI Hub dataset produced by its quantized predecessor,
+then compares that one IQ9075 shard with an eager BF16 execution of the same
+layers and inputs. Recomputing the selected decoder matrices at W8 instead of
+W4 produces:
+
+| Decoder partition | Layers | Metric | W4/FP16 baseline | W8 matrices | Error reduction |
+|---|---:|---|---:|---:|---:|
+| Part 1 | 0–6 | Hidden relative RMSE | 0.08099 | 0.01296 | 6.25× |
+| Part 1 | 0–6 | Mean KV relative RMSE | 0.19134 | 0.01514 | 12.64× |
+| Part 2 | 7–13 | Hidden relative RMSE | 0.02559 | 0.00381 | 6.72× |
+| Part 2 | 7–13 | Mean KV relative RMSE | 0.21512 | 0.01506 | 14.28× |
+| Part 3 | 14–20 | Hidden relative RMSE | 0.10518 | 0.00828 | 12.71× |
+| Part 3 | 14–20 | Mean KV relative RMSE | 0.28143 | 0.01948 | 14.44× |
+
+The part-2 and part-3 result is consistent for all three tested predecessor
+lanes: baseline part 1, W8 layers 0–6, and W8 layers 0–3. This strongly
+implicates W4 decoder-matrix error and justifies promoting those contexts to
+the final-choice experiment. It still does **not** establish a better answer:
+an intermediate hidden/KV comparison can improve while a small final-logit
+margin changes in the wrong direction. The hosted first-token chains
+therefore replay all three AR128 chunks through all four decoder partitions
+before accepting or rejecting a candidate.
+
+<!-- R5_PENDING_WINNER_UPDATE:
+Replace the pending part-1 and balanced-NPU statements only after complete,
+hash-bound EVK logs have been scored. Do not infer a winner from smoke output.
+Mirror the selected result in README.md, docs/architecture.md,
+docs/video_npu.md, benchmarks/nvidia_sdg_warehouse/README.md,
+integrations/geniex_raw_video/README.md, and docs/evidence/README.md.
+-->
+
 The sanitized answers, hashes, prompt counts, pass rules, and proof boundary
 are in the
 [`native-aspect parity report`](evidence/iq9075_video_aspect_native_parity_r3.json)
 and
 [`expanded four-scene report`](evidence/iq9075_video_four_scene_parity_r4.json).
+The r5 artifact lineage, completed scores, and pending status are in the
+[`precision report`](evidence/iq9075_video_precision_parity_r5.json).
 
 ### Scale beyond one pair
 
 The runner and manifest already support multiple timestamped pairs. The next
 steps are numerical and contextual:
 
-1. With explicit upload authorization, compile the native-HF-aligned integer
-   vision checkpoint and the mixed block-23-FP16 candidate separately.
-2. Repeat the exact one- and three-pair suite for each graph; do not infer NPU
-   quality from host cosine alone.
+1. When the EVK returns, run the hash-bound frozen suite for part-1 W8
+   layers 0–6, 0–3, and 0–2, then score them against the same GPU artifacts.
+2. Run the balanced P1–P4 probes on the selected completed NPU bundle. Do not
+   infer its NPU score from the 13/16 GPU baseline.
 3. Export a longer-context text runtime whose AR prefill layout safely covers
    four-pair prompts. Four 224 × 384 pairs use 336 visual tokens, but the
    measured total prompts of 408 and 413 exceed the current safe limit of 384.
@@ -1676,10 +2214,13 @@ steps are numerical and contextual:
    and motion cases, and retain strict free-form event scoring rather than
    accepting generic hazard words.
 
-Keep encoded-video decoding and frame sampling outside GenieX unless a future
-runtime exposes a documented video node. The custom lower-API runner bypasses
-the stock image frontend and supplies bounded multi-pair semantics; it is not
-an MP4 decoder, camera-stream pipeline, or unbounded video frontend. See
+Keep encoded-video decoding and native-Qwen3-VL frame/timestamp preparation
+outside GenieX unless a future CLI exposes a documented video input with
+matching semantics. Multiple image paths are useful for experiments but do
+not by themselves reproduce the native 2-FPS, per-temporal-pair timestamp
+contract. The custom lower-API runner bypasses the stock image frontend and
+supplies bounded multi-pair semantics; it is not an MP4 decoder,
+camera-stream pipeline, or unbounded video frontend. See
 [`docs/video_npu.md`](video_npu.md)
 for the design boundary and runtime support matrix.
 
@@ -1701,6 +2242,10 @@ for the design boundary and runtime support matrix.
 | HTP skeleton/device failure | Wrong DSP path or incompatible context | Set `ADSP_LIBRARY_PATH` to `lib/hexagon-v73/unsigned`; verify v73 files and QAIRT compatibility |
 | Prompt output refers to a filename | `-p` was given a path | Use `--prompt_file PATH`; reserve `-p` for literal text |
 | `llama-mtmd-cli` rejects `--no-display-prompt` | An older baseline script passed a flag unsupported by the current EVK build | Remove that flag; it is not required for inference |
+| GenieX imports the local directory but selects the wrong main GGUF | The staging directory also contains the intermediate BF16 main model | Keep only `Cosmos-Reason2-2B-Q4_0.gguf` and `mmproj-Cosmos-Reason2-2B-F16.gguf` in the imported directory |
+| `--temperature 0` still samples | GenieX treats zero as an unset sampler field and substitutes temperature `0.8` | Use `--top-k 1 --seed 42` for deterministic greedy-equivalent comparisons |
+| Multiple GenieX images disagree with the native video reference | Ordered still-image attachment does not reproduce native video sampling and timestamps | Decode at 2 FPS and use the custom per-pair pipeline for parity tests; treat the GenieX multi-image result as exploratory |
+| Q4_0 repeats one option across shuffled image choices | The visual budget may be too small; the host barrier probe repeated `C` at 84 tokens/image | Re-run natural and deterministically upscaled inputs with a larger context; require correctness in both option orders and more than one scene |
 | QAIRT 2.45 and 2.47 libraries appear in one run | An inherited environment mixed installations | Rebuild a clean `PATH`/`LD_LIBRARY_PATH` rooted only at the artifact's matching QAIRT release |
 | Process is killed on the EVK | Memory pressure; the board has no swap | Start with context 512, check `free -h`, and inspect kernel/OOM logs |
 | Text works but current aspect vision fails | Wrong vision target, profile metadata, patch bias, or image connection | Verify the 224 × 384 target, vision SHA-256 prefix `7af841…`, `[84, 2048]` outputs, and learned patch-projection bias before inspecting connections |
@@ -1708,11 +2253,12 @@ for the design boundary and runtime support matrix.
 | Genie reports `Unsupported input tensor full_attention_mask dtype QNN_DATATYPE_FLOAT_32` | The globally-W4 vision target `mnzgp1ydq` was assembled into a legacy-Genie bundle | Replace it with original W4A16 vision target `mngx5gv5q`; direct `qnn-net-run` success does not remove the Genie interface mismatch |
 | Genie initializes HTP contexts but emits incoherent text | The original all-W4A16 text contexts were used instead of the proven W4/FP16 links | Verify the four text target IDs and checksum prefixes from Step 7; preserve the bad run only as historical drift evidence |
 | Legacy QAIRT 2.45 Genie rejects wildcard or auxiliary DeepStack connections | Legacy Genie cannot bind the full Qwen3-VL decoder interface | For the baseline, export the compatibility checkpoint and record that DeepStack is disabled; for the full interface, use the validated replacement part 1 and pinned GenieX runner |
-| Linked graph order differs between text parts | Link inputs were supplied in a different order or stale part 1 was returned from cache | Inspect every context; for part 1 require cache-busted link `jprw31875`, target `mno2p6jvq`, checksum prefix `4fa761…`, and AR128→AR1 order |
+| Linked graph order differs between text parts | Link inputs were supplied in a different order or AI Hub reused stale model identities | Inspect every context. For the r5 full-W8 part 1, use cache-busted upload identities `mm55gov6m` then `mn46jeo0q`, link `jpv7k21kp`, target `mn7yvo34n`, SHA-256 `8ea7ba19…`, and require AR128→AR1 |
+| Ordered text context fails or exhausts memory on decode | The link did not share weights even though its graph order is correct | Require equal nonzero `sharedWeightsSize` for both graphs; reject the measured 711,176,192-byte no-sharing part 1 that fails its 490,733,568-byte FastRPC mapping |
 | `prepare_video_npu_inputs.py` rejects an odd frame count | Temporal patches require exactly two frames | Pass exactly `2N` ordered frames and `2N` increasing timestamps |
 | Video prompt exceeds 384 tokens despite fitting CL512 | AR128 prefill can safely transfer only `CL - AR = 384` tokens into AR1 decode | Reduce to three pairs or compile a longer-context text runtime; do not bypass the preparation/package/runner guards |
-| GenieX cannot open an MP4 | Stock GenieX has no encoded-video node; the custom runner accepts packed raw `PixelData`, not a container | Decode and sample frames first, then use `prepare_video_npu_inputs.py` and the raw-runner package step |
-| Full-DeepStack run exits 0 but prediction is wrong | Functional execution, DeepStack wiring, and exact inputs do not imply retained quantized accuracy | Compare every output with BF16, preserve shared cross-scene/order controls, and test the native-aligned integer and block-23-FP16 candidates after authorized compilation |
+| Direct MP4 through GenieX is undocumented or unstable | The generic-media fallback can reach mtmd video, but the wrapper drops the video-context owner and its sampling/timestamps differ from native Qwen3-VL | Decode and sample frames first; use ordered images for the GGUF pilot or `prepare_video_npu_inputs.py` plus the custom raw runner for native-pair parity |
+| Full-DeepStack run exits 0 but prediction is wrong | Functional execution, DeepStack wiring, and exact inputs do not imply retained quantized accuracy | Compare every output with BF16 and score every precision candidate on the same frozen probes; the completed r5 boundary-FP16 leader is 13/20 versus GPU 16/20 |
 
 ## What to save for a reproducible result
 
@@ -1723,15 +2269,21 @@ Keep these together for every run:
 - Official checkpoint revision and `config.json`.
 - Quantization arguments and calibration sample counts.
 - Checksums of ONNX and encoding files.
+- Precision-transform marker files and source/destination hashes.
 - `qairt_245_compat.json`, including the removed inputs and source/output ONNX
   checksums.
 - AI Hub compile/link job URLs and selected QAIRT version.
+- AR128/AR1 upload identities, graph order, and per-graph shared-weight size.
 - Exported bundle checksum.
 - Checksums and graph names for all deployed context binaries.
 - EVK QAIRT path and version.
+- GenieX CLI version, selected `llama_cpp` compute mode, llama.cpp conversion
+  commit, GGUF/projector checksums, and backend evidence.
 - Full text and vision logs.
 - Profile output with prompt rate, decode rate, and time to first token.
 - Test prompt, image, context length, and random/temperature settings.
+- The exact GPU result roots, NPU result roots, benchmark hash, and generated
+  `score_video_npu_results.py` comparison.
 - Captured QuantSim inputs, isolated-part outputs, native chained boundary
   dumps, and both first-token comparisons.
 

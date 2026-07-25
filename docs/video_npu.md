@@ -25,6 +25,10 @@ vision graph, each pair has this contract:
 | Current text context | 512 tokens |
 | Safe prefill prompt | At most 384 tokens |
 
+The current completed accuracy leader uses W8 vision weights, 925 FP16
+internal activations, and nine A16 graph boundaries. The original W8/A16
+context remains the frozen r5 baseline.
+
 The tool verifies the bundle metadata, frame order, timestamps, tensor shapes,
 ancillary tensor sizes, and context budget. It writes raw tensors, timestamped
 text chunks, and a SHA-256 provenance manifest. It refuses odd frame counts,
@@ -85,12 +89,13 @@ retain the full DeepStack interface and compile a text runtime whose safe
 prefill capacity covers the complete prompt. Until then, three pairs are the
 tested CL512 workaround.
 
-The executed W8/A16 graph was calibrated with 20 distinct frame pairs, but
-that calibration used the older explicit-resize fallback before Hugging Face
-processing. The current inference path and new local checkpoints use native
-Hugging Face preprocessing. Native-aligned integer and mixed-precision
-checkpoints must be compiled and tested before claiming that this remaining
-calibration mismatch is resolved on the NPU.
+The historical r3/r4 W8/A16 graph used the paired-frame calibration lineage
+recorded in those reports. The r5 precision campaign compiled and ran its
+native-aspect baseline and three mixed-precision vision variants separately;
+the completed scores are reported below. All four r5 compiled artifacts still
+derive from the older paired/explicit-resize calibration checkpoint. Their
+runtime pixels are native-HF-aligned and byte-identical between GPU and NPU,
+but their calibration source is not.
 
 ## NVIDIA Isaac Sim benchmark
 
@@ -112,7 +117,7 @@ simulator annotations when frame-accurate collision timing is required.
 
 ### Physical EVK results
 
-#### Exact-input one-pair comparison
+#### Historical r3 exact-input one-pair comparison
 
 The corrected aspect graph and runner load through `QnnHtp`, detect HTP v73,
 and use the primary feature, all three DeepStack features, and visual mask.
@@ -132,7 +137,7 @@ graph. Native Hugging Face pixel hashes and prompt-token construction match,
 so manual resizing and the earlier image-pad token are not plausible
 explanations for these remaining differences.
 
-#### Three-pair controlled results
+#### Historical r3/r4 three-pair controlled results
 
 Three-pair prompts stay inside the 384-token safe prefill limit. The strongest
 initial r3 test used one identical three-choice answer set across the
@@ -233,7 +238,7 @@ The BF16 GPU reference also fails both strict three-pair free-form rubrics.
 Across its full three-pair artifact, GPU passes 7/7 multiple-choice cases and
 0/2 free-form cases.
 
-#### Four-pair diagnostic
+#### Historical r3 four-pair diagnostic
 
 Before the prefill guard was added, four-pair prompts of 408 and 413 tokens
 produced corrupted NPU text. They exceed the AR128/CL512 safe limit of 384;
@@ -242,18 +247,51 @@ for the same inputs, but both outputs fail the strict event rubrics: it says
 the barrier is lifted rather than knocked down and describes standing up
 without identifying the box pickup.
 
-#### Remaining vision-quantization candidate
+#### R5 frozen precision comparison
 
-Host QuantSim ablations localize the dominant measured late-stage error to
-activation quantization in vision-transformer block 23. Against the corrected
-adapted BF16 vision encoder on the exact near-miss pair, full-integer W8/A16
-`image_features` cosine similarity is 0.950431. Keeping the 36 block-23
-activation quantizers in FP16 raises it to 0.991453.
+The r5 suite freezes all 20 existing choice probes: eight primary
+four-choice prompts, eight compact prompts, and four focused box/near-miss
+prompts. The same BF16 GPU result set is used for every NPU candidate. GPU
+scores 16/20.
 
-That mixed result is host numeric evidence only. The native-HF-aligned
-integer checkpoint and the mixed block-23-FP16 checkpoint exist locally, but
-neither has been uploaded to Qualcomm AI Hub, compiled, or run on the EVK.
-Those external operations remain pending explicit upload authorization.
+| Candidate | Vision layout | NPU correct | Exact GPU parity | GPU-correct retained | Mean TTFT |
+|---|---|---:|---:|---:|---:|
+| Baseline | W8 weights, A16 activations | 11/20 | 13/20 | 10/16 | 738.070 ms |
+| Boundary-FP16 | W8 weights, 925 FP16 internal activations, nine A16 boundaries | **13/20** | **15/20** | **12/16** | 857.510 ms |
+| W-FP16/A16 | FP16 weights, A16 activations | 11/20 | 13/20 | 10/16 | 772.825 ms |
+| Combined | FP16 weights, 925 FP16 internals, nine A16 boundaries | 12/20 | 14/20 | 11/16 | 686.080 ms |
+| Boundary-FP16 + W8 text part 4 | Boundary-FP16 vision; decoder layers 21–27 W8 | 12/20 | 13/20 | 11/16 | 873.5 ms on 3/20 logs |
+
+The boundary-FP16 vision graph is the current completed accuracy leader:
+13/20 on NPU versus 16/20 on GPU. It closes two baseline errors and raises
+exact answer agreement to 15/20, but a three-point correctness gap remains.
+The combined candidate is faster in this run but scores one point lower,
+showing that better host numerical fidelity or broader FP16 coverage does not
+guarantee better task accuracy.
+
+All completed runs use the same byte-checked packed pixels, prompt definitions,
+runner contract, and frozen scoring tool. The score includes accuracy against
+benchmark truth, exact GPU/NPU answer parity, and retention of the 16 probes
+the GPU answers correctly; these are different quantities and should not be
+interchanged.
+
+Three early-decoder W8 variants remain pending only because the EVK is
+offline:
+
+| Pending text candidate | Scope | AI Hub linked target | NPU status |
+|---|---|---|---|
+| Part 1 full | Layers 0–6, 252 matrices | `mn7yvo34n` | Four-token HTP smoke passed; frozen 20 pending |
+| Part 1 layers 0–3 | 144 matrices | `mm55go5km` | EVK smoke and frozen 20 pending |
+| Part 1 layers 0–2 | 108 matrices | `mnzgp4vxq` | AI Hub graph order/shared weights proven; EVK inspection, smoke, and frozen 20 pending |
+
+No accuracy is inferred for these pending candidates. The balanced P1–P4 GPU
+extension scores 13/16 overall (6/8 for the newly added P3/P4 probes), with
+barrier 4/4, box 3/4, near miss 4/4, and fire/worker-motion 2/4. Its NPU result
+is likewise pending the EVK's return.
+
+Use `scripts/score_video_npu_results.py` with all GPU result roots and one or
+more labeled NPU result roots to reproduce the comparison. `--require-complete`
+refuses a candidate with a missing or unparsed answer.
 
 ## Evidence and public-support status
 
@@ -272,11 +310,14 @@ records the corrected one- and three-pair comparisons, the four-pair prefill
 failure, and the host-only mixed-vision metric. The
 [`expanded four-scene report`](evidence/iq9075_video_four_scene_parity_r4.json)
 records all eight primary r4 answers, exact input parity, timings, the compact
-and focused-pairwise diagnostics, and the revised verdict. Their accompanying
+and focused-pairwise diagnostics, and the revised verdict. The
+[`r5 precision report`](evidence/iq9075_video_precision_parity_r5.json)
+records the frozen 20-probe candidate comparison, artifact hashes, AI Hub
+jobs, completed runs, and explicitly pending work. The
 [`README`](evidence/README.md)
 defines the scope of the proof.
 
-As of 2026-07-24, no earlier independent public result was found for the exact
+As of 2026-07-25, no earlier independent public result was found for the exact
 `nvidia/Cosmos-Reason2-2B` checkpoint on an IQ-9075 NPU. NVIDIA's
 [published Cosmos prerequisites](https://docs.nvidia.com/cosmos/latest/prerequisites.html)
 list NVIDIA GPU systems and Jetson AGX Thor, not Qualcomm hardware. Qualcomm

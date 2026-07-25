@@ -14,6 +14,7 @@ from scripts.prepare_geniex_bundle import (
     PART1_CONTEXT,
     QAIRT245_COMPAT_MARKER,
     REQUIRED_CONTEXTS,
+    TEXT_W8_MARKER,
     W4_FP16_MARKER,
     prepare_bundle,
 )
@@ -62,19 +63,19 @@ def _write_fixture(
             {
                 "visual_pos_masks": {
                     "shape": [1, 128],
-                    "dtype": "bool8",
+                    "dtype": "bool",
                 },
                 "deepstack_visual_embeds_0": {
                     "shape": [256, 2048],
-                    "dtype": "uint16",
+                    "dtype": "float32",
                 },
                 "deepstack_visual_embeds_1": {
                     "shape": [256, 2048],
-                    "dtype": "uint16",
+                    "dtype": "float32",
                 },
                 "deepstack_visual_embeds_2": {
                     "shape": [256, 2048],
-                    "dtype": "uint16",
+                    "dtype": "float32",
                 },
             }
         )
@@ -116,7 +117,16 @@ def _write_fixture(
     (root / QAIRT245_COMPAT_MARKER).write_text("compat", encoding="utf-8")
     (root / W4_FP16_MARKER).write_text("source marker", encoding="utf-8")
     (root / MARKER_FILENAME).write_text(
-        "existing source provenance", encoding="utf-8"
+        json.dumps(
+            {
+                "schema_version": 2,
+                "part1_replacement": None,
+                "vision_replacement": {
+                    "context_sha256": "fixture-vision",
+                },
+            }
+        ),
+        encoding="utf-8",
     )
 
 
@@ -126,10 +136,18 @@ def _write_part1_replacement(
     omit_input: str | None = None,
     auxiliary_first: bool = False,
     include_marker: bool = True,
+    include_text_w8_marker: bool = False,
+    visual_mask_shape: list[int] | None = None,
+    visual_mask_dtype: str = "bool",
 ) -> None:
+    if visual_mask_shape is None:
+        visual_mask_shape = [1, 1]
     inputs = {
         "inputs_embeds": {"shape": [1, 1, 2048], "dtype": "float32"},
-        "visual_pos_masks": {"shape": [1, 1], "dtype": "bool"},
+        "visual_pos_masks": {
+            "shape": visual_mask_shape,
+            "dtype": visual_mask_dtype,
+        },
         "deepstack_visual_embeds_0": {
             "shape": [256, 2048],
             "dtype": "float32",
@@ -165,11 +183,39 @@ def _write_part1_replacement(
             W4_FP16_MARKER: "replacement W4/FP16 provenance",
         },
     }
+    if include_text_w8_marker:
+        metadata["supplementary_files"][TEXT_W8_MARKER] = (
+            "replacement part-1 W8 provenance"
+        )
     (root / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
     (root / PART1_CONTEXT).write_bytes(b"full-deepstack-w4-fp16-part1")
     if include_marker:
         (root / W4_FP16_MARKER).write_text(
             "replacement marker", encoding="utf-8"
+        )
+    if include_text_w8_marker:
+        (root / TEXT_W8_MARKER).write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "selected_parts": ["part1_of_4"],
+                    "export_contract": {
+                        "activation_precision": "FP16",
+                        "context_length": 512,
+                        "sequence_lengths": [128, 1],
+                        "deepstack_inputs": [
+                            "visual_pos_masks",
+                            "deepstack_visual_embeds_0",
+                            "deepstack_visual_embeds_1",
+                            "deepstack_visual_embeds_2",
+                        ],
+                        "external_tensor_precision": (
+                            "FP32, except visual_pos_masks BOOL"
+                        ),
+                    },
+                }
+            ),
+            encoding="utf-8",
         )
 
 
@@ -298,6 +344,22 @@ class PrepareGenieXBundleTests(unittest.TestCase):
                 marker["source_metadata_sha256"],
                 hashlib.sha256(source_bytes).hexdigest(),
             )
+            self.assertEqual(marker["schema_version"], 3)
+            self.assertEqual(
+                marker["source_compatibility_marker"]["sha256"],
+                hashlib.sha256(source_marker_bytes).hexdigest(),
+            )
+            self.assertEqual(
+                set(marker["final_context_sha256"]),
+                REQUIRED_CONTEXTS,
+            )
+            for filename in REQUIRED_CONTEXTS:
+                self.assertEqual(
+                    marker["final_context_sha256"][filename],
+                    hashlib.sha256(
+                        (destination / filename).read_bytes()
+                    ).hexdigest(),
+                )
 
     def test_rejects_non_qwen3_vl_dispatch_id(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -447,6 +509,140 @@ class PrepareGenieXBundleTests(unittest.TestCase):
                 )
             self.assertFalse(destination.exists())
 
+    def test_preserves_w8_part1_provenance_and_capacity(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            replacement = root / "replacement"
+            destination = root / "destination"
+            source.mkdir()
+            replacement.mkdir()
+            _write_fixture(source, full_deepstack=True)
+            _write_part1_replacement(
+                replacement,
+                include_text_w8_marker=True,
+                visual_mask_shape=[1, 128],
+                visual_mask_dtype="bool",
+            )
+            marker_bytes = (replacement / TEXT_W8_MARKER).read_bytes()
+
+            prepare_bundle(
+                source,
+                destination,
+                part1_replacement_bundle=replacement,
+            )
+
+            self.assertEqual(
+                (destination / TEXT_W8_MARKER).read_bytes(),
+                marker_bytes,
+            )
+            metadata = json.loads(
+                (destination / "metadata.json").read_text()
+            )
+            self.assertEqual(
+                metadata["supplementary_files"][TEXT_W8_MARKER],
+                "replacement part-1 W8 provenance",
+            )
+            provenance = json.loads(
+                (destination / MARKER_FILENAME).read_text()
+            )["part1_replacement"]
+            self.assertEqual(
+                provenance["deepstack_visual_shape"],
+                [256, 2048],
+            )
+            self.assertEqual(
+                provenance["precision_provenance"][TEXT_W8_MARKER][
+                    "sha256"
+                ],
+                hashlib.sha256(marker_bytes).hexdigest(),
+            )
+
+    def test_rejects_w8_marker_without_metadata_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            replacement = root / "replacement"
+            destination = root / "destination"
+            source.mkdir()
+            replacement.mkdir()
+            _write_fixture(source)
+            _write_part1_replacement(
+                replacement,
+                include_text_w8_marker=True,
+            )
+            metadata_path = replacement / "metadata.json"
+            metadata = json.loads(metadata_path.read_text())
+            metadata["supplementary_files"].pop(TEXT_W8_MARKER)
+            metadata_path.write_text(json.dumps(metadata))
+
+            with self.assertRaisesRegex(
+                ValueError, "both be present or both be absent"
+            ):
+                prepare_bundle(
+                    source,
+                    destination,
+                    part1_replacement_bundle=replacement,
+                )
+            self.assertFalse(destination.exists())
+
+    def test_rejects_part1_capacity_or_external_dtype_drift(self) -> None:
+        mutations = (
+            (
+                "capacity",
+                "deepstack_visual_embeds_0",
+                "shape",
+                [84, 2048],
+                "capacity/external contract",
+            ),
+            (
+                "dtype",
+                "deepstack_visual_embeds_0",
+                "dtype",
+                "uint16",
+                "external dtype must be float32",
+            ),
+        )
+        for label, tensor_name, field, value, message in mutations:
+            with (
+                self.subTest(label=label),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                source = root / "source"
+                replacement = root / "replacement"
+                destination = root / "destination"
+                source.mkdir()
+                replacement.mkdir()
+                _write_fixture(source, full_deepstack=True)
+                _write_part1_replacement(
+                    replacement,
+                    visual_mask_shape=[1, 128],
+                    visual_mask_dtype="bool",
+                )
+                metadata_path = replacement / "metadata.json"
+                metadata = json.loads(metadata_path.read_text())
+                part1_inputs = metadata["model_files"][PART1_CONTEXT][
+                    "inputs"
+                ]
+                if field == "shape":
+                    for deepstack_name in (
+                        "deepstack_visual_embeds_0",
+                        "deepstack_visual_embeds_1",
+                        "deepstack_visual_embeds_2",
+                    ):
+                        part1_inputs[deepstack_name][field] = value
+                else:
+                    part1_inputs[tensor_name][field] = value
+                metadata_path.write_text(json.dumps(metadata))
+
+                with self.assertRaisesRegex(ValueError, message):
+                    prepare_bundle(
+                        source,
+                        destination,
+                        part1_replacement_bundle=replacement,
+                    )
+                self.assertFalse(destination.exists())
+
     def test_rejects_incompatible_base_part1_contract_before_copying(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -464,7 +660,7 @@ class PrepareGenieXBundleTests(unittest.TestCase):
             ] = [1, 1, 4096]
             metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 
-            with self.assertRaisesRegex(ValueError, "base input contract"):
+            with self.assertRaisesRegex(ValueError, "inputs_embeds shape"):
                 prepare_bundle(
                     source,
                     destination,
