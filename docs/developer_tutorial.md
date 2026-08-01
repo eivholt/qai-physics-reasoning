@@ -144,8 +144,9 @@ mkdir -p "$WORK_ROOT/models"
 cd "$REPO_ROOT"
 ```
 
-Never put a Hugging Face token, Qualcomm token, SSH private key, or EVK IP
-address in a tracked file.
+Never put a Hugging Face token, Qualcomm token, or SSH private key in a tracked
+file. The tutorial's `192.168.1.158` address is only a local lab-device
+address, not a credential.
 
 ## 1. Download and validate the official checkpoint
 
@@ -540,6 +541,39 @@ library and holds the secure CDSP device. This proves live Hexagon use at the
 runtime-placement boundary. It is not an operator-by-operator trace proving
 that no unsupported operation ever falls back to the CPU.
 
+## 10. Connect the EVK service to the Isaac Sim warehouse supervisor
+
+The current publishable milestone is a live camera-only supervisor in a lightweight
+warehouse made from NVIDIA rack, Carter, forklift, pallet, and carton assets.
+It continuously sends clean eight-frame tactical-camera videos to Cosmos-Reason2.
+No simulator coordinates, actor tracks, route occupancy, or expected hazard
+label enters the prompt. An inventory gate, bounded command grammar, and
+three-window consensus protect the wheel-navigation actuator.
+
+![Verified rolling-video closed loop](media/isaac_sim_edge_supervisor_rolling_evk_r4/blind_corner_8frame_evk.gif)
+
+In the verified hazard run, the first window continued and the next three
+selected `REROUTE_NORTH_BYPASS`. Three-window consensus applied exactly one
+route change and RobotBlue reached the north-bypass goal. In the matched clear
+control, all 37 proposals continued; RobotBlue stayed on the direct route and
+reached the northwest goal. Neither run needed a local-safety takeover.
+
+Each request is a real chronological eight-frame, four-second H.264 clip at
+384 × 216 and 2 FPS. It is not an `EARLIER`/`NOW` still-image composite.
+A live six/eight/twelve-frame sweep selected eight as the operating point:
+six missed the hazard, while twelve produced a correlated false reroute in
+the clear control.
+
+The run used the Q4_0 model through the persistent GenieX service on the
+IQ-9075. Live-process inspection confirmed the Hexagon backend, CDSP FastRPC
+library, and secure CDSP device. The earlier BF16 RTX 5090 run remains useful
+iteration evidence, but is not the published device result.
+
+Follow the complete
+[Isaac Sim edge AI warehouse supervisor tutorial](isaac_sim_edge_supervisor_tutorial.md)
+to launch Isaac Sim, reproduce both camera-only scenarios, inspect the exact
+prompts and model inputs, and build the GIF/MP4 clips.
+
 ## Expected result and operating limits
 
 The recommended full-NPU encoded-video profile is:
@@ -555,6 +589,7 @@ The recommended full-NPU encoded-video profile is:
 | Frozen panel | 7/8, answers `A C B A C B C A` |
 | Warm request time | 1.453 s mean |
 | Warehouse classifier | 4/4, about 2.90 s per clip |
+| Isaac rolling-video EVK hazard run | 24/24 responses completed; 4.559 s mean / 6.258 s P95 model time; correct three-vote bypass |
 
 Keep these limits in production experiments:
 

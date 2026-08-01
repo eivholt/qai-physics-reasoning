@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "recorded_at_local": "2026-07-29",
+  "scenario": "blind_corner_rolling_video",
+  "run_id": "20260729_093947_eeefc908",
+  "isaac_sim": {
+    "version": "6.0.1",
+    "checkpoint": "artifacts/isaac_sim_checkpoints/lightweight_warehouse_v9_visual_supervisor_ready.usda",
+    "sensor_camera": "BlindCornerTactical",
+    "presentation_camera": "RoofOverview",
+    "motion_controller": "isaac_graph",
+    "navigation": "bounded waypoint steering -> Isaac DifferentialController -> IsaacArticulationController",
+    "robot_speed_mps": 0.3,
+    "captured_frames": 164,
+    "destination_reached": true,
+    "final_route": "north_bypass",
+    "final_robot_position": [
+      5.05197286605835,
+      4.79658222198486,
+      -0.0100002139806747
+    ]
+  },
+  "evk": {
+    "address": "192.168.1.158",
+    "model": "local/cosmos-reason2-2b:Q4_0",
+    "compute_requested": "npu",
+    "rolling_window": {
+      "frames": 20,
+      "fps": 2.0,
+      "duration_seconds": 10.0,
+      "encoded_geometry": "384x216",
+      "codec": "H.264",
+      "chronological_video": true,
+      "earlier_now_composite": false,
+      "tracked_scene_facts_in_prompt": false,
+      "route_overlays_in_model_input": false
+    }
+  },
+  "responses": {
+    "count": 12,
+    "counts": {
+      "RobotBlue CONTINUE_CURRENT_ROUTE": 4,
+      "RobotBlue REROUTE_NORTH_BYPASS": 8
+    },
+    "mean_model_seconds": 12.931413,
+    "p95_model_seconds": 19.062076,
+    "mean_host_total_seconds": 13.65764,
+    "p95_host_total_seconds": 19.762342,
+    "request_failures": 0
+  },
+  "first_applied_reroute": {
+    "request_id": "live-005",
+    "phase_when_submitted": "approach",
+    "raw_command": "RobotBlue REROUTE_NORTH_BYPASS",
+    "model_seconds": 19.062076,
+    "host_total_seconds": 19.762342,
+    "active_route_after_application": "north_bypass",
+    "applied_route_changes": 1
+  },
+  "moving_forklift_reaffirmation": {
+    "request_id": "live-006",
+    "phase_when_submitted": "hazard",
+    "raw_command": "RobotBlue REROUTE_NORTH_BYPASS",
+    "model_seconds": 13.386577,
+    "source_video": "docs/media/isaac_sim_edge_supervisor_rolling_evk_r3/reason2_live006_moving_forklift_input.mp4"
+  },
+  "current_compact_inventory_replay": {
+    "source_request_id": "live-006",
+    "scene_inventory": "mobile robot: PRESENT\nforklift: PRESENT",
+    "raw_command": "RobotBlue REROUTE_NORTH_BYPASS",
+    "total_model_seconds": 12.998663
+  },
+  "safety": {
+    "local_safety_hold_activated": false,
+    "model_can_command_only": [
+      "RobotBlue"
+    ],
+    "model_emits_wheel_velocities": false
+  },
+  "artifacts": {
+    "run_directory": "artifacts/isaac_sim_live_aisle/runs/20260729_093947_eeefc908",
+    "summary": "artifacts/isaac_sim_live_aisle/runs/20260729_093947_eeefc908/summary.json",
+    "events": "artifacts/isaac_sim_live_aisle/runs/20260729_093947_eeefc908/events.jsonl",
+    "tutorial_mp4": {
+      "path": "docs/media/isaac_sim_edge_supervisor_rolling_evk_r3/blind_corner_rolling_video_evk.mp4",
+      "sha256": "3a281d17ead0828d2154dff5b267ef9af546c699ecfe46915f809ad0d1cde381"
+    },
+    "tutorial_gif": {
+      "path": "docs/media/isaac_sim_edge_supervisor_rolling_evk_r3/blind_corner_rolling_video_evk.gif",
+      "sha256": "3959118f155441b7f4e2ea72ae1819516f25c909c2054e327d31b17eccacaeb5"
+    },
+    "moving_forklift_input": {
+      "path": "docs/media/isaac_sim_edge_supervisor_rolling_evk_r3/reason2_live006_moving_forklift_input.mp4",
+      "sha256": "eb5d97da78f3083ea4feb1fa562502b124d6f689679dc2b6667d9c5b1550910a"
+    }
+  },
+  "notes": [
+    "The latency-focused run used one reroute confirmation; three is recommended for conservative actuation.",
+    "One request already in flight timed out during post-destination cleanup after the timeline stopped. It did not affect simulation behavior and is not counted as a live request failure in summary.json."
+  ],
+  "claim_boundary": "This is a task-specific camera-only closed-choice demonstration, not a certified safety controller."
+}

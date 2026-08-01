@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "captured_date": "2026-07-30",
+  "target": "Qualcomm Dragonwing IQ-9075 EVK",
+  "service_url": "http://127.0.0.1:18181",
+  "model": "local/cosmos-reason2-2b:Q4_0",
+  "input": {
+    "image_resolution": [
+      384,
+      216
+    ],
+    "simultaneous_requests": 2,
+    "enable_think": false,
+    "closed_signal_grammar": true
+  },
+  "measurement": {
+    "total_wall_seconds": 2.739561,
+    "requests": [
+      {
+        "index": 1,
+        "signal": "GREEN",
+        "latency_seconds": 1.393376
+      },
+      {
+        "index": 2,
+        "signal": "GREEN",
+        "latency_seconds": 2.73764
+      }
+    ],
+    "service_healthy_after_probe": true
+  },
+  "interpretation": {
+    "accepts_overlapping_connections": true,
+    "executes_model_requests_in_parallel": false,
+    "observed_behavior": "single-flight server-side serialization",
+    "demo_recommendation": "Use one in-flight request and submit the newest rolling window immediately after the previous response. Parallel clients add queue latency without increasing throughput."
+  }
+}

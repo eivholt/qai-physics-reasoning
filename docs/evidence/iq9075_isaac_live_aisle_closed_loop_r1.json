@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "recorded_at_local": "2026-07-27",
+  "scenario": "live_aisle_congestion",
+  "run_id": "20260727_204634_9003926a",
+  "isaac_sim": {
+    "version": "6.0.1",
+    "navigation": "packaged_nova_carter_target_omnigraph",
+    "navigation_asset": "/Isaac/Samples/Replicator/OmniGraph/nova_carter_nav_only.usd",
+    "supervisor_camera": "RoofOverview",
+    "capture_fps": 2.0,
+    "captured_frames": 49,
+    "robot_body_visual_xy_scale": 1.75,
+    "robot_body_visual_z_scale": 1.1875,
+    "articulation_scale": 1.0,
+    "clearance_envelope_m": {
+      "length": 2.1,
+      "width": 1.42
+    },
+    "obstacle": "official_forklift_b",
+    "obstacle_motion": "kinematic_wrapper"
+  },
+  "evk": {
+    "address": "192.168.1.158",
+    "model": "local/cosmos-reason2-2b:Q4_0",
+    "runtime": "patched_geniex_v0.3.17_native_video",
+    "compute_requested": "npu",
+    "runtime_boundary_evidence": {
+      "process_id_during_verification": 7223,
+      "mapped_libraries": [
+        "libggml-hexagon.so",
+        "libcdsprpc.so"
+      ],
+      "open_device": "/dev/fastrpc-cdsp-secure"
+    }
+  },
+  "rolling_window": {
+    "frames": 10,
+    "fps": 2.0,
+    "encoded_geometry": "384x216",
+    "codec": "H.264",
+    "prompt_includes_navigation_intention": true,
+    "inference_runs_while_isaac_continues": true
+  },
+  "requests": [
+    {
+      "request_id": "live-001",
+      "answer": "A",
+      "action": "CONTINUE",
+      "model_request_seconds": 7.247323,
+      "host_encode_transfer_inference_seconds": 8.626685
+    },
+    {
+      "request_id": "live-002",
+      "answer": "B",
+      "action": "REROUTE",
+      "route": "south_bypass",
+      "model_request_seconds": 3.117089,
+      "host_encode_transfer_inference_seconds": 4.200381,
+      "simulation_seconds_at_window_end": 7.7,
+      "simulation_seconds_at_application": 10.266666666666756,
+      "separation_m_at_window_end": 5.723735679204377,
+      "separation_m_at_application": 3.8767477048868155
+    }
+  ],
+  "policy_gateway": {
+    "allowed_actions": [
+      "CONTINUE",
+      "YIELD",
+      "STOP",
+      "REROUTE"
+    ],
+    "selected_action": "REROUTE",
+    "selected_route": "south_bypass",
+    "local_safety_hold_threshold_m": 3.2,
+    "local_safety_hold_activated": false,
+    "wheel_velocity_commands_from_vlm": false
+  },
+  "final_state": {
+    "simulation_seconds": 14.750000000000313,
+    "robot_position": [
+      -0.15663690865039825,
+      -0.03706800937652588,
+      -0.009999722242355347
+    ],
+    "forklift_position": [
+      2.3659999999999353,
+      1.6,
+      0.0
+    ],
+    "separation_m": 3.007272624856106,
+    "route": "south_bypass",
+    "waypoint_index": 1
+  },
+  "artifacts": {
+    "run_directory": "artifacts/isaac_sim_live_aisle/runs/20260727_204634_9003926a",
+    "tutorial_mp4": {
+      "path": "docs/media/isaac_sim_live_aisle_r1/live_aisle_supervisor.mp4",
+      "sha256": "e184c52181ddd2b4500516741ff5480ede8ce7b733fa3f50ce9f3bdf1c59197a"
+    },
+    "tutorial_gif": {
+      "path": "docs/media/isaac_sim_live_aisle_r1/live_aisle_supervisor.gif",
+      "sha256": "4aa26742c080b57ed9674d6fc169f9f96b30c6b73cf4edf345742df6d4448869"
+    }
+  },
+  "claim_boundary": "This is one task-specific closed-choice live advisory run. Local navigation and the distance guard remain authoritative; it is not a certified safety controller."
+}

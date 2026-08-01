@@ -1,0 +1,60 @@
+{
+  "captured_date": "2026-07-31",
+  "scene_checkpoint": "artifacts/isaac_sim_checkpoints/reason2_conveyor_safety_aligned_shell_perf_r22.usda",
+  "camera": "detector_endline",
+  "render_steps": 1,
+  "rt_subframes": 1,
+  "measured_frames_per_resolution": 5,
+  "render_product": {
+    "persistent": true,
+    "annotators_persistent": true,
+    "updates_disabled_between_captures": true
+  },
+  "capture_results": {
+    "768x432": {
+      "median_wall_seconds": 0.200946,
+      "median_internal_seconds": 0.156,
+      "median_render_seconds": 0.14,
+      "median_png_bytes": 361599,
+      "semantic_forklift_boxes_each": [1, 1, 1, 1, 1]
+    },
+    "512x288": {
+      "median_wall_seconds": 0.219921,
+      "median_internal_seconds": 0.172,
+      "median_render_seconds": 0.156,
+      "median_png_bytes": 178284,
+      "semantic_forklift_boxes_each": [1, 1, 1, 1, 1]
+    },
+    "384x216": {
+      "median_wall_seconds": 0.199177,
+      "median_internal_seconds": 0.171,
+      "median_render_seconds": 0.156,
+      "median_png_bytes": 105767,
+      "semantic_forklift_boxes_each": [1, 1, 1, 1, 1]
+    }
+  },
+  "host_reason2_static_green": {
+    "768x432": {
+      "signals": ["GREEN", "GREEN", "GREEN"],
+      "median_model_roundtrip_seconds": 0.319227,
+      "median_cached_request_prepare_seconds": 0.002046
+    },
+    "512x288": {
+      "signals": ["GREEN", "GREEN", "GREEN"],
+      "median_model_roundtrip_seconds": 0.313093,
+      "median_cached_request_prepare_seconds": 0.001281
+    },
+    "384x216": {
+      "signals": ["GREEN", "GREEN", "GREEN"],
+      "median_model_roundtrip_seconds": 0.314851,
+      "median_cached_request_prepare_seconds": 0.000899
+    }
+  },
+  "conclusion": {
+    "main_fps_action": "Disable the persistent render product Hydra texture between captures; keep the render product and annotators attached.",
+    "host_default_capture": "512x288",
+    "evk_default_capture": "384x216",
+    "async_transfer": "Not the main FPS limiter. Encoding/request preparation is external to Isaac and measured at 0.9-2.0 ms after rolling-frame caching.",
+    "resolution_result": "Lower resolutions materially reduce image bytes and request preparation, but did not reduce the RTX render step in this scene."
+  }
+}

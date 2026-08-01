@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "captured_date": "2026-07-30",
+  "target": "Qualcomm Dragonwing IQ-9075 EVK",
+  "model": "local/cosmos-reason2-2b:Q4_0",
+  "camera": "detector_endline",
+  "transport": {
+    "model_image_resolution": [
+      384,
+      216
+    ],
+    "enable_think": false,
+    "closed_signal_grammar": true,
+    "prompt_tokens": {
+      "green": 163,
+      "amber": 165,
+      "red": 163
+    }
+  },
+  "three_state_real_frame_verification": [
+    {
+      "expected": "GREEN",
+      "actual": "GREEN",
+      "latency_seconds": 1.22587
+    },
+    {
+      "expected": "AMBER",
+      "actual": "AMBER",
+      "latency_seconds": 1.292633,
+      "projected_entry_seconds": 2.1
+    },
+    {
+      "expected": "RED",
+      "actual": "RED",
+      "latency_seconds": 1.153488
+    }
+  ],
+  "live_stack_light_verification": {
+    "run_id": "20260730_071738_af745803",
+    "inference_id": "20260730_071738_af745803-004",
+    "camera_fact": "present_red_zone_overlap=1",
+    "model_signal": "RED",
+    "stack_light_status": "RED",
+    "latency_seconds": 1.157551
+  },
+  "policy": {
+    "green": "No forklift currently overlaps the red zone and none is projected to enter within three seconds.",
+    "amber": "A moving forklift is projected from consecutive camera frames to enter the red zone within three seconds.",
+    "red": "Any part of any forklift overlaps the red-zone image mask.",
+    "workers_ignored": true
+  },
+  "verdict": "The bounded EVK transport returned the exact expected GREEN, AMBER, and RED JSON signals on real Isaac Sim frames. The live Play-controlled loop also applied an EVK RED response to the stack light. This is experimental demo evidence, not a certified safety result."
+}

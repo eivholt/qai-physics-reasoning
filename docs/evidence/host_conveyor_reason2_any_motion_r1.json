@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "captured_at_utc": "2026-07-30T16:06:20Z",
+  "backend": {
+    "label": "host",
+    "server_url": "http://127.0.0.1:18080",
+    "model": "Cosmos-Reason2-2B-BF16.gguf"
+  },
+  "policy": {
+    "green": "No forklift overlaps the red zone and every forklift is still.",
+    "amber": "Any forklift is moving, regardless of direction.",
+    "red": "Any part of any forklift overlaps the marked red zone.",
+    "workers_and_parcels_ignored": true
+  },
+  "amber_confirmation_prompt": "The images are chronological. Decide whether any forklift moved between them.\nReturn A if any forklift moved at all, in any direction. Otherwise return G.\nIgnore people, parcels, and the stack light.\nReturn one letter only: A or G.\n",
+  "prompt_ablation": [
+    {
+      "name": "location_or_size_changed",
+      "answers": ["G", "G", "G"]
+    },
+    {
+      "name": "moved_at_all_in_any_direction",
+      "answers": ["A", "A", "A"]
+    }
+  ],
+  "live_lateral_motion": {
+    "inference_id": "20260730_160615_0ac8ad1e-011",
+    "input_image_paths": [
+      "artifacts/isaac_sim_conveyor_safety/frames/20260730_160615_0ac8ad1e-010_detector_endline.png",
+      "artifacts/isaac_sim_conveyor_safety/frames/20260730_160615_0ac8ad1e-011_detector_endline.png"
+    ],
+    "movement_relative_to_conveyor": "parallel",
+    "forklift_motion_detected": true,
+    "predicted_red_zone_entry": false,
+    "present_red_zone_overlap": false,
+    "primary_model_signal": "GREEN",
+    "amber_confirmation_triggered": true,
+    "amber_confirmation_signal": "AMBER",
+    "raw_answer": "G; amber_confirmation=A",
+    "applied_signal": "AMBER",
+    "cycle_seconds": 1.329319
+  }
+}

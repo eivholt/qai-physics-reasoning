@@ -1,0 +1,149 @@
+{
+  "schema_version": "1.0",
+  "recorded_at_local": "2026-07-28",
+  "scenario": "live_blind_corner_congestion",
+  "run_id": "20260728_004655_7dddc057",
+  "claim": {
+    "result": "negative_end_to_end_model_intervention",
+    "summary": "The corrected BF16 host run recognized scene elements in targeted description probes, but the live constrained supervisor returned NO_CONFLICT for every completed hazard window. The local distance guard, not Cosmos-Reason2-2B, stopped RobotBlue.",
+    "evk_used": false,
+    "certified_safety_controller": false
+  },
+  "host_inference": {
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "model": "host/cosmos-reason2-2b:BF16",
+    "server": "llama.cpp CUDA OpenAI-compatible server",
+    "server_url": "http://127.0.0.1:18080",
+    "context_tokens": 16384,
+    "visual_tokens_per_frame": 1024,
+    "prompt_cache_disabled": true,
+    "prompt_cache_flags": [
+      "--no-cache-prompt",
+      "--slot-prompt-similarity",
+      "0"
+    ],
+    "why_cache_was_disabled": "The multimodal media placeholder token prefix can match across different clips. Reusing its KV prefix caused changed video windows to evaluate only one new prompt token and invalidated an earlier repeated-clear run.",
+    "completed_response_latency_seconds": {
+      "model_min": 1.628426,
+      "model_mean": 1.81059523076923,
+      "model_max": 2.77535,
+      "host_total_min": 1.982936,
+      "host_total_mean": 2.193898,
+      "host_total_max": 3.693612
+    }
+  },
+  "sensor_window": {
+    "camera": "BlindCornerTactical",
+    "presentation_routes_in_input": false,
+    "capture_fps": 2.0,
+    "model_playback_fps": 4.0,
+    "frames": 10,
+    "duration_seconds": 2.5,
+    "geometry": "768x432",
+    "codec": "H.264",
+    "timestamp_overlay": true
+  },
+  "simulation": {
+    "isaac_sim_version": "6.0.1",
+    "navigation": "Isaac QuinticPathPlanner -> CheckGoal2D -> StanleyControlPID -> DifferentialController -> IsaacArticulationController",
+    "robot": "packaged Nova Carter visual and articulation",
+    "robot_visual_xy_scale": 1.75,
+    "forklift": "official Isaac forklift asset in a kinematic wrapper",
+    "forklift_start_world": [
+      6.1,
+      4.8,
+      0.0
+    ],
+    "forklift_end_world": [
+      6.1,
+      2.95,
+      0.0
+    ],
+    "forklift_speed_mps": 0.38,
+    "forklift_release_robot_x": 1.5,
+    "forklift_released_at_robot_x": 1.7453391551971436,
+    "local_safety_hold_threshold_m": 2.2,
+    "local_safety_hold_activated": true,
+    "local_safety_hold_separation_m": 2.1868893468269692
+  },
+  "control_results": {
+    "completed_responses_in_summary": 26,
+    "late_response_after_capture_stop": 1,
+    "baseline_responses": 1,
+    "baseline_false_interventions": 0,
+    "completed_commands": {
+      "RobotBlue CONTINUE CURRENT_ROUTE": 26
+    },
+    "late_command": "RobotBlue CONTINUE CURRENT_ROUTE",
+    "model_conflict_labels": {
+      "NO_CONFLICT": 27,
+      "CONFLICT": 0
+    },
+    "model_reroute_applied": false,
+    "model_hold_applied": false,
+    "authoritative_stop_source": "local_safety"
+  },
+  "description_probes": [
+    {
+      "media": "requests/live-015/supervisor_window.mp4",
+      "identity_hints": true,
+      "finding": "The model named RobotBlue and the forklift and described RobotBlue moving toward the pallet area, but called the forklift stationary and reported no path overlap.",
+      "artifact": "artifacts/isaac_sim_live_aisle/diagnostics/live015_identity_scene_description.json"
+    },
+    {
+      "media": "requests/live-016/supervisor_window.mp4",
+      "identity_hints": true,
+      "finding": "The model again identified RobotBlue moving right and the forklift, but reported no significant path overlap despite the forklift occupying the constrained approach.",
+      "artifact": "artifacts/isaac_sim_live_aisle/diagnostics/live016_identity_scene_description.json"
+    },
+    {
+      "media": "multicamera_supervisor_ready_clean_v2_grid.png",
+      "identity_hints": false,
+      "finding": "The model described a white box and a blue machine but reported no mobile actors, showing that the camera grid alone does not bind actor identity reliably.",
+      "artifact": "artifacts/isaac_sim_live_aisle/diagnostics/multicamera_ready_grid_scene_description.json"
+    },
+    {
+      "media": "multicamera_supervisor_ready_clean_v2_grid.png",
+      "identity_hints": true,
+      "finding": "With appearance-only identity bindings, the model named both RobotBlue and the forklift, but still reported no path overlap.",
+      "artifact": "artifacts/isaac_sim_live_aisle/diagnostics/grid_identity_scene_description.json"
+    }
+  ],
+  "interpretation": {
+    "perception_supported": [
+      "Actor appearance can be recognized when supplied with stable identity bindings.",
+      "RobotBlue's image-right motion was visible to the model in the tactical clip.",
+      "The forklift, cartons, pallets, and aisle context were recognized."
+    ],
+    "not_reliable": [
+      "Unassisted actor identity in the multi-camera mosaic.",
+      "Forklift motion across the temporal window.",
+      "Closing-distance or swept-path conflict inference.",
+      "End-to-end selection of YIELD, STOP, or NORTH_BYPASS from this live scene."
+    ],
+    "recommended_architecture": "Use conventional detection and tracking to bind actor IDs, velocities, footprints, occupancy, and route intersections. Give those observations plus selected camera evidence to Reason2 for semantic supervision, keep Isaac navigation responsible for route generation, and retain the local safety controller as authoritative."
+  },
+  "artifacts": {
+    "run_directory": "artifacts/isaac_sim_live_aisle/runs/20260728_004655_7dddc057",
+    "summary": {
+      "path": "artifacts/isaac_sim_live_aisle/runs/20260728_004655_7dddc057/summary.json",
+      "sha256": "5fa2f203992f608823476a25f85ac81866a3be4144cfbe97ba3f42b7e7970459"
+    },
+    "mp4": {
+      "path": "docs/media/isaac_sim_live_blind_corner_host_r1/live_blind_corner_host_bf16.mp4",
+      "sha256": "02dbdc8e5ba033657bbb749440f82dbded0efc91e1fba0791bd7da48daa32e4e"
+    },
+    "gif": {
+      "path": "docs/media/isaac_sim_live_blind_corner_host_r1/live_blind_corner_host_bf16.gif",
+      "sha256": "217b5798071a3780186c38917e66b0f0e6ce475fff68e833021b0c7c3e429f35"
+    },
+    "camera_grid": {
+      "path": "docs/media/isaac_sim_live_blind_corner_host_r1/multicamera_supervisor_grid.png",
+      "sha256": "5fab2232977319bf5c67a6e26f756cadcc95f2394ad2edbc17d28cbb50def2a4"
+    },
+    "scene_checkpoint": {
+      "path": "artifacts/isaac_sim_checkpoints/lightweight_warehouse_v7_multicamera_supervisor_ready.usda",
+      "sha256": "6d2557de9c2ee1d77adc8347aa04992d1f3f578937b82071721937ff7e782f58"
+    }
+  }
+}

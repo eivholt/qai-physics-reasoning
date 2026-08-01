@@ -1,0 +1,5 @@
+*.json text eol=lf
+*.py text eol=lf
+artifacts/isaac_sim_checkpoints/reason2_conveyor_safety_stable_cargo_r38.usda filter=lfs diff=lfs merge=lfs -text
+docs/media/**/*.gif filter=lfs diff=lfs merge=lfs -text
+docs/media/**/*.mp4 filter=lfs diff=lfs merge=lfs -text

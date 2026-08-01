@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "created_at_utc": "2026-07-30T14:45:00Z",
+  "scene_checkpoint": "artifacts/isaac_sim_checkpoints/reason2_conveyor_safety_compact_projection_r5.usda",
+  "selected_live_camera": "detector_endline",
+  "host_model": "Cosmos-Reason2-2B-BF16.gguf",
+  "projection_ablation": {
+    "artifact": "artifacts/isaac_sim_conveyor_safety/camera_evaluation_compact_projection_ablation_r2.json",
+    "repeats_per_state": 3,
+    "raw_three_way_prompt": {
+      "detector_endline": {
+        "GREEN": "3/3",
+        "AMBER": "1/3",
+        "RED": "0/3",
+        "total": "4/9"
+      },
+      "detector_isometric": {
+        "GREEN": "3/3",
+        "AMBER": "1/3",
+        "RED": "3/3",
+        "total": "7/9"
+      }
+    },
+    "conditional_binary_prompt_repeats": {
+      "detector_endline_AMBER": "5/5",
+      "detector_endline_RED": "5/5",
+      "detector_isometric_AMBER": "0/5",
+      "detector_isometric_RED": "5/5"
+    },
+    "conclusion": "Isometric is better for the raw three-way prompt, but the low endline camera is better for the complete conditional live pipeline because its temporal AMBER confirmation is reliable."
+  },
+  "live_host_checks": {
+    "GREEN": {
+      "primary": "G",
+      "applied": "GREEN",
+      "frontend": "GREEN",
+      "steady_state_cycle_seconds": 0.594013
+    },
+    "AMBER": {
+      "request_index": 55,
+      "primary": "G",
+      "confirmation": "A",
+      "applied": "AMBER",
+      "frontend": "AMBER",
+      "image_velocity_pixels_per_second": 58.471,
+      "time_to_red_zone_seconds": 1.4,
+      "cycle_seconds": 1.353196,
+      "images": [
+        "artifacts/isaac_sim_conveyor_safety/frames/20260730_144129_3184b3b3-054_detector_endline.png",
+        "artifacts/isaac_sim_conveyor_safety/frames/20260730_144129_3184b3b3-055_detector_endline.png"
+      ]
+    },
+    "RED": {
+      "request_index": 66,
+      "primary": "A",
+      "confirmation": "R",
+      "applied": "RED",
+      "frontend": "RED",
+      "cycle_seconds_including_benchmark_resource_rebuild": 2.234377,
+      "image": "artifacts/isaac_sim_conveyor_safety/frames/20260730_144129_3184b3b3-066_detector_endline.png"
+    }
+  },
+  "red_transition_check": {
+    "camera": "detector_endline",
+    "x_0_50_m": {
+      "visual_overlap": false,
+      "image": "artifacts/isaac_sim_conveyor_safety/frames/red_threshold_x0.50.png"
+    },
+    "x_0_70_m": {
+      "visual_overlap": true,
+      "image": "artifacts/isaac_sim_conveyor_safety/frames/red_threshold_x0.70.png",
+      "visual_note": "fork tips visibly cross the red paint"
+    }
+  },
+  "evk_r5_verification": {
+    "status": "not_run",
+    "reason": "EVK at 192.168.1.158 answered ICMP but ports 22, 8080, and 18181 were unavailable during this run."
+  }
+}

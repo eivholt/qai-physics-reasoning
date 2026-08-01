@@ -13,6 +13,11 @@ while using an NPU for predictable, power-efficient inference. This port is
 experimental: successful NPU execution is not the same as a correct or
 safety-qualified prediction.
 
+The repository also includes a live Isaac Sim logistics-floor demonstration
+with three Xbox-controlled forklifts, animated construction workers, a looping
+conveyor, and a Cosmos-driven stack light. See the
+[live conveyor safety tutorial](docs/isaac_sim_conveyor_reason2_tutorial.md).
+
 The current full-video path is:
 
 ```text
@@ -519,6 +524,38 @@ lower-level GenieX `PixelData` integration with the full-interface W4/FP16
 part-1 replacement. The tutorial records the current positive controlled
 result and the remaining free-form failures without conflating either with
 the pending mixed-vision candidate.
+
+## 7. Control a live Isaac Sim process from Codex
+
+The dependency-free
+[`integrations/isaac_sim_mcp`](integrations/isaac_sim_mcp/README.md) PoC
+connects project-scoped Codex MCP tools to Isaac Sim 6.0.1's built-in localhost
+Python server. It provides bounded stage inspection, PoC scene creation,
+marker movement, timeline control, a bounded application-frame-rate cap, and
+viewport capture. Its launcher defaults to 60 FPS with precision sleep to
+reduce idle GPU load. Prove this local control path before placing the EVK
+visual-reasoning service in the loop.
+
+The follow-on
+[edge AI warehouse supervisor tutorial](docs/isaac_sim_edge_supervisor_tutorial.md)
+uses a lightweight warehouse assembled from official NVIDIA rack, Nova Carter,
+forklift, pallet, and carton assets. Clean eight-frame tactical-camera videos are
+sent to Cosmos-Reason2-2B without simulator coordinates, actor tracks, route
+occupancy, or expected hazard labels. An inventory gate, two-command grammar,
+and three-window consensus bound the model before Isaac's wheel controller
+changes RobotBlue's route.
+
+In the rolling-video IQ-9075 EVK hazard run, one window continued before three
+consecutive `REROUTE_NORTH_BYPASS` proposals applied exactly one route change;
+RobotBlue reached the bypass goal. In the matched clear control, all 37
+proposals continued and RobotBlue reached the northwest destination. The
+eight-frame hazard averaged 4.559 s model time with a 6.258 s P95. A matched
+six/eight/twelve-frame sweep found that six missed the hazard and twelve
+falsely rerouted in the clear control, making eight frames the measured demo
+operating point. Presentation route lines are captured separately and never
+enter the model window.
+Earlier scripted, full-warehouse, and experimental navigation recordings
+remain available locally but are no longer the tutorial's primary evidence.
 
 ## CPU baseline
 

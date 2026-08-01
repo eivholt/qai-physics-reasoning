@@ -112,6 +112,52 @@ The result is narrower than vendor certification:
   physical-board four-token smoke passes; the full first-token chain and all
   P1 frozen-suite scores remain pending. The balanced P1–P4 GPU extension
   scores 13/16, while its NPU execution is also pending.
+- The Isaac live-aisle r1 evidence records a real rolling-camera control loop.
+  Isaac Sim continued advancing while the EVK processed each 10-frame H.264
+  window. The first window returned `CONTINUE`; the next detected the opposing
+  forklift in 3.117 seconds and triggered the bounded `south_bypass`
+  navigation target. The local 3.2 m hold guard did not activate. The report
+  includes media hashes and live-process Hexagon/FastRPC evidence.
+- The host RTX 5090 blind-corner r1 evidence records a corrected BF16
+  live-camera trial with multimodal prompt caching disabled. Reason2 identified
+  the actors in targeted description probes but returned `NO_CONFLICT` for all
+  26 completed and one late control responses. The local 2.2 m guard stopped
+  RobotBlue at 2.187 m; no model reroute was applied. This is negative
+  capability evidence, not EVK evidence.
+- The IQ-9075 tracked-supervisor r1 evidence records the corrected live hybrid
+  Isaac scenario through the persistent Q4_0 GenieX NPU service. Eighteen
+  requests completed: 16 continued the active route and two selected the open
+  north bypass after southbound forklift emergence. The first intervention
+  took 2.330 seconds of model time and 2.809 seconds end to end, with no false
+  baseline intervention, request failure, or local-safety takeover.
+- The visual-supervisor r2 evidence removes tracked simulator facts from the
+  prompt. A tactical-camera inventory and bounded temporal-gap command run on
+  the IQ-9075 EVK. In the blind-corner take, three consecutive responses
+  triggered one north-bypass route change and RobotBlue reached its
+  destination. In the matched clear take, five isolated or two-window false
+  reroute proposals were rejected by the three-window consensus; RobotBlue
+  stayed on the direct route and reached the northwest goal.
+- The r2 no-actuation perception probes show that the Q4 model can name the
+  forklift, mobile robot, shelving, cartons, pallets, cones, and walls in
+  favorable windows. Repetitive and truncated responses, plus rack/forklift
+  confusion in the clear run, are retained as negative capability evidence.
+- The rolling-video Isaac r3 evidence replaces the two-endpoint composite with
+  every frame from a 20-frame, 10-second tactical-camera window. The live
+  hazard run completed 12 requests, applied one north reroute, and reached the
+  bypass goal. The matched clear run completed 18 requests; three false
+  proposals never reached the required three-window consensus, so the direct
+  route remained active through the northwest goal. Replaying the exact
+  moving-forklift and prior false-clear windows with the current compact
+  two-actor inventory preserved the hazard reroute and gated the clear window
+  to continue.
+- The rolling-video Isaac r4 evidence is the matched compact-inventory
+  six/eight/twelve-frame sweep at 2 FPS with three-response actuation. Twelve
+  frames passed the hazard but produced a correlated false reroute in the
+  clear control. Six frames ran near 2.6 seconds but missed the hazard and
+  required the independent local hold. Eight frames passed both full runs:
+  the hazard reached `north_bypass` without a safety takeover, while the clear
+  control returned 37/37 continue proposals and reached the direct northwest
+  goal. The eight-frame hazard averaged 4.559 seconds with a 6.258-second P95.
 - It does not prove production accuracy, full upstream numerical equivalence,
   support for every prompt, or an official NVIDIA/Qualcomm product
   configuration.
@@ -133,7 +179,7 @@ evidence for the Cosmos-Reason2-2B checkpoint. We found no earlier independent
 public IQ-9075 result for the exact Cosmos model, so the report here should be
 described as project evidence for a new experimental port.
 
-The nine tracked summaries are:
+The tracked summaries include:
 
 - [`iq9075_npu_smoke_r1.json`](iq9075_npu_smoke_r1.json), the historical text
   and single-image bundle evidence;
@@ -166,7 +212,41 @@ The nine tracked summaries are:
 - [`iq9075_geniex_vision_placement_r8.json`](iq9075_geniex_vision_placement_r8.json),
   the independent output/vision placement controls, stock GELU fallback,
   full corrected panels, latency tradeoffs, negative operator ablations, and
-  direct Hexagon/CDSP process evidence.
+  direct Hexagon/CDSP process evidence; and
+- [`host_5090_cosmos_reason2_live_blind_corner_r1.json`](host_5090_cosmos_reason2_live_blind_corner_r1.json),
+  the cache-corrected BF16 host blind-corner run, perception description
+  probes, model miss, local safety intervention, media hashes, and hybrid
+  architecture conclusion; and
+- [`host_5090_cosmos_reason2_tracked_supervisor_r1.json`](host_5090_cosmos_reason2_tracked_supervisor_r1.json),
+  the corrected live hybrid tutorial run with clean roof frames, trusted
+  Isaac actor tracks and route occupancy, 12 continue decisions, two north
+  reroutes, no request failures, and no local-safety takeover; and
+- [`iq9075_isaac_tracked_supervisor_r1.json`](iq9075_isaac_tracked_supervisor_r1.json),
+  the corresponding corrected EVK/NPU validation with south-oriented forklift,
+  18 completed decisions, the applied north reroute, media hashes, latency,
+  and live Hexagon/CDSP process evidence; and
+- [`iq9075_isaac_visual_supervisor_blind_corner_r2.json`](iq9075_isaac_visual_supervisor_blind_corner_r2.json)
+  and
+  [`iq9075_isaac_visual_supervisor_clear_control_r2.json`](iq9075_isaac_visual_supervisor_clear_control_r2.json),
+  the camera-only matched EVK runs with physical wheel navigation, temporal
+  sensor inputs, consensus state, exact responses, and destination outcomes;
+  and
+- [`iq9075_isaac_rolling_video_blind_corner_r3.json`](iq9075_isaac_rolling_video_blind_corner_r3.json)
+  and
+  [`iq9075_isaac_rolling_video_clear_control_r3.json`](iq9075_isaac_rolling_video_clear_control_r3.json),
+  the camera-only matched EVK runs with real 20-frame chronological video,
+  live wheel navigation, raw false-proposal evidence, destination outcomes,
+  media hashes, and compact-inventory replay results; and
+- [`iq9075_isaac_rolling_video_blind_corner_r4.json`](iq9075_isaac_rolling_video_blind_corner_r4.json),
+  [`iq9075_isaac_rolling_video_clear_control_r4.json`](iq9075_isaac_rolling_video_clear_control_r4.json),
+  and
+  [`iq9075_isaac_rolling_video_frame_sweep_r4.json`](iq9075_isaac_rolling_video_frame_sweep_r4.json),
+  the selected eight-frame camera-only EVK demonstrations and the complete
+  six/eight/twelve-frame latency/behavior comparison; and
+- [`iq9075_cosmos_reason2_scene_elements_visual_r2.json`](iq9075_cosmos_reason2_scene_elements_visual_r2.json)
+  and
+  [`iq9075_cosmos_reason2_actor_recognition_visual_r2.json`](iq9075_cosmos_reason2_actor_recognition_visual_r2.json),
+  the no-actuation EVK perception diagnostics.
 
 ## Reproduce the report
 

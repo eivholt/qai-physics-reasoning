@@ -1,0 +1,53 @@
+{
+  "captured_date": "2026-07-30",
+  "scene_checkpoint": "artifacts/isaac_sim_checkpoints/reason2_conveyor_safety_factory_optimized_capture.usda",
+  "camera": "detector_endline",
+  "render_steps": 1,
+  "method": {
+    "warmup_frames_per_configuration": 1,
+    "measured_frames_per_configuration": 5,
+    "render_product_and_annotators": "persistent and reused after warmup"
+  },
+  "baseline_1024x576_rt_subframes_2": {
+    "wall_seconds": [
+      0.236281,
+      0.195355,
+      0.223895,
+      0.241919,
+      0.191601
+    ],
+    "median_wall_seconds": 0.223895,
+    "median_internal_seconds": 0.125,
+    "median_render_seconds": 0.11,
+    "median_render_setup_seconds": 0.0,
+    "all_three_forklifts_detected": true,
+    "persistent_resource_reused_every_frame": true
+  },
+  "optimized_768x432_rt_subframes_1": {
+    "wall_seconds": [
+      0.211477,
+      0.164149,
+      0.202389,
+      0.194949,
+      0.195022
+    ],
+    "median_wall_seconds": 0.195022,
+    "median_internal_seconds": 0.109,
+    "median_render_seconds": 0.079,
+    "median_render_setup_seconds": 0.0,
+    "all_three_forklifts_detected": true,
+    "persistent_resource_reused_every_frame": true
+  },
+  "comparison": {
+    "optimized_wall_speedup": 1.148,
+    "optimized_wall_reduction_percent": 12.9
+  },
+  "idempotent_combined_apply_state_smoke": {
+    "signal": "RED",
+    "first_same_signal_mutated_light": false,
+    "second_same_signal_mutated_light": false,
+    "mutation_count_after_both": 0,
+    "post_application_state_returned": true
+  },
+  "verdict": "Use 768x432, one render step, and one RTX subframe with persistent render resources. The lower-cost configuration retained all three forklift semantic boxes in every measured frame."
+}

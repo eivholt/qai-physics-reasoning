@@ -1,0 +1,111 @@
+{
+  "schema_version": "1.0",
+  "recorded_at_local": "2026-07-28",
+  "run_id": "20260728_072512_88034920",
+  "scenario": "blind_corner_forklift_emergence_with_north_bypass",
+  "source_summary": "artifacts/isaac_sim_live_aisle/runs/20260728_072512_88034920/summary.json",
+  "source_events": "artifacts/isaac_sim_live_aisle/runs/20260728_072512_88034920/events.jsonl",
+  "inference": {
+    "backend": "evk",
+    "target": "ubuntu@192.168.1.158",
+    "accelerator": "Qualcomm Dragonwing IQ-9075 Hexagon NPU",
+    "model": "local/cosmos-reason2-2b:Q4_0",
+    "server": "GenieX v0.3.17 persistent OpenAI-compatible service",
+    "server_arguments": "--compute npu --nctx 4096 --ngl -1",
+    "hexagon_library_loaded": "llama_cpp/libggml-hexagon.so",
+    "cdsp_library_loaded": "/usr/lib/aarch64-linux-gnu/libcdsprpc.so.1.0.0",
+    "secure_cdsp_device_open": "/dev/fastrpc-cdsp-secure",
+    "live_process_evidence": "artifacts/isaac_sim_live_aisle/evk_validation_rotated_r2_npu_process.txt",
+    "supervisor_profile": "tracked",
+    "sensor_camera": "roof",
+    "frames_per_window": 8,
+    "model_fps": 4,
+    "model_video_width": 384
+  },
+  "simulation": {
+    "isaac_sim_version": "6.0.1",
+    "motion_controller": "kinematic_waypoint",
+    "robot_speed_mps": 0.18,
+    "forklift_release_x_m": -0.75,
+    "forklift_south_yaw_degrees": -90.0,
+    "local_safety_hold_distance_m": 2.2,
+    "presentation_camera": "roof",
+    "presentation_route_visualizations": true,
+    "model_sensor_route_visualizations": false
+  },
+  "results": {
+    "captured_frames": 59,
+    "completed_responses": 18,
+    "request_failures": 0,
+    "commands": {
+      "RobotBlue CONTINUE CURRENT_ROUTE": 16,
+      "RobotBlue REROUTE NORTH_BYPASS": 2,
+      "RobotBlue REROUTE SOUTH_BYPASS": 0,
+      "RobotBlue YIELD HOLD": 0,
+      "RobotBlue STOP HOLD": 0
+    },
+    "clear_baseline_responses": 1,
+    "clear_baseline_false_interventions": 0,
+    "pre_hazard_approach_continue_responses": 10,
+    "first_hazard_request_id": "live-012",
+    "first_hazard_command": "RobotBlue REROUTE NORTH_BYPASS",
+    "first_hazard_model_seconds": 2.329689,
+    "first_hazard_end_to_end_seconds": 2.808984,
+    "model_seconds_mean_all_requests": 2.154089,
+    "model_seconds_mean_after_first_request": 2.155147,
+    "model_seconds_min": 2.118374,
+    "model_seconds_max": 2.332117,
+    "end_to_end_seconds_mean_all_requests": 2.636611,
+    "forklift_emergence_nearest_presentation_frame": 36,
+    "first_reroute_applied_nearest_presentation_frame": 46,
+    "final_active_route": "north_bypass",
+    "final_robot_xy_m": [
+      0.380793791027027,
+      3.65043383840897
+    ],
+    "local_safety_takeovers": 0
+  },
+  "policy_facts_at_hazard": {
+    "direct": "EMERGING_BLOCK",
+    "north_bypass": "OPEN",
+    "south_bypass": "BLOCKED_STATIC_PALLETS",
+    "commandable_actors": [
+      "RobotBlue"
+    ]
+  },
+  "published_media": {
+    "full_closed_loop.mp4": {
+      "bytes": 695614,
+      "sha256": "1dc9b43e2c9aa5721f6a590b27913cdb5d5ab5cba54747d6141ade61abd541ee"
+    },
+    "full_closed_loop.gif": {
+      "bytes": 9395798,
+      "sha256": "d215e847c41a1b5048f069eff4698cad0d90f1a27b55dd8e1bfcfd3264150637"
+    },
+    "clear_route_control.gif": {
+      "bytes": 3988579,
+      "sha256": "29fdd507459fac7467158f0b543fffe36bceb6719e93f33f63f2cd279dbc220b"
+    },
+    "blind_corner_north_bypass.gif": {
+      "bytes": 4226356,
+      "sha256": "8b2b98cbd8b0ecffb0e4a1682f29860b3bc811c24540e25b36a7332bd0d78fd2"
+    }
+  },
+  "scope": {
+    "verified": [
+      "Isaac Sim roof frames were continuously captured and submitted to the EVK service",
+      "the live process loaded the GGML Hexagon backend and held the secure CDSP FastRPC device",
+      "Reason2 returned one allow-listed command per completed request",
+      "the gateway rejected routes contradicted by tracked route occupancy",
+      "the returned north-bypass command changed RobotBlue's live waypoint route",
+      "the local safety fallback did not trigger",
+      "the forklift was oriented 90 degrees clockwise so its nose and motion both point south"
+    ],
+    "not_claimed": [
+      "vision-only hazard understanding",
+      "built-in Isaac navigation-stack actuation",
+      "production collision-avoidance certification",
+      "official NVIDIA or Qualcomm certification for Cosmos-Reason2-2B on IQ-9075"
+    ]
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "report_id": "iq9075-isaac-realistic-aisle-advisory-r1",
+  "created_date": "2026-07-25",
+  "device": {
+    "target": "Dragonwing IQ-9075 EVK",
+    "tutorial_address": "192.168.1.158",
+    "architecture": "aarch64"
+  },
+  "service": {
+    "model": "local/cosmos-reason2-2b:Q4_0",
+    "endpoint": "http://127.0.0.1:18181",
+    "command": "./geniex-grammar --skip-update serve --host 127.0.0.1:18181 --keepalive 3600 --compute npu --nctx 4096 --ngl -1",
+    "sampling_fps": 2
+  },
+  "runtime_evidence_after_inference": {
+    "libggml_hexagon_mapped": true,
+    "libcdsprpc_mapped": true,
+    "fastrpc_cdsp_secure_open": true,
+    "claim_boundary": "This proves live Hexagon use at the runtime-placement boundary, not an operator-by-operator trace excluding every internal CPU fallback."
+  },
+  "simulation": {
+    "isaac_sim_version": "6.0.1",
+    "environment": "Isaac/Environments/Simple_Warehouse/full_warehouse.usd",
+    "scenario": "aisle_congestion",
+    "capture_root": "artifacts/isaac_sim_edge_supervisor_realistic/aisle_congestion",
+    "oracle_action": "REROUTE",
+    "oracle_route": "south_bypass"
+  },
+  "video": {
+    "repository_path": "artifacts/isaac_sim_edge_supervisor_realistic/aisle_congestion_2fps.mp4",
+    "evk_path": "/home/ubuntu/test-data/isaac_edge_supervisor_realistic/aisle_congestion_realistic_2fps.mp4",
+    "codec": "h264",
+    "width": 384,
+    "height": 216,
+    "fps": 2,
+    "frames": 10,
+    "duration_seconds": 5.0,
+    "size_bytes": 30491,
+    "sha256": "994133e019af5a7a1deb52787a17f01966679406bb03ca35ffbd6c2f7a45bbf0"
+  },
+  "method": {
+    "client": "scripts/request_isaac_edge_supervisor_advisory.py",
+    "scope": "task-specific two-stage closed-choice visual advisory",
+    "grammar": "root ::= [AB]",
+    "stage_1": "direct aisle clear versus opposing AMR occupies it",
+    "stage_2": "south bypass versus north bypass"
+  },
+  "result": {
+    "closed_choice_answers": {
+      "hazard": "B",
+      "route": "A"
+    },
+    "advisory": {
+      "schema_version": "1.0",
+      "source": "roof_overview",
+      "recipient": "RobotBlue",
+      "action": "REROUTE",
+      "hazard": "aisle_congestion",
+      "route": "south_bypass",
+      "ttl_ms": 1500
+    },
+    "request_seconds": [
+      5.579779,
+      3.035378
+    ],
+    "total_seconds": 8.615157,
+    "scenario_oracle_match": true
+  },
+  "verdict": "The live full-NPU service produced the expected bounded advisory for this one realistic Isaac Sim aisle-congestion clip. This is a positive integration result, not a broad accuracy or safety claim."
+}

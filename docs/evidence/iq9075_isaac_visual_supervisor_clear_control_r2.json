@@ -1,0 +1,755 @@
+{
+  "run_id": "20260728_121054_0b559e26",
+  "session_dir": "artifacts/isaac_sim_live_aisle/runs/20260728_121054_0b559e26",
+  "frames": 135,
+  "capture_fps": 2.0,
+  "model_fps": 4.0,
+  "sensor_camera": "tactical",
+  "presentation_camera": "roof",
+  "presentation_route_visualizations": true,
+  "supervisor_profile": "vision_only",
+  "motion_controller": "isaac_graph",
+  "robot_speed_mps": 0.75,
+  "reroute_confirmations_required": 3,
+  "scenario": "clear_route_control",
+  "inference_backend": "evk",
+  "inference_target": "ubuntu@192.168.1.158",
+  "model": "local/cosmos-reason2-2b:Q4_0",
+  "presentation_fps": 5.0,
+  "robot_visual_xy_scale": 1.75,
+  "last_state": {
+    "timeline_time_seconds": 61.633333333331116,
+    "timeline_playing": true,
+    "blue_position": [
+      -5.042867183685303,
+      4.797865390777588,
+      -0.009999364614486694
+    ],
+    "forklift_position": [
+      6.1,
+      4.8,
+      0.0
+    ],
+    "separation_m": 11.142867388145985,
+    "action": "CONTINUE",
+    "route": "direct",
+    "waypoint_index": 2,
+    "waypoint_advanced": false,
+    "robot_yaw_degrees": 179.35939923921433,
+    "navigation_linear_mps": 0.0,
+    "navigation_angular_radps": 0.0,
+    "route_destination": [
+      -5.2,
+      4.8,
+      0.0
+    ],
+    "distance_to_destination_m": 0.1571473147066817,
+    "destination_reached": true,
+    "navigation_intention": "RobotBlue is following the east aisle through the clear east intersection, turning north, then driving west to the northwest destination",
+    "obstacle_released": false,
+    "forklift_motion_phase": "holding_blind_corner",
+    "evk_request_status": "in_flight",
+    "last_request_id": "live-042",
+    "last_latency_seconds": 2.724765,
+    "motion_controller": "isaac_graph"
+  },
+  "local_safety_hold": false,
+  "commandable_actors": [
+    "RobotBlue"
+  ],
+  "responses": [
+    {
+      "request_id": "live-001",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "FORKLIFT_VISIBLE",
+        "scene_inventory": "Metal shelving: PRESENT\nCardboard cartons: PRESENT\nWooden pallets: PRESENT\nForklift: PRESENT\nMetal shelving: PRESENT\nWooden pallets: PRESENT\nMetal shelving: PRESENT",
+        "visual_gap_classification": "RobotBlue REROUTE_NORTH_BYPASS"
+      },
+      "raw_command": "RobotBlue REROUTE_NORTH_BYPASS",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "REROUTE",
+      "route": "north_bypass",
+      "model_seconds": 4.646954,
+      "host_total_seconds": 5.55232,
+      "reroute_confirmation_streak": 1
+    },
+    {
+      "request_id": "live-002",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "FORKLIFT_VISIBLE",
+        "scene_inventory": "Metal shelving: PRESENT\nCardboard cartons: PRESENT\nWooden pallets: PRESENT\nForklift: PRESENT\nMetal shelving: PRESENT\nWooden pallets: PRESENT\nMetal shelving: PRESENT\nMetal shelving: PRESENT",
+        "visual_gap_classification": "RobotBlue REROUTE_NORTH_BYPASS"
+      },
+      "raw_command": "RobotBlue REROUTE_NORTH_BYPASS",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "REROUTE",
+      "route": "north_bypass",
+      "model_seconds": 4.952728,
+      "host_total_seconds": 5.682473,
+      "reroute_confirmation_streak": 2
+    },
+    {
+      "request_id": "live-003",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; NOW: metal shelving; cardboard cartons: wooden pallets:",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.862301,
+      "host_total_seconds": 2.606952,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-004",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; NOW: metal shelving; cardboard cartons: wooden pallets:",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.877048,
+      "host_total_seconds": 2.594967,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-005",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; metal shelving; cardboard cartons; forklift; traffic cones; walls; metal shelving; cardboard box",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.179034,
+      "host_total_seconds": 2.9191,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-006",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; metal shelving; cardboard cartons; forklift; traffic cones; walls; metal shelving; cardboard box",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.146053,
+      "host_total_seconds": 2.925512,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-007",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; cardboard cartons; wooden pallets; forklift; metal shelving; walls; traffic cones; cardboard box",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.292777,
+      "host_total_seconds": 2.985156,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-008",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Left: PRESENT; Right: PRESENT",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.297925,
+      "host_total_seconds": 2.092629,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-009",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; cardboard cartons; wooden pallets; forklift; metal shelving; traffic cones; walls; cardboard box",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.281988,
+      "host_total_seconds": 3.049874,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-010",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; cardboard cartons; wooden pallets; forklift; metal shelving; walls; traffic cones; cardboard box",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.282937,
+      "host_total_seconds": 3.009687,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-011",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; cardboard cartons; wooden pallets; forklift; metal shelving; walls; traffic cones; cardboard box",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.273668,
+      "host_total_seconds": 3.000953,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-012",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; metal shelving; cardboard cartons; forklift; traffic cones; walls; metal shelving; cardboard box",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.142791,
+      "host_total_seconds": 2.836521,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-013",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; cardboard cartons; wooden pallets; forklift; metal shelving; walls; traffic cones; cardboard box",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.295166,
+      "host_total_seconds": 3.65094,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-014",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; cardboard cartons; wooden pallets; forklift; traffic cones; walls; metal shelving; cardboard cartons; wooden pallets; metal shelving; forklift; cardboard cartons; metal shelving; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 6.691568,
+      "host_total_seconds": 7.39877,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-015",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Left side: PRESENT; Right side: PRESENT",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.382039,
+      "host_total_seconds": 2.10697,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-016",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; cardboard cartons; wooden pallets; forklift; walls; traffic cones; metal shelving; cardboard cartons; wooden pallets; metal shelving; forklift; cardboard cartons; metal shelving; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 6.717106,
+      "host_total_seconds": 7.975143,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-017",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Metal shelving: PRESENT, cardboard cartons: PRESENT, wooden pallets: PRESENT, forklift: ABSENT, traffic cones: ABSENT, walls: PRESENT, mobile robot: ABSENT",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.878588,
+      "host_total_seconds": 3.665657,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-018",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; cardboard cartons; metal shelving; forklift; traffic cones; walls; PRESENT",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.973649,
+      "host_total_seconds": 2.682543,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-019",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; cardboard cartons; metal shelving; forklift; traffic cones; walls; PRESENT",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.971079,
+      "host_total_seconds": 2.661481,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-020",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; cardboard cartons; metal shelving; forklift; traffic cones; walls; mobile robot",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.97272,
+      "host_total_seconds": 3.215123,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-021",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Left: absent; Right: absent; Left: absent; Right: absent; Left: absent; Right: absent; Left: absent; Right: absent",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.281335,
+      "host_total_seconds": 3.634514,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-022",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; cardboard cartons; metal shelving; forklift; traffic cones; walls; mobile robot",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.966174,
+      "host_total_seconds": 2.680436,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-023",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; cardboard cartons; metal shelving; forklift; traffic cones; walls; mobile robot",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.980356,
+      "host_total_seconds": 2.741744,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-024",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; cardboard cartons; metal shelving; forklift; traffic cones; walls; mobile robot",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.951333,
+      "host_total_seconds": 2.672683,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-025",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; cardboard cartons; metal shelving; forklift; traffic cones; walls; mobile robot",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.981358,
+      "host_total_seconds": 3.384787,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-026",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; cardboard cartons; wooden pallets; forklift; walls; traffic cones; metal shelving; cardboard cartons; wooden pallets; metal shelving; forklift; cardboard cartons; metal shelving; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 6.715074,
+      "host_total_seconds": 7.436868,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-027",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; metal shelving; cardboard cartons; forklift; traffic cones; walls; metal shelving; cardboard box",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.142165,
+      "host_total_seconds": 2.86148,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-028",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "FORKLIFT_VISIBLE",
+        "scene_inventory": "Metal shelving: PRESENT, cardboard cartons: PRESENT, wooden pallets: PRESENT, walls: PRESENT, forklift: PRESENT, metal shelving: PRESENT, traffic cones: PRESENT",
+        "visual_gap_classification": "RobotBlue REROUTE_NORTH_BYPASS"
+      },
+      "raw_command": "RobotBlue REROUTE_NORTH_BYPASS",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "REROUTE",
+      "route": "north_bypass",
+      "model_seconds": 4.412464,
+      "host_total_seconds": 5.233022,
+      "reroute_confirmation_streak": 1
+    },
+    {
+      "request_id": "live-029",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; metal shelving; cardboard cartons; forklift; traffic cones; walls; metal shelving; cardboard box",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.142331,
+      "host_total_seconds": 2.827893,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-030",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; cardboard cartons; metal shelving; forklift; traffic cones; walls; mobile robot",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.961033,
+      "host_total_seconds": 2.727554,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-031",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; cardboard cartons; metal shelving; forklift; traffic cones; walls; PRESENT",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.973257,
+      "host_total_seconds": 3.155447,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-032",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; metal shelving; cardboard cartons; forklift; traffic cones; walls; metal shelving; cardboard box",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 2.143816,
+      "host_total_seconds": 3.461422,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-033",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Metal shelving: PRESENT\nWooden pallets: PRESENT\nCardboard cartons: PRESENT\nForklift: ABSENT\nMetal shelving: PRESENT\nWooden pallets: PRESENT\nTraffic cones: ABSENT\nWalls: PRESENT",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 3.392697,
+      "host_total_seconds": 4.091429,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-034",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Metal shelving: PRESENT\nCardboard cartons: PRESENT\nWooden pallets: PRESENT\nMetal shelving: PRESENT\nForklift: ABSENT\nWooden pallets: PRESENT\nMetal shelving: PRESENT\nMetal shelving: PRESENT\nCardboard cartons: PRESENT\nWooden pallets: PRESENT\nMetal shelving: PRESENT\nMetal shelving: PRESENT\nMetal shelving: PRESENT\nMetal shelving: PRESENT\nMetal shelving: PRESENT\nMetal shelving: PRESENT\nMetal shelving: PRESENT\nMetal shelving:",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 6.703546,
+      "host_total_seconds": 7.421039,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-035",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "FORKLIFT_VISIBLE",
+        "scene_inventory": "Metal shelving: PRESENT\nWooden pallets: PRESENT\nCardboard cartons: PRESENT\nForklift: PRESENT\nMetal shelving: PRESENT\nWooden pallets: PRESENT\nMetal shelving: PRESENT",
+        "visual_gap_classification": "RobotBlue REROUTE_NORTH_BYPASS"
+      },
+      "raw_command": "RobotBlue REROUTE_NORTH_BYPASS",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "REROUTE",
+      "route": "north_bypass",
+      "model_seconds": 4.666647,
+      "host_total_seconds": 5.400002,
+      "reroute_confirmation_streak": 1
+    },
+    {
+      "request_id": "live-036",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; cardboard cartons; wooden pallets; walls; traffic cones; forklift; metal shelving; cardboard cartons; wooden pallets; metal shelving; forklift; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 6.680624,
+      "host_total_seconds": 7.37804,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-037",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; cardboard cartons; metal shelving; forklift; traffic cones; walls; PRESENT",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.958883,
+      "host_total_seconds": 2.661774,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-038",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Metal shelving: PRESENT\nWooden pallets: PRESENT\nCardboard cartons: PRESENT\nForklift: ABSENT\nMetal shelving: PRESENT\nWooden pallets: PRESENT\nMetal shelving: PRESENT",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 3.179827,
+      "host_total_seconds": 3.875269,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-039",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; cardboard cartons; wooden pallets; forklift; walls; traffic cones; metal shelving; cardboard cartons; wooden pallets; metal shelving; forklift; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 6.685824,
+      "host_total_seconds": 7.363627,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-040",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "EARLIER: metal shelving; cardboard cartons; wooden pallets; walls; traffic cones; forklift; metal shelving; cardboard cartons; wooden pallets; metal shelving; forklift; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving; cardboard cartons; wooden pallets; metal shelving",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 6.696056,
+      "host_total_seconds": 7.397882,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-041",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "NO_FORKLIFT_VISIBLE",
+        "scene_inventory": "Wooden pallets; cardboard cartons; metal shelving; forklift; traffic cones; walls; PRESENT",
+        "visual_gap_classification": "not_requested"
+      },
+      "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "CONTINUE",
+      "route": "current",
+      "model_seconds": 1.981324,
+      "host_total_seconds": 2.724765,
+      "reroute_confirmation_streak": 0
+    },
+    {
+      "request_id": "live-042",
+      "phase": "clear_control",
+      "model_responses": {
+        "actor_presence": "FORKLIFT_VISIBLE",
+        "scene_inventory": "Metal shelving: PRESENT\nWooden pallets: PRESENT\nCardboard cartons: PRESENT\nForklift: PRESENT\nMetal shelving: PRESENT\nWooden pallets: PRESENT\nMetal shelving: PRESENT",
+        "visual_gap_classification": "RobotBlue REROUTE_NORTH_BYPASS"
+      },
+      "raw_command": "RobotBlue REROUTE_NORTH_BYPASS",
+      "command_source": "inventory_gated_model_visual_gap",
+      "action": "REROUTE",
+      "route": "north_bypass",
+      "model_seconds": 4.685742,
+      "host_total_seconds": 5.436489,
+      "reroute_confirmation_streak": 1
+    }
+  ],
+  "response_counts": {
+    "RobotBlue REROUTE_NORTH_BYPASS": 5,
+    "RobotBlue CONTINUE_CURRENT_ROUTE": 37
+  },
+  "request_failures": [],
+  "abort_reason": null,
+  "baseline_responses": 0,
+  "baseline_false_interventions": 0,
+  "scenario_released": true,
+  "forklift_released": false,
+  "forklift_enabled": false,
+  "forklift_release_x": 1.5,
+  "expected_destination_route": "direct",
+  "destination_first_frame": 130,
+  "destination_reached": true,
+  "completion_reason": "destination_reached",
+  "media": {
+    "mp4": "artifacts/isaac_sim_live_aisle/runs/20260728_121054_0b559e26/live_aisle_supervisor.mp4",
+    "gif": "artifacts/isaac_sim_live_aisle/runs/20260728_121054_0b559e26/live_aisle_supervisor.gif"
+  },
+  "events": "artifacts/isaac_sim_live_aisle/runs/20260728_121054_0b559e26/events.jsonl"
+}

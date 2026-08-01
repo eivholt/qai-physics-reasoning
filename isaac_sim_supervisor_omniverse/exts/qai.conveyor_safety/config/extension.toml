@@ -1,0 +1,20 @@
+[package]
+version = "0.1.0"
+category = "Simulation"
+title = "Reason2 Conveyor Safety"
+description = "Xbox-controlled forklifts and live Cosmos Reason2 conveyor clearance status."
+authors = ["QAI Physics Reasoning tutorial"]
+repository = ""
+keywords = ["isaac", "cosmos", "reason2", "conveyor", "xbox", "forklift"]
+writeTarget.kit = true
+
+[dependencies]
+"omni.appwindow" = {}
+"omni.kit.menu.utils" = {}
+"omni.kit.uiapp" = {}
+"omni.physx" = {}
+"omni.timeline" = {}
+"isaacsim.robot.experimental.wheeled_robots" = {}
+
+[[python.module]]
+name = "qai.conveyor_safety"

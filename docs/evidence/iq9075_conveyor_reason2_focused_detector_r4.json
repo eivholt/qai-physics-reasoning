@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0",
+  "created_at_utc": "2026-07-30T14:05:00Z",
+  "backend": "IQ-9075 EVK NPU",
+  "model": "local/cosmos-reason2-2b:Q4_0",
+  "image_resolution": [
+    384,
+    216
+  ],
+  "camera": "detector_endline",
+  "camera_eye_m": [
+    0.2,
+    -8.5,
+    2.8
+  ],
+  "rolling_window_frames": 2,
+  "cases": [
+    {
+      "expected": "GREEN",
+      "primary_signal": "AMBER",
+      "primary_latency_seconds": 3.472415,
+      "camera_motion_confirmed": false,
+      "applied_signal": "GREEN",
+      "note": "First request was cold. The amber consistency gate rejected A because the two input frames were identical."
+    },
+    {
+      "expected": "AMBER",
+      "primary_signal": "AMBER",
+      "primary_latency_seconds": 0.780232,
+      "camera_motion_confirmed": true,
+      "measured_motion_pixels_per_second": [
+        52.5,
+        -0.833
+      ],
+      "projected_entry_seconds": 0.9,
+      "applied_signal": "AMBER"
+    },
+    {
+      "expected": "RED",
+      "primary_signal": "RED",
+      "primary_latency_seconds": 0.796519,
+      "red_confirmation_triggered": false,
+      "applied_signal": "RED"
+    }
+  ],
+  "model_inputs_excluded": [
+    "semantic boxes",
+    "red overlap flag",
+    "camera motion vector",
+    "projected entry time",
+    "simulator coordinates",
+    "metric clearance",
+    "controller input",
+    "validation label"
+  ],
+  "service": {
+    "compute": "npu",
+    "single_instance": true,
+    "parallel_requests": false
+  },
+  "live_loop_verification": {
+    "green": {
+      "primary_signal": "AMBER",
+      "camera_motion_confirmed": false,
+      "applied_signal": "GREEN",
+      "model_seconds": 0.811505,
+      "cycle_seconds": 1.334835,
+      "state_read_seconds": 0.000006
+    },
+    "amber": {
+      "request_index": 5,
+      "primary_signal": "AMBER",
+      "camera_motion_confirmed": true,
+      "motion_pixels_per_second": [
+        23.096,
+        -0.367
+      ],
+      "projected_entry_seconds": 1.7,
+      "applied_signal": "AMBER",
+      "model_seconds": 0.836631,
+      "cycle_seconds": 1.399765
+    }
+  }
+}

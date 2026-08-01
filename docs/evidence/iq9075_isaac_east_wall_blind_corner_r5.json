@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "title": "East-wall blind-corner EVK supervisor run",
+  "run_id": "20260729_184944_04a2a3d4",
+  "date": "2026-07-29",
+  "inference": {
+    "backend": "evk",
+    "target": "ubuntu@192.168.1.158",
+    "model": "local/cosmos-reason2-2b:Q4_0",
+    "responses": 15,
+    "response_counts": {
+      "RobotBlue REROUTE_NORTH_BYPASS": 13,
+      "RobotBlue CONTINUE_CURRENT_ROUTE": 2
+    },
+    "model_seconds": {
+      "mean": 5.73297,
+      "median": 6.139986,
+      "p95": 6.178519
+    },
+    "host_round_trip_seconds": {
+      "mean": 6.232901,
+      "median": 6.639313,
+      "p95": 6.679923
+    },
+    "request_failures": 0
+  },
+  "model_input": {
+    "sensor_camera": "tactical",
+    "sensor_capture_resolution": [
+      1280,
+      720
+    ],
+    "encoded_resolution": [
+      384,
+      216
+    ],
+    "aspect_ratio": "16:9",
+    "frames_per_window": 8,
+    "frames_per_second": 2,
+    "window_seconds": 4,
+    "presentation_route_visualizations": false,
+    "tracked_scene_facts_in_prompt": false,
+    "inventory_gate": "both mobile robot and forklift must be PRESENT"
+  },
+  "scenario": {
+    "name": "blind_corner",
+    "robot_start": [
+      -3.5,
+      1.6,
+      0.0
+    ],
+    "forklift_start": [
+      6.1,
+      5.8,
+      0.0
+    ],
+    "forklift_release_robot_x": -1.5,
+    "reroute_confirmations_required": 2,
+    "expected_route": "north_bypass"
+  },
+  "first_applied_reroute": {
+    "request_id": "live-002",
+    "simulation_seconds": 8.1,
+    "robot_position": [
+      -1.105836,
+      1.601756,
+      -0.01
+    ],
+    "forklift_position": [
+      6.1,
+      5.344,
+      0.0
+    ],
+    "distance_before_junction_m": 1.105836,
+    "simulated_lead_time_at_0_3_mps_seconds": 3.68612,
+    "robot_camera_forklift_visible": false,
+    "supervisor_camera_both_actors_visible": true,
+    "model_inventory": "mobile robot: PRESENT\nforklift: PRESENT",
+    "model_command": "RobotBlue REROUTE_NORTH_BYPASS"
+  },
+  "outcome": {
+    "completion_reason": "destination_reached",
+    "destination_reached": true,
+    "destination_route_matches_expected": true,
+    "applied_route_changes": 1,
+    "local_safety_hold": false
+  },
+  "media": {
+    "simulation_mp4": "../media/isaac_sim_edge_supervisor_east_wall_r5/blind_corner_east_wall_evk.mp4",
+    "simulation_gif": "../media/isaac_sim_edge_supervisor_east_wall_r5/blind_corner_east_wall_evk.gif",
+    "exact_model_input_contact_sheet": "../media/isaac_sim_edge_supervisor_east_wall_r5/model_input_live002_contact_sheet.png",
+    "supervisor_at_reroute": "../media/isaac_sim_edge_supervisor_east_wall_r5/supervisor_at_reroute.png",
+    "robot_pov_at_reroute": "../media/isaac_sim_edge_supervisor_east_wall_r5/robot_pov_at_reroute.png",
+    "exact_model_input_live_002": "../media/isaac_sim_edge_supervisor_east_wall_r5/exact_model_input_live002.mp4"
+  },
+  "source_artifacts": {
+    "run_directory": "artifacts/isaac_sim_live_aisle/runs/20260729_184944_04a2a3d4",
+    "checkpoint": "artifacts/isaac_sim_checkpoints/lightweight_warehouse_v17_extended_north_east_wall_narrow_camera.usda"
+  }
+}

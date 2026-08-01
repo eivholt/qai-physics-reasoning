@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "purpose": "perception_diagnostic_only_no_actuation",
+  "media": "/tmp/evk_hazard_384x216.mp4",
+  "media_url": "file:///tmp/evk_hazard_384x216.mp4",
+  "server_url": "http://127.0.0.1:18181",
+  "model": "local/cosmos-reason2-2b:Q4_0",
+  "elapsed_seconds": 5.6239248600031715,
+  "identity_hints": true,
+  "prompt": "You are inspecting a fixed overhead warehouse safety-camera recording.\nDescribe only what is visibly supported by the complete image or chronological\nvideo. Do not assume a task, destination, cooperation, or intent that is not\nvisible.\n\nWrite exactly these seven labeled lines, at most 25 words per line:\nACTORS: visible mobile actors, appearance, and actor type\nLOCATIONS: positions relative to shelves, pallets, walls, and aisles\nMOTION: visible direction across the window, or indeterminate\nDISTANCE: decreasing, increasing, unchanged, or indeterminate\nPATH_OVERLAP: yes, no, or indeterminate, followed by visible evidence\nUNCERTAINTY: anything occluded, small, dark, or ambiguous\nSCENE_SUMMARY: one factual sentence\n\nKnown visual identity bindings for this scene: the compact low-profile white\nunit is RobotBlue, an autonomous mobile robot. The large blue/black/yellow\nindustrial vehicle is a forklift. These labels identify appearance only; do\nnot assume either actor's motion, task, destination, or safety state.\n",
+  "description": "Left, the forklift is positioned near the center of the frame, while the robot is positioned near the left side of the frame. The forklift is stationary, while the robot is stationary. The forklift is positioned near the left side of the frame, while the robot is positioned near the center of the frame. The forklift is positioned near the left side of the frame, while the robot is positioned near the center of the frame. The forkl",
+  "usage": {
+    "completion_tokens": 96,
+    "prompt_tokens": 248,
+    "total_tokens": 344,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0
+    }
+  }
+}

@@ -219,8 +219,16 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Model downloads, quantization outputs, and deployable binaries
-/artifacts/
+# Project-local Codex connection settings contain machine-specific paths.
+/.codex/
+
+# Model downloads, quantization outputs, deployable binaries, generated runs,
+# and historical Isaac checkpoints remain local. The one verified, portable
+# conveyor scene is intentionally versioned through Git LFS.
+/artifacts/*
+!/artifacts/isaac_sim_checkpoints/
+/artifacts/isaac_sim_checkpoints/*
+!/artifacts/isaac_sim_checkpoints/reason2_conveyor_safety_stable_cargo_r38.usda
 /checkpoints/
 /exports/
 /logs/
@@ -235,6 +243,12 @@ __marimo__/
 *.gguf
 *.zip
 *.raw
+
+# Keep only the two documentation media sets used by the current tutorials.
+# Older exploratory recordings remain local generated evidence.
+/docs/media/*
+!/docs/media/isaac_sim_edge_supervisor_east_wall_r5/
+!/docs/media/isaac_sim_edge_supervisor_rolling_evk_r4/
 
 # Local credentials and signing material
 *.pem

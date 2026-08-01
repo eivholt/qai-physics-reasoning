@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "recorded_at_local": "2026-07-28",
+  "run_id": "20260728_014608_92d408e5",
+  "scenario": "blind_corner_forklift_emergence_with_north_bypass",
+  "source_summary": "artifacts/isaac_sim_live_aisle/runs/20260728_014608_92d408e5/summary.json",
+  "source_events": "artifacts/isaac_sim_live_aisle/runs/20260728_014608_92d408e5/events.jsonl",
+  "inference": {
+    "backend": "host",
+    "accelerator": "NVIDIA RTX 5090",
+    "model": "host/cosmos-reason2-2b:BF16",
+    "server": "llama.cpp OpenAI-compatible local endpoint",
+    "prompt_cache": false,
+    "supervisor_profile": "tracked",
+    "sensor_camera": "roof",
+    "frames_per_window": 8,
+    "model_video_width": 768
+  },
+  "simulation": {
+    "isaac_sim_version": "6.0.1",
+    "motion_controller": "kinematic_waypoint",
+    "robot_speed_mps": 0.18,
+    "forklift_release_x_m": -0.75,
+    "local_safety_hold_distance_m": 2.2,
+    "presentation_camera": "roof",
+    "presentation_route_visualizations": true,
+    "model_sensor_route_visualizations": false
+  },
+  "results": {
+    "captured_frames": 51,
+    "request_failures": 0,
+    "commands": {
+      "RobotBlue CONTINUE CURRENT_ROUTE": 12,
+      "RobotBlue REROUTE NORTH_BYPASS": 2,
+      "RobotBlue REROUTE SOUTH_BYPASS": 0,
+      "RobotBlue YIELD HOLD": 0,
+      "RobotBlue STOP HOLD": 0
+    },
+    "clear_baseline_responses": 1,
+    "clear_baseline_false_interventions": 0,
+    "pre_hazard_approach_continue_responses": 10,
+    "first_hazard_request_id": "live-012",
+    "first_hazard_command": "RobotBlue REROUTE NORTH_BYPASS",
+    "first_hazard_model_seconds": 1.539966,
+    "first_hazard_end_to_end_seconds": 1.848273,
+    "forklift_emergence_nearest_presentation_frame": 36,
+    "first_reroute_applied_nearest_presentation_frame": 46,
+    "final_active_route": "north_bypass",
+    "final_robot_xy_m": [
+      0.833597930342342,
+      2.28347794613632
+    ],
+    "local_safety_takeovers": 0
+  },
+  "policy_facts_at_hazard": {
+    "direct": "EMERGING_BLOCK",
+    "north_bypass": "OPEN",
+    "south_bypass": "BLOCKED_STATIC_PALLETS",
+    "commandable_actors": [
+      "RobotBlue"
+    ]
+  },
+  "published_media": {
+    "full_closed_loop.mp4": {
+      "bytes": 610611,
+      "sha256": "e4958028715ddf5f8a203cb8bbea8762b01e8ae469e08893706c962d0d579a51"
+    },
+    "full_closed_loop.gif": {
+      "bytes": 8271817,
+      "sha256": "f38f5655ab8423333fbb4ca76c0f0e0ced9fa04b5a4c3723259463f8914a771f"
+    },
+    "clear_route_control.gif": {
+      "bytes": 3917939,
+      "sha256": "bad27fb085791525a9cc567d4c318112b21f52eb6ed7d90ba45a5fef2c2d49bc"
+    },
+    "blind_corner_north_bypass.gif": {
+      "bytes": 3035014,
+      "sha256": "3e9ee5e25602a43d334533cae5318c4b7a356125386345ebe77ccac1f9772570"
+    }
+  },
+  "scope": {
+    "verified": [
+      "Isaac Sim roof frames were continuously captured and submitted",
+      "Reason2 returned one allow-listed command per completed request",
+      "the gateway rejected routes contradicted by tracked route occupancy",
+      "the returned north-bypass command changed RobotBlue's live waypoint route",
+      "the local safety fallback did not trigger"
+    ],
+    "not_claimed": [
+      "vision-only hazard understanding",
+      "built-in Isaac navigation-stack actuation",
+      "final IQ9075 EVK performance for this corrected scenario",
+      "production collision avoidance certification"
+    ]
+  }
+}

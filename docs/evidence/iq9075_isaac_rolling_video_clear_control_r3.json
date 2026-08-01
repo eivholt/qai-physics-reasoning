@@ -1,0 +1,89 @@
+{
+  "schema_version": "1.0",
+  "recorded_at_local": "2026-07-29",
+  "scenario": "clear_route_control_rolling_video",
+  "run_id": "20260729_095238_974daf1a",
+  "isaac_sim": {
+    "version": "6.0.1",
+    "checkpoint": "artifacts/isaac_sim_checkpoints/lightweight_warehouse_v9_visual_supervisor_ready.usda",
+    "sensor_camera": "BlindCornerTactical",
+    "presentation_camera": "RoofOverview",
+    "motion_controller": "isaac_graph",
+    "robot_speed_mps": 0.75,
+    "forklift_enabled": false,
+    "captured_frames": 142,
+    "destination_reached": true,
+    "final_route": "direct",
+    "final_robot_position": [
+      -5.0717396736145,
+      4.79806089401245,
+      -0.00999914109706879
+    ]
+  },
+  "evk": {
+    "address": "192.168.1.158",
+    "model": "local/cosmos-reason2-2b:Q4_0",
+    "compute_requested": "npu",
+    "rolling_window": {
+      "frames": 20,
+      "fps": 2.0,
+      "duration_seconds": 10.0,
+      "encoded_geometry": "384x216",
+      "codec": "H.264",
+      "chronological_video": true,
+      "earlier_now_composite": false,
+      "tracked_scene_facts_in_prompt": false,
+      "route_overlays_in_model_input": false
+    }
+  },
+  "responses": {
+    "count": 18,
+    "counts": {
+      "RobotBlue CONTINUE_CURRENT_ROUTE": 15,
+      "RobotBlue REROUTE_NORTH_BYPASS": 3
+    },
+    "false_reroute_request_ids": [
+      "live-007",
+      "live-010",
+      "live-011"
+    ],
+    "maximum_false_reroute_streak": 2,
+    "reroute_confirmations_required": 3,
+    "applied_route_changes": 0,
+    "mean_model_seconds": 9.820216,
+    "p95_model_seconds": 19.487906,
+    "mean_host_total_seconds": 10.52923,
+    "p95_host_total_seconds": 20.214147,
+    "request_failures": 0
+  },
+  "current_compact_inventory_replay": {
+    "source_request_id": "live-010",
+    "purpose": "Replay an exact prior false-positive rolling window after replacing the verbose seven-category inventory with a compact two-actor inventory.",
+    "scene_inventory": "mobile robot: PRESENT\nforklift: UNCERTAIN",
+    "raw_command": "RobotBlue CONTINUE_CURRENT_ROUTE",
+    "motion_reasoning_stage_requested": false,
+    "total_model_seconds": 6.528731
+  },
+  "safety": {
+    "local_safety_hold_activated": false,
+    "model_can_command_only": [
+      "RobotBlue"
+    ],
+    "model_emits_wheel_velocities": false,
+    "consensus_prevented_false_actuation": true
+  },
+  "artifacts": {
+    "run_directory": "artifacts/isaac_sim_live_aisle/runs/20260729_095238_974daf1a",
+    "summary": "artifacts/isaac_sim_live_aisle/runs/20260729_095238_974daf1a/summary.json",
+    "events": "artifacts/isaac_sim_live_aisle/runs/20260729_095238_974daf1a/events.jsonl",
+    "tutorial_mp4": {
+      "path": "docs/media/isaac_sim_edge_supervisor_rolling_evk_r3/clear_route_rolling_video_evk.mp4",
+      "sha256": "68a6e3941c876ff381c25b510a012bb31ad119c13babff395a8c82f020a91219"
+    },
+    "tutorial_gif": {
+      "path": "docs/media/isaac_sim_edge_supervisor_rolling_evk_r3/clear_route_rolling_video_evk.gif",
+      "sha256": "c6c3870b77b1d062af004ab678e2d06dc9f3a01bc4e2a2d7a787092eaa1dc5e"
+    }
+  },
+  "claim_boundary": "The raw Q4 model remains noisy. This run demonstrates bounded consensus and a matched no-hazard control, not perfect perception or certified safety."
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "purpose": "perception_diagnostic_only_no_actuation",
+  "media": "/tmp/evk_hazard_384x216.mp4",
+  "media_url": "file:///tmp/evk_hazard_384x216.mp4",
+  "server_url": "http://127.0.0.1:18181",
+  "model": "local/cosmos-reason2-2b:Q4_0",
+  "elapsed_seconds": 3.12229142698925,
+  "identity_hints": false,
+  "prompt": "Return exactly seven lines, in this order, with PRESENT, ABSENT, or UNCERTAIN and one visual cue: MOBILE_ROBOT; FORKLIFT; METAL_SHELVING; CARDBOARD_CARTONS; WOODEN_PALLETS; TRAFFIC_CONES; WALLS. Inspect pixels only. Do not infer motion or intent.",
+  "description": "Left, there is a forklift and a metal shelving unit, and the wooden pallets are on the ground. Right, there is a forklift and a metal shelving unit, and the wooden pallets are on the ground.",
+  "usage": {
+    "completion_tokens": 50,
+    "prompt_tokens": 100,
+    "total_tokens": 150,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0
+    }
+  }
+}

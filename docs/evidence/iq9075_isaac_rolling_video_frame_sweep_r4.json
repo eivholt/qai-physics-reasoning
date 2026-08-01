@@ -1,0 +1,122 @@
+{
+  "schema_version": "1.0",
+  "recorded_at_local": "2026-07-29",
+  "experiment": "isaac_camera_only_rolling_video_frame_sweep",
+  "constant_settings": {
+    "model": "local/cosmos-reason2-2b:Q4_0",
+    "compute_requested": "npu",
+    "sensor_camera": "BlindCornerTactical",
+    "encoded_geometry": "384x216",
+    "capture_fps": 2.0,
+    "model_fps": 2.0,
+    "supervisor_profile": "vision_only",
+    "compact_two_actor_inventory": true,
+    "tracked_scene_facts_in_prompt": false,
+    "reroute_confirmations_required": 3
+  },
+  "trials": [
+    {
+      "frames": 12,
+      "duration_seconds": 6.0,
+      "hazard": {
+        "run_id": "20260729_133123_7df92e79",
+        "mean_model_seconds": 8.267241,
+        "p95_model_seconds": 8.492375,
+        "responses": 14,
+        "reroute_proposals": 13,
+        "destination_reached": true,
+        "final_route": "north_bypass",
+        "passed": true
+      },
+      "clear": {
+        "run_id": "20260729_133508_f0fe3b8d",
+        "mean_model_seconds": 5.593761,
+        "p95_model_seconds": 8.364503,
+        "responses_before_abort": 15,
+        "false_reroute_proposals": 5,
+        "maximum_false_reroute_streak": 3,
+        "wrong_route_applied": true,
+        "passed": false,
+        "note": "RobotBlue physically reached the goal on the wrong north-bypass route. The pre-fix harness kept requesting because the route label did not match, then aborted after three EVK timeouts."
+      },
+      "pair_passed": false
+    },
+    {
+      "frames": 8,
+      "duration_seconds": 4.0,
+      "hazard": {
+        "run_id": "20260729_134149_ff7c17a7",
+        "mean_model_seconds": 4.558775,
+        "p95_model_seconds": 6.258478,
+        "responses": 24,
+        "reroute_proposals": 10,
+        "maximum_reroute_streak": 4,
+        "destination_reached": true,
+        "final_route": "north_bypass",
+        "local_safety_hold_activated": false,
+        "passed": true
+      },
+      "clear": {
+        "run_id": "20260729_134526_4deddb91",
+        "mean_model_seconds": 3.155333,
+        "p95_model_seconds": 3.190415,
+        "responses": 37,
+        "false_reroute_proposals": 0,
+        "maximum_false_reroute_streak": 0,
+        "destination_reached": true,
+        "final_route": "direct",
+        "passed": true
+      },
+      "pair_passed": true,
+      "selected_for_live_demo": true
+    },
+    {
+      "frames": 6,
+      "duration_seconds": 3.0,
+      "hazard": {
+        "run_id": "20260729_135058_831bbdc7",
+        "mean_model_seconds": 2.676056,
+        "p95_model_seconds": 2.630354,
+        "responses": 80,
+        "reroute_proposals": 2,
+        "maximum_reroute_streak": 2,
+        "destination_reached": false,
+        "final_route": "hold",
+        "local_safety_hold_activated": true,
+        "completion_reason": "runtime_limit",
+        "passed": false
+      },
+      "clear": {
+        "run_id": "20260729_135618_513e3cf1",
+        "mean_model_seconds": 2.611479,
+        "p95_model_seconds": 2.627405,
+        "responses": 53,
+        "false_reroute_proposals": 0,
+        "destination_reached": true,
+        "final_route": "direct",
+        "passed": true
+      },
+      "pair_passed": false
+    }
+  ],
+  "historical_20_frame_latency_reference": {
+    "strictly_prompt_matched": false,
+    "reason": "The archived 20-frame live runs predate the compact two-actor inventory used throughout this sweep.",
+    "hazard": {
+      "run_id": "20260729_093947_eeefc908",
+      "mean_model_seconds": 12.931413,
+      "p95_model_seconds": 19.062076
+    },
+    "clear": {
+      "run_id": "20260729_095238_974daf1a",
+      "mean_model_seconds": 9.820216,
+      "p95_model_seconds": 19.487906
+    }
+  },
+  "selection": {
+    "frames": 8,
+    "duration_seconds": 4.0,
+    "reason": "Eight frames was the smallest tested window whose hazard and clear full trajectories both passed without local safety intervention or a wrong route."
+  },
+  "claim_boundary": "Each point is one full hazard trajectory and one full clear trajectory. The sweep identifies a practical demo operating point, not a statistically validated accuracy optimum."
+}

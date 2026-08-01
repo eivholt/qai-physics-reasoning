@@ -1,0 +1,16 @@
+[package]
+version = "0.1.0"
+category = "Simulation"
+title = "Edge AI Warehouse Supervisor"
+description = "Live Cosmos Reason2 EVK observability for the Isaac Sim warehouse supervisor demo."
+authors = ["QAI Physics Reasoning tutorial"]
+repository = ""
+keywords = ["isaac", "warehouse", "edge ai", "cosmos", "evk"]
+writeTarget.kit = true
+
+[dependencies]
+"omni.kit.menu.utils" = {}
+"omni.kit.uiapp" = {}
+
+[[python.module]]
+name = "qai.edge_ai_supervisor"
