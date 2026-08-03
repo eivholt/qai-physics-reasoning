@@ -278,6 +278,13 @@ The lightweight warehouse uses supplied Isaac Sim assets for the Nova Carter
 robot, forklift, rack modules, cartons, and pallets. It avoids the much heavier
 full warehouse scene while retaining realistic logistics geometry.
 
+![Top-down view of the blind-corner warehouse simulation](media/isaac_sim_edge_supervisor_rolling_evk_r4/blind_corner_8frame_destination.png)
+
+*Top-down view of the blind-corner scenario. RobotBlue starts beyond the
+stocked rack, the forklift approaches from the right, and the route overlay
+shows the direct aisle crossing and the bounded bypass available to the edge
+supervisor.*
+
 The current recoverable checkpoint is:
 
 ```text
@@ -331,28 +338,33 @@ python .\integrations\isaac_sim_mcp\server.py --check-isaac
 Copy and start the persistent GenieX service:
 
 ```powershell
-scp .\scripts\start_evk_geniex_isaac_service.sh `
-  ubuntu@192.168.1.158:/tmp/start_evk_geniex_isaac_service.sh
+$EvkTarget = "ubuntu@<EVK IP>"
 
-ssh ubuntu@192.168.1.158 `
+scp .\scripts\start_evk_geniex_isaac_service.sh `
+  "${EvkTarget}:/tmp/start_evk_geniex_isaac_service.sh"
+
+ssh $EvkTarget `
   "bash /tmp/start_evk_geniex_isaac_service.sh"
 ```
 
-The address is the tutorial lab device, not a credential.
+Replace `<EVK IP>` with the address assigned to your board.
 
 Confirm the model:
 
 ```powershell
-ssh ubuntu@192.168.1.158 `
+$EvkTarget = "ubuntu@<EVK IP>"
+ssh $EvkTarget `
   "curl -s http://127.0.0.1:18181/v1/models"
 ```
 
 ## Run the blind-corner demonstration
 
 ```powershell
+$EvkTarget = "ubuntu@<EVK IP>"
+
 python .\scripts\run_live_isaac_evk_supervisor.py `
   --inference-backend evk `
-  --evk-target ubuntu@192.168.1.158 `
+  --evk-target $EvkTarget `
   --scenario blind_corner `
   --supervisor-profile vision_only `
   --vision-input rolling_video `
@@ -380,9 +392,11 @@ This reproduces the measured eight-frame, two-confirmation east-wall profile.
 This uses the same tactical model input but records the wider roof view:
 
 ```powershell
+$EvkTarget = "ubuntu@<EVK IP>"
+
 python .\scripts\run_live_isaac_evk_supervisor.py `
   --inference-backend evk `
-  --evk-target ubuntu@192.168.1.158 `
+  --evk-target $EvkTarget `
   --scenario clear_route_control `
   --supervisor-profile vision_only `
   --vision-input rolling_video `
@@ -476,3 +490,229 @@ The next useful scenarios are:
 
 Each should retain independent safety control, multi-window confirmation, raw
 response logs, and a matched no-hazard control.
+
+## Real-video case study: forklift proximity at a conveyor opening
+
+The Isaac Sim supervisor above is intentionally bounded, but developers also
+need to know how the same model behaves on ordinary industrial footage. This
+small case study uses the public
+[Damon Retractable Conveyor Forklift Access Gate video](https://www.youtube.com/watch?v=M788xHT0QNM)
+as a real-camera control. It is an illustrative prompt, parser, quantization,
+and temporal-consensus experiment—not a safety benchmark or a claim about the
+video's original purpose.
+
+The 42.18-second source was divided into 21 non-overlapping two-second
+windows. Each window contains eight chronological frames at 4 FPS. The event
+definition is deliberately narrow:
+
+```text
+ACTIVE = forklift_moving AND forklift_in_conveyor_proximity
+```
+
+`forklift_in_conveyor_proximity` means that a physical part of the foreground
+red-and-black forklift is immediately next to, or passing through, the narrow
+opening between the two low conveyor ends. The opening is the uncalibrated
+fixed-camera proxy for a distance of at most 50 cm. `INACTIVE` therefore means
+that the forklift is stationary **or** not in conveyor proximity. Conveyor
+motion and small machinery behind the rear fence do not count.
+
+The manually assigned operational reference contains four active windows,
+from 18 through 26 seconds, and 17 inactive windows. This is local reference
+labeling for the case study; the YouTube source does not supply event labels.
+An inconclusive response counts as incorrect in overall accuracy and is never
+silently converted to inactive.
+
+### GPU BF16: latest result
+
+The host run sends one 1546 × 438 JPEG storyboard per request. The storyboard
+contains all eight 384 × 216 frames in a 4-by-2 layout. The overlay displays
+the latest raw semantic result and the end-to-end request time.
+
+![GPU BF16 latest-result inference](media/reason2_forklift_conveyor_comparison/gpu_latest.gif)
+
+This run detects all four active windows without a false active decision, but
+three late responses do not contain a parsable answer label. Counting those
+inconclusive windows as errors gives 18/21 overall accuracy; accuracy is 18/18
+over conclusive decisions.
+
+### GPU BF16: rolling average of three results
+
+The second presentation uses the same GPU requests and keeps the latest three
+inference attempts. Green is inactive, red is active, and grey is
+inconclusive. An inconclusive attempt remains visible as a grey history square
+but contributes no numeric vote. The fourth square is active when the mean of
+the remaining votes is at least 0.5. Its `AVG` time is the sum of the three
+displayed request times, including an inconclusive attempt.
+
+![GPU BF16 rolling three-result average](media/reason2_forklift_conveyor_comparison/gpu_rolling_average.gif)
+
+Consensus removes all inconclusive final decisions and improves overall
+accuracy to 19/21. It is not free: the majority decision starts one window
+late and remains active one window after the reference event ends. This is the
+expected temporal lag of a three-result filter, not another model inference.
+
+### IQ9 EVK: latest full-NPU result
+
+The EVK cannot use the host storyboard unchanged. Submitting the 1546 × 438
+image to this full-NPU GenieX build reproduces the known
+`dspqueue_read failed: 0x0000002e` large-image failure. The successful EVK run
+therefore sends each same two-second window as a native 384 × 216 H.264 MP4.
+The patched persistent service samples it at a verified 4 FPS, giving the
+model eight temporal frames, and runs `local/cosmos-reason2-2b:Q4_0` with
+GenieX `--compute npu --ngl -1`.
+
+![IQ9 EVK NPU latest-result inference](media/reason2_forklift_conveyor_comparison/evk_npu_latest.gif)
+
+The EVK marks three of the four reference-active windows active, misses
+18–20 seconds, and produces early active decisions at 2–4 and 16–18 seconds.
+It reaches 18/21 overall accuracy, but its active precision is lower than the
+GPU run because its errors are conclusive false positives rather than missing
+answers.
+
+### Accuracy and latency
+
+The small sample is useful for debugging a deployment profile, not for
+estimating production accuracy. `TP` and `FN` refer to the four reference
+active windows; `TN` and `FP` refer to the 17 inactive windows.
+
+| Presentation | Correct | Overall accuracy | TP / TN / FP / FN | Inconclusive | Active precision / recall | Mean / median / P95 request time |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| GPU BF16, latest | 18/21 | 85.7% | 4 / 14 / 0 / 0 | 3 | 100% / 100% | 6.195 / 5.421 / 11.530 s |
+| GPU BF16, average of three | 19/21 | 90.5% | 3 / 16 / 1 / 1 | 0 | 75% / 75% | same 21 underlying GPU requests |
+| IQ9 EVK Q4_0 NPU, latest | 18/21 | 85.7% | 3 / 15 / 2 / 1 | 0 | 60% / 75% | 4.956 / 4.137 / 8.002 s |
+
+After the first three results are available, the average presentation's
+displayed three-request total ranges from 9.79 to 34.66 seconds and averages
+18.24 seconds. That sum describes the evidence represented by the three
+squares; it is not a claim that one inference takes 18.24 seconds.
+
+### Prompts and input contracts
+
+The GPU request uses this system prompt:
+
+```text
+You are a physical-AI observer. Use visible evidence only.
+Put brief reasoning in <think> and the requested fields in <answer>.
+```
+
+Its user prompt describes the tiled representation explicitly:
+
+```text
+The supplied image is a 4-by-2 storyboard containing eight consecutive video
+frames over two seconds. Read the top row from left to right, then the bottom
+row from left to right.
+
+Classify the event as ACTIVE only when the same foreground red-and-black Toyota
+forklift visibly changes position across the tiles AND it is immediately next
+to, or passes through, the narrow opening between the two low conveyor ends.
+That opening is the fixed-camera proxy for <=50 cm. Classify it as INACTIVE if
+no foreground forklift is visible, the forklift is stationary, or it remains
+outside the opening. Motion of the retractable conveyor does not count. Ignore
+small machinery behind the rear mesh fence.
+
+Briefly verify both motion and proximity from visible tiles in <think>. Inside
+<answer>, write exactly one semantic label: ACTIVE or INACTIVE.
+```
+
+The EVK reasoning run uses a nearly matched system prompt:
+
+```text
+You are a physical-AI observer. Use visible evidence only.
+Put brief reasoning in <think> and the requested label in <answer>.
+```
+
+Its user prompt describes native video rather than a storyboard:
+
+```text
+The supplied video contains consecutive frames covering two seconds from one
+fixed camera. Classify the event as ACTIVE only when the same foreground
+red-and-black Toyota forklift visibly changes position across the video AND it
+is immediately next to, or passes through, the narrow opening between the two
+low conveyor ends. That opening is the fixed-camera proxy for <=50 cm.
+Classify it as INACTIVE if no foreground forklift is visible, the forklift is
+stationary, or it remains outside the opening. Motion of the retractable
+conveyor does not count. Ignore small machinery behind the rear mesh fence.
+Briefly verify both motion and proximity in <think>. Inside <answer>, write
+exactly one semantic label: ACTIVE or INACTIVE.
+```
+
+The two paths are intentionally similar at the task level but are not
+tensor-equivalent:
+
+| Property | Host GPU | IQ9 EVK |
+| --- | --- | --- |
+| Model precision | BF16 | Q4_0 |
+| Visual transport | one 1546 × 438 storyboard JPEG | native 384 × 216 MP4 |
+| Temporal representation | eight visible storyboard tiles | eight frames sampled at 4 FPS and paired by the native-video path |
+| Completion limit | 512 tokens | 256 tokens |
+| Mean completion length | 308.8 tokens | 45.9 tokens |
+| Result parsing | `<answer>` label | final semantic-label fallback |
+| Service state | already-running host server | warm persistent GenieX NPU server |
+
+The token counters from the two serving wrappers do not account for visual
+tokens in exactly the same way, so prompt-token totals should not be compared
+as a hardware throughput metric.
+
+### Why the EVK looks faster but follows the format less reliably
+
+The EVK's 4.956-second mean is only about 1.25 times faster than the GPU's
+6.195-second mean, even though its responses contain about 6.7 times fewer
+completion tokens. Several GPU requests generate 400–512 tokens and dominate
+the slow tail; the EVK usually stops after 19–60 tokens. Q4_0 also moves much
+less weight data than BF16, and the NPU is efficient at low-batch quantized
+decoding. These measurements therefore do **not** establish that the IQ9 NPU
+is faster than the host GPU for equivalent inference.
+
+Formatting shows the opposite quality tradeoff. A typical GPU response is:
+
+```text
+<think>
+The forklift moves across the tiles and passes through the opening.
+</think>
+<answer>ACTIVE</answer>
+```
+
+A typical EVK response is semantically clear but malformed:
+
+```text
+<think>: The forklift moves through the opening between the conveyors.
+</think>: ACTIVE
+```
+
+The GPU produces a parsable opening `<answer>` label in 18/21 responses and a
+fully closed `<answer>...</answer>` block in 11/21. The EVK produces no
+`<answer>` block in 21 attempts, although every response ends in an
+unambiguous standalone `ACTIVE` or `INACTIVE`. The overlay preserves that
+semantic result through an explicit final-label fallback.
+
+This pattern points first to different GenieX/chat-template and
+`enable_think` handling, then to Q4_0 numerical sensitivity around low-value
+punctuation and tag tokens. It is not ordinary truncation: all EVK responses
+finish with `stop`, and none reaches the 256-token limit. A grammar-constrained
+label-only experiment returns correctly shaped output in about 1.5 seconds,
+but collapses to `ACTIVE` for all 21 windows. Grammar can guarantee syntax; it
+cannot guarantee that the constrained answer is grounded.
+
+### Lessons for constrained edge deployments
+
+1. Define the operational event as Boolean conditions before tuning prose.
+   `moving AND close` makes the negative condition `stationary OR not close`.
+2. Preserve raw model text, parsed output, parse mode, latency, and input media.
+   A clean application label can otherwise hide malformed or unsupported
+   reasoning.
+3. Measure coverage separately from accuracy. The GPU makes fewer wrong
+   conclusive decisions here, but it also declines three windows implicitly by
+   failing the parser.
+4. Treat grammar as a protocol tool, not an accuracy tool. Establish that the
+   unconstrained model can distinguish the classes before forcing a small
+   answer set.
+5. If reasoning helps quality but breaks the schema, use a two-stage design:
+   retain free reasoning, then request or derive a separately constrained
+   decision. Keep a declared `INCONCLUSIVE` state when neither path is safe.
+6. Match precision, preprocessing, frame sampling, prompt, output budget, and
+   server load before comparing hardware latency.
+7. Use temporal consensus only with an explicit lag budget. It improves this
+   case from 18/21 to 19/21, but delays onset and holds the event after it ends.
+8. Respect the deployable visual envelope. Increasing image size triggered an
+   NPU runtime failure; native low-resolution video was more useful than a
+   nominally identical but unsupported storyboard.

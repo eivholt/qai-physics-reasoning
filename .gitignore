@@ -244,11 +244,12 @@ __marimo__/
 *.zip
 *.raw
 
-# Keep only the two documentation media sets used by the current tutorials.
+# Keep only the documentation media sets used by the current tutorials.
 # Older exploratory recordings remain local generated evidence.
 /docs/media/*
 !/docs/media/isaac_sim_edge_supervisor_east_wall_r5/
 !/docs/media/isaac_sim_edge_supervisor_rolling_evk_r4/
+!/docs/media/reason2_forklift_conveyor_comparison/
 
 # Local credentials and signing material
 *.pem
