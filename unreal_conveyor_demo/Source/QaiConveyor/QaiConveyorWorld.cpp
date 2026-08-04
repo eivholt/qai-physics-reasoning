@@ -92,8 +92,13 @@ namespace ConveyorTuning
     constexpr float GravityCmPerSecondSquared = 980.0f;
     constexpr float ParcelRestitution = 0.14f;
     constexpr float ConveyorRollerTopFallbackCm = 76.9307f;
-    constexpr float ConveyorBeltFrictionPerSecond = 8.0f;
-    constexpr float ConveyorCenteringPerSecondSquared = 7.0f;
+    // Moving rollers transfer momentum through a Coulomb-friction contact.
+    // Heading follows the curved roller field through a bounded torque rather
+    // than a direct transform interpolation.
+    constexpr float ConveyorHeadingAngularAccelerationDegrees = 150.0f;
+    constexpr float ConveyorMaximumYawSpeedDegrees = 65.0f;
+    constexpr float ConveyorYawDampingPerSecond = 2.8f;
+    constexpr float ParcelMaximumImpactYawSpeedDegrees = 240.0f;
     constexpr float ForkliftWheelRadiusCm = 31.0f;
     constexpr float ForkliftTireClearanceCm = 0.6f;
     constexpr float WorkerSpeedCm = 72.0f;
@@ -424,6 +429,20 @@ namespace ConveyorTuning
         Relative *= NewSpeed / FMath::Max(Speed, UE_SMALL_NUMBER);
         Velocity.X = SupportVelocity.X + Relative.X;
         Velocity.Y = SupportVelocity.Y + Relative.Y;
+    }
+
+    float YawImpulseDeltaDegrees(
+        const FVector& LeverArmCm,
+        const FVector& ImpulseKgCmPerSecond,
+        float InertiaZKgCm2,
+        float ResponseScale)
+    {
+        const float AngularImpulseZ = FVector::CrossProduct(
+            LeverArmCm,
+            ImpulseKgCmPerSecond).Z;
+        return FMath::RadiansToDegrees(
+            AngularImpulseZ / FMath::Max(InertiaZKgCm2, 1.0f))
+            * ResponseScale;
     }
 
     float ProjectedVerticalHalfExtent(const FQuat& Rotation, const FVector& HalfExtent)
@@ -3438,6 +3457,7 @@ void AQaiConveyorWorld::BindNativeComponents()
     ParcelRollDegrees.Reset();
     ParcelPitchVelocities.Reset();
     ParcelRollVelocities.Reset();
+    ParcelYawVelocities.Reset();
     ParcelGrounded.Reset();
     ParcelLinearVelocities.Reset();
     ParcelSupportedForklifts.Reset();
@@ -3552,6 +3572,7 @@ void AQaiConveyorWorld::BindNativeComponents()
             ParcelRollDegrees.Add(0.0f);
             ParcelPitchVelocities.Add(0.0f);
             ParcelRollVelocities.Add(0.0f);
+            ParcelYawVelocities.Add(0.0f);
             ParcelGrounded.Add(true);
             FVector AuthoredPosition;
             FVector AuthoredTangent;
@@ -3593,6 +3614,7 @@ void AQaiConveyorWorld::BindNativeComponents()
                 ParcelPhysics.Restitution));
         }
     }
+    SimulatorLog(TEXT("conveyor_contact_model drive=coulomb_moving_surface centering_force=disabled heading=torque_limited fixed_step_hz=120"));
 
     Workers[0].Root = FindTaggedComponent(TEXT("Qai.Worker1"));
     Workers[0].Waypoints = {
@@ -4501,6 +4523,7 @@ void AQaiConveyorWorld::ResetScene()
         if (ParcelRollDegrees.IsValidIndex(Index)) ParcelRollDegrees[Index] = 0.0f;
         if (ParcelPitchVelocities.IsValidIndex(Index)) ParcelPitchVelocities[Index] = 0.0f;
         if (ParcelRollVelocities.IsValidIndex(Index)) ParcelRollVelocities[Index] = 0.0f;
+        if (ParcelYawVelocities.IsValidIndex(Index)) ParcelYawVelocities[Index] = 0.0f;
         if (ParcelGrounded.IsValidIndex(Index)) ParcelGrounded[Index] = true;
         if (ParcelSupportedForklifts.IsValidIndex(Index)) ParcelSupportedForklifts[Index] = INDEX_NONE;
         if (ParcelForkContactsLogged.IsValidIndex(Index)) ParcelForkContactsLogged[Index] = false;
@@ -6465,7 +6488,8 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
             || !ParcelLinearVelocities.IsValidIndex(Index)
             || !ParcelGrounded.IsValidIndex(Index)
             || !ParcelPitchVelocities.IsValidIndex(Index)
-            || !ParcelRollVelocities.IsValidIndex(Index))
+            || !ParcelRollVelocities.IsValidIndex(Index)
+            || !ParcelYawVelocities.IsValidIndex(Index))
         {
             continue;
         }
@@ -6515,17 +6539,13 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
         if (bWasOnBelt)
         {
             const FVector TargetVelocity = CurrentTangent * ConveyorTuning::ConveyorSpeedCm;
-            const float GripScale = FMath::Clamp(
-                Physics.DynamicFriction / 0.50f,
-                0.55f,
-                1.35f);
-            const float FrictionAlpha = 1.0f - FMath::Exp(
-                -ConveyorTuning::ConveyorBeltFrictionPerSecond * GripScale * StepSeconds);
-            Velocity.X = FMath::Lerp(Velocity.X, TargetVelocity.X, FrictionAlpha);
-            Velocity.Y = FMath::Lerp(Velocity.Y, TargetVelocity.Y, FrictionAlpha);
-            FVector Centering = CurrentProjection - CurrentCenter;
-            Centering.Z = 0.0f;
-            Velocity += Centering * ConveyorTuning::ConveyorCenteringPerSecondSquared * StepSeconds;
+            ConveyorTuning::ApplyCoulombFriction(
+                Velocity,
+                TargetVelocity,
+                Physics.StaticFriction,
+                Physics.DynamicFriction,
+                Physics.SleepLinearSpeedCm,
+                StepSeconds);
         }
 
         Velocity *= FMath::Exp(-Physics.AirLinearDamping * StepSeconds);
@@ -6534,10 +6554,13 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
         FQuat NextRotation = CurrentRotation;
         float& PitchVelocity = ParcelPitchVelocities[Index];
         float& RollVelocity = ParcelRollVelocities[Index];
+        float& YawVelocity = ParcelYawVelocities[Index];
         PitchVelocity *= FMath::Exp(-Physics.AirAngularDamping * StepSeconds);
         RollVelocity *= FMath::Exp(-Physics.AirAngularDamping * StepSeconds);
+        YawVelocity *= FMath::Exp(-Physics.AirAngularDamping * StepSeconds);
         if (FMath::Abs(PitchVelocity) > UE_KINDA_SMALL_NUMBER
-            || FMath::Abs(RollVelocity) > UE_KINDA_SMALL_NUMBER)
+            || FMath::Abs(RollVelocity) > UE_KINDA_SMALL_NUMBER
+            || FMath::Abs(YawVelocity) > UE_KINDA_SMALL_NUMBER)
         {
             const FQuat PitchStep(
                 NextRotation.GetRightVector(),
@@ -6545,7 +6568,10 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
             const FQuat RollStep(
                 NextRotation.GetForwardVector(),
                 FMath::DegreesToRadians(RollVelocity * StepSeconds));
-            NextRotation = (RollStep * PitchStep * NextRotation).GetNormalized();
+            const FQuat YawStep(
+                FVector::UpVector,
+                FMath::DegreesToRadians(YawVelocity * StepSeconds));
+            NextRotation = (YawStep * RollStep * PitchStep * NextRotation).GetNormalized();
         }
         FVector NextCenter = NextCenterOfMass
             - NextRotation.RotateVector(Physics.CenterOfMassLocalOffset);
@@ -6830,8 +6856,32 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
                         Other.Physics.Restitution);
                     const float ImpulseMagnitude = -(1.0f + Restitution)
                         * RelativeNormalSpeed / InverseMassSum;
-                    Velocity += Normal * ImpulseMagnitude * ParcelInverseMass;
-                    Other.LinearVelocity -= Normal * ImpulseMagnitude * OtherInverseMass;
+                    const FVector Impulse = Normal * ImpulseMagnitude;
+                    Velocity += Impulse * ParcelInverseMass;
+                    Other.LinearVelocity -= Impulse * OtherInverseMass;
+                    const FVector ContactPoint = (NextCenter + OtherCenter) * 0.5f;
+                    const FVector ParcelCenterOfMass = NextCenter
+                        + NextRotation.RotateVector(Physics.CenterOfMassLocalOffset);
+                    const FVector OtherCenterOfMass = OtherCenter
+                        + OtherRoot->GetComponentQuat().RotateVector(
+                            Other.Physics.CenterOfMassLocalOffset);
+                    YawVelocity = FMath::Clamp(
+                        YawVelocity + ConveyorTuning::YawImpulseDeltaDegrees(
+                            ContactPoint - ParcelCenterOfMass,
+                            Impulse,
+                            Physics.InertiaTensorKgCm2.Z,
+                            Physics.AngularResponseScale),
+                        -ConveyorTuning::ParcelMaximumImpactYawSpeedDegrees,
+                        ConveyorTuning::ParcelMaximumImpactYawSpeedDegrees);
+                    Other.AngularVelocityDegrees.Z = FMath::Clamp(
+                        Other.AngularVelocityDegrees.Z
+                            + ConveyorTuning::YawImpulseDeltaDegrees(
+                                ContactPoint - OtherCenterOfMass,
+                                -Impulse,
+                                Other.Physics.InertiaTensorKgCm2.Z,
+                                Other.Physics.AngularResponseScale),
+                        -ConveyorTuning::ParcelMaximumImpactYawSpeedDegrees,
+                        ConveyorTuning::ParcelMaximumImpactYawSpeedDegrees);
                 }
                 Other.bAwake = true;
             }
@@ -6864,24 +6914,38 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
             }
             if (bOnBelt && !bBounced)
             {
-                const float GripScale = FMath::Clamp(
-                    Physics.DynamicFriction / 0.50f,
-                    0.55f,
-                    1.35f);
-                const float FrictionAlpha = 1.0f - FMath::Exp(
-                    -ConveyorTuning::ConveyorBeltFrictionPerSecond * GripScale * StepSeconds);
-                Velocity.X = FMath::Lerp(Velocity.X, SupportVelocity.X, FrictionAlpha);
-                Velocity.Y = FMath::Lerp(Velocity.Y, SupportVelocity.Y, FrictionAlpha);
+                // Existing contacts were already accelerated before the
+                // integration step. Apply once here only for a newly landed
+                // parcel, avoiding the old double drive impulse.
+                if (!bWasOnBelt)
+                {
+                    ConveyorTuning::ApplyCoulombFriction(
+                        Velocity,
+                        SupportVelocity,
+                        Physics.StaticFriction,
+                        Physics.DynamicFriction,
+                        Physics.SleepLinearSpeedCm,
+                        StepSeconds);
+                }
                 const FQuat Heading = FRotator(0.0f, NextTangent.Rotation().Yaw, 0.0f).Quaternion();
                 const FQuat TargetRotation = ParcelHeadingOffsets.IsValidIndex(Index)
                     ? Heading * ParcelHeadingOffsets[Index]
                     : Heading;
-                NextRotation = FQuat::Slerp(
-                    NextRotation,
-                    TargetRotation,
-                    1.0f - FMath::Exp(-6.5f * StepSeconds)).GetNormalized();
-                PitchVelocity *= FMath::Exp(-8.0f * StepSeconds);
-                RollVelocity *= FMath::Exp(-8.0f * StepSeconds);
+                const float HeadingError = FMath::FindDeltaAngleDegrees(
+                    NextRotation.Rotator().Yaw,
+                    TargetRotation.Rotator().Yaw);
+                const float DesiredAngularAcceleration = FMath::Clamp(
+                    HeadingError * 5.0f,
+                    -ConveyorTuning::ConveyorHeadingAngularAccelerationDegrees,
+                    ConveyorTuning::ConveyorHeadingAngularAccelerationDegrees);
+                YawVelocity = FMath::Clamp(
+                    YawVelocity + DesiredAngularAcceleration * StepSeconds,
+                    -ConveyorTuning::ConveyorMaximumYawSpeedDegrees,
+                    ConveyorTuning::ConveyorMaximumYawSpeedDegrees);
+                YawVelocity *= FMath::Exp(
+                    -ConveyorTuning::ConveyorYawDampingPerSecond * StepSeconds);
+                PitchVelocity *= FMath::Exp(-Physics.GroundAngularDamping * StepSeconds);
+                RollVelocity *= FMath::Exp(-Physics.GroundAngularDamping * StepSeconds);
             }
             else if (SupportedForklift != INDEX_NONE && !bBounced)
             {
@@ -6957,6 +7021,7 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
             Velocity.Z = -20.0f;
             PitchVelocity = 0.0f;
             RollVelocity = 0.0f;
+            YawVelocity = 0.0f;
             bGrounded = false;
             bOnBelt = false;
             SupportedForklift = INDEX_NONE;
@@ -7004,9 +7069,10 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
     for (int32 LeftIndex = 0; LeftIndex < Parcels.Num(); ++LeftIndex)
     {
         USceneComponent* Left = Parcels[LeftIndex].Get();
-        if (!Left || !ParcelHalfExtents.IsValidIndex(LeftIndex)
-            || !ParcelPhysicsProfiles.IsValidIndex(LeftIndex)
-            || !ParcelLinearVelocities.IsValidIndex(LeftIndex))
+            if (!Left || !ParcelHalfExtents.IsValidIndex(LeftIndex)
+                || !ParcelPhysicsProfiles.IsValidIndex(LeftIndex)
+                || !ParcelLinearVelocities.IsValidIndex(LeftIndex)
+                || !ParcelYawVelocities.IsValidIndex(LeftIndex))
         {
             continue;
         }
@@ -7015,7 +7081,8 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
             USceneComponent* Right = Parcels[RightIndex].Get();
             if (!Right || !ParcelHalfExtents.IsValidIndex(RightIndex)
                 || !ParcelPhysicsProfiles.IsValidIndex(RightIndex)
-                || !ParcelLinearVelocities.IsValidIndex(RightIndex))
+                || !ParcelLinearVelocities.IsValidIndex(RightIndex)
+                || !ParcelYawVelocities.IsValidIndex(RightIndex))
             {
                 continue;
             }
@@ -7057,10 +7124,35 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
                     RightPhysics.Restitution);
                 const float ImpulseMagnitude = -(1.0f + Restitution)
                     * RelativeNormalSpeed / InverseMassSum;
-                ParcelLinearVelocities[LeftIndex] += Normal
-                    * ImpulseMagnitude * LeftInverseMass;
-                ParcelLinearVelocities[RightIndex] -= Normal
-                    * ImpulseMagnitude * RightInverseMass;
+                const FVector Impulse = Normal * ImpulseMagnitude;
+                ParcelLinearVelocities[LeftIndex] += Impulse * LeftInverseMass;
+                ParcelLinearVelocities[RightIndex] -= Impulse * RightInverseMass;
+                const FVector ContactPoint = (
+                    Left->GetComponentLocation() + Right->GetComponentLocation()) * 0.5f;
+                const FVector LeftCenterOfMass = Left->GetComponentLocation()
+                    + Left->GetComponentQuat().RotateVector(
+                        LeftPhysics.CenterOfMassLocalOffset);
+                const FVector RightCenterOfMass = Right->GetComponentLocation()
+                    + Right->GetComponentQuat().RotateVector(
+                        RightPhysics.CenterOfMassLocalOffset);
+                ParcelYawVelocities[LeftIndex] = FMath::Clamp(
+                    ParcelYawVelocities[LeftIndex]
+                        + ConveyorTuning::YawImpulseDeltaDegrees(
+                            ContactPoint - LeftCenterOfMass,
+                            Impulse,
+                            LeftPhysics.InertiaTensorKgCm2.Z,
+                            LeftPhysics.AngularResponseScale),
+                    -ConveyorTuning::ParcelMaximumImpactYawSpeedDegrees,
+                    ConveyorTuning::ParcelMaximumImpactYawSpeedDegrees);
+                ParcelYawVelocities[RightIndex] = FMath::Clamp(
+                    ParcelYawVelocities[RightIndex]
+                        + ConveyorTuning::YawImpulseDeltaDegrees(
+                            ContactPoint - RightCenterOfMass,
+                            -Impulse,
+                            RightPhysics.InertiaTensorKgCm2.Z,
+                            RightPhysics.AngularResponseScale),
+                    -ConveyorTuning::ParcelMaximumImpactYawSpeedDegrees,
+                    ConveyorTuning::ParcelMaximumImpactYawSpeedDegrees);
             }
         }
     }

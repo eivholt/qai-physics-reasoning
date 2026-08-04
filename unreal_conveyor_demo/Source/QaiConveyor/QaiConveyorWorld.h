@@ -311,6 +311,7 @@ private:
     TArray<float> ParcelRollDegrees;
     TArray<float> ParcelPitchVelocities;
     TArray<float> ParcelRollVelocities;
+    TArray<float> ParcelYawVelocities;
     TArray<bool> ParcelGrounded;
     TArray<FVector> ParcelLinearVelocities;
     TArray<int32> ParcelSupportedForklifts;
