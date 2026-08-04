@@ -1,24 +1,35 @@
 # Camera-only edge AI warehouse supervisor in Isaac Sim
 
+**Author:** [Eivind Holt](https://www.linkedin.com/in/eivholt/), July 2026  
+
+**Repository:** [github.com/eivholt/or-edge-agent](https://github.com/eivholt/qai-physics-reasoning)  
+
+**Target:** [Qualcomm Dragonwing IQ-9075 EVK / QCS9075 / Hexagon v73](https://www.qualcomm.com/developer/hardware/qualcomm-iq-9075-evaluation-kit-evk). Hardware generously sponsored by Qualcomm
+
+**Model:** [nvidia/Cosmos-Reason2-2B](https://huggingface.co/nvidia/Cosmos-Reason2-2B) running on device NPU
+
+Physical-aware Visual Language Models can, in addition to identifying objects, reason whats happening in a camera feed and even what's likely to happen. As edge devices get more capable and we are able to compress these models, new possibilities arise in traditional sensor applications. However, experimenting and testing new ideas can be impractical and require for instance actors, forklifts and a warehouse.
+
+## Live simulation
+
+With mature simulation tools at our disposal, almost any scenario can be simulated. NVIDIA Omniverse Isaac Sim for instance, can the run a live simulation where we can stress test our application. We can connect our application or bare model hosted on an edge device to a simulation by sending a video feed (or any modality) to a device. Inference results can be returned and affect the simulation.
+
 This tutorial runs a live warehouse in Isaac Sim 6.0.1, continuously sends
 clean security-camera images to Cosmos-Reason2-2B on a Dragonwing IQ-9075 EVK,
-and lets one bounded model command change RobotBlue's active navigation route.
+and lets model output change a simulated robot's active navigation route.
 
-The published demonstrations are camera-only: the prompt contains no simulator
-coordinates, actor tracks, route occupancy, expected hazard label, or
-`TRACKED_SCENE_FACTS`. Isaac state is still used for deterministic simulation,
-recording, acceptance checks, and an independent emergency hold.
+In this demonstration the model running on EVK only ever sees camera feed and a prompt.
 
-## Published results
+## Demo
 
-The current visual walkthrough uses the east-wall blind-corner run. The
-clear-route run remains as an archived quantitative control from the earlier
-camera revision; its old animation is intentionally no longer embedded:
+In this demo we explore if an AI supervisor, extra eyes in the sky, could optimize autonomous logistics vehicles by communicating potential congestions or hazards the AMRs are unable to detect in time. The supervisor could have as many cameras as needed, placed at strategic point. To test this out a rudamentary warehouse was constructed in Isaac Sim, using standard assets. An autonomous vehicle, RobotBlue, was placed in an aisle and configured to use path finding to reach an endpoint. Several alternatice paths were defined and the supervisor is able to signal that an alternative route is better if it sees a potential congestion in the standard route.
+
+This tutorial does not cover steps in creating a simulation in Omniverse. One may opt to leave this to a coding agent, see appendix for setting up a MCP bridge with Omniverse APIs.
 
 | Demonstration | EVK responses | Applied behavior | Destination |
 | --- | ---: | --- | --- |
-| Clear-route control `20260729_134526_4deddb91` | 37 | stayed on the direct route | northwest goal reached |
-| Blind-corner congestion `20260729_184944_04a2a3d4` | 15 | two-vote EVK north reroute before RobotBlue can see the forklift | bypass goal reached |
+| Clear-route | 37 | stayed on the direct route | northwest goal reached |
+| Blind-corner congestion | 15 | two-vote EVK north reroute before RobotBlue can see the forklift | bypass goal reached |
 
 The EVK endpoint exposed `local/cosmos-reason2-2b:Q4_0`. Model input was a
 real eight-frame, four-second H.264 video generated from the clean tactical
