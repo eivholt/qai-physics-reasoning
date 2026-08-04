@@ -1,0 +1,57 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.8",
+  "Category": "Physical AI",
+  "Description": "Unreal Engine port of the Cosmos Reason2 warehouse conveyor safety demo.",
+  "Modules": [
+    {
+      "Name": "QaiConveyor",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "USDCore",
+      "Enabled": true
+    },
+    {
+      "Name": "USDImporter",
+      "Enabled": true,
+      "TargetAllowList": [
+        "Editor"
+      ]
+    },
+    {
+      "Name": "DatasmithCADImporter",
+      "Enabled": true,
+      "PlatformAllowList": [
+        "Win64"
+      ],
+      "TargetAllowList": [
+        "Editor"
+      ]
+    },
+    {
+      "Name": "GameInputWindows",
+      "Enabled": true,
+      "SupportedTargetPlatforms": [
+        "Win64"
+      ]
+    },
+    {
+      "Name": "GameInput",
+      "Enabled": true,
+      "SupportedTargetPlatforms": [
+        "Win64"
+      ]
+    },
+    {
+      "Name": "XInputDevice",
+      "Enabled": false,
+      "SupportedTargetPlatforms": [
+        "Win64"
+      ]
+    }
+  ]
+}

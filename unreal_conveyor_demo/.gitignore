@@ -1,0 +1,21 @@
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+*.sln
+
+# The private release payload is collected from NVIDIA/Omniverse sources.
+# It is staged into installers but intentionally not committed to Git.
+Content/OmniversePayload/*
+!Content/OmniversePayload/.gitkeep
+Build/Secrets/*.json
+Build/Secrets/*.env
+Build/ReleasePayloadSource/
+Build/Windows/FileOpenOrder/
+Provisioner/Payload/*
+!Provisioner/Payload/.gitkeep
+Provisioner/dist/
+Provisioner/build/
+Provisioner/.venv/
+Dist/

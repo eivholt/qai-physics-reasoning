@@ -1,0 +1,39 @@
+#!/bin/zsh
+set -u
+
+SYSTEM_LOG_DIR="/var/log/QaiConveyorDemo"
+mkdir -p "$SYSTEM_LOG_DIR"
+INSTALL_LOG="$SYSTEM_LOG_DIR/postinstall-$(date -u +%Y%m%dT%H%M%SZ).log"
+exec > >(tee -a "$INSTALL_LOG") 2>&1
+
+APP="/Applications/Reason2 Conveyor Safety.app"
+PROVISIONER="$APP/Contents/Provisioner/qai-conveyor-setup"
+console_user="$(stat -f '%Su' /dev/console)"
+if [[ -z "$console_user" || "$console_user" == "root" ]]; then
+  echo "No logged-in desktop user is available for per-user model provisioning." >&2
+  exit 1
+fi
+uid="$(id -u "$console_user")"
+home_dir="$(dscl . -read "/Users/$console_user" NFSHomeDirectory | awk '{print $2}')"
+user_log_dir="$home_dir/Library/Logs/QaiConveyorDemo"
+mkdir -p "$user_log_dir"
+cp "$INSTALL_LOG" "$user_log_dir/$(basename "$INSTALL_LOG")" 2>/dev/null || true
+chown -R "$console_user":staff "$user_log_dir" 2>/dev/null || true
+if [[ ! -x "$PROVISIONER" ]]; then
+  echo "Provisioner missing: $PROVISIONER" >&2
+  exit 1
+fi
+
+echo "Starting logged Qai Conveyor provisioning for $console_user"
+launchctl asuser "$uid" sudo -u "$console_user" env HOME="$home_dir" \
+  "$PROVISIONER" install --app-dir "$APP"
+status=$?
+if [[ $status -ne 0 ]]; then
+  cp "$INSTALL_LOG" "$user_log_dir/$(basename "$INSTALL_LOG")" 2>/dev/null || true
+  chown "$console_user":staff "$user_log_dir/$(basename "$INSTALL_LOG")" 2>/dev/null || true
+  echo "Provisioning failed; see $home_dir/Library/Logs/QaiConveyorDemo and its support ZIP." >&2
+  exit $status
+fi
+cp "$INSTALL_LOG" "$user_log_dir/$(basename "$INSTALL_LOG")" 2>/dev/null || true
+chown "$console_user":staff "$user_log_dir/$(basename "$INSTALL_LOG")" 2>/dev/null || true
+exit 0
