@@ -17,6 +17,7 @@ class QAICONVEYOR_API AQaiConveyorPawn : public APawn
 public:
     AQaiConveyorPawn();
     virtual void BeginPlay() override;
+    virtual void PossessedBy(AController* NewController) override;
     virtual void Tick(float DeltaSeconds) override;
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
@@ -38,12 +39,15 @@ private:
     float LiftInput = 0.0f;
     float CameraYawRateInput = 0.0f;
     float CameraPitchRateInput = 0.0f;
+    float KeyboardSteerFiltered = 0.0f;
     float OrbitYaw = 118.0f;
     float OrbitPitch = 68.0f;
     bool bBrake = false;
     bool bLoggedInputInitialization = false;
     bool bLoggedGamepadInput = false;
+    bool bLoggedKeyboardInput = false;
     bool bLoggedGamepadUnavailable = false;
+    bool bInputModeApplied = false;
     bool bDiagnosticCamera = false;
     bool bIntroCameraActive = true;
     bool bIntroCameraInitialized = false;
@@ -85,6 +89,13 @@ private:
     void BeginIntroCameraTransition();
     void UpdateIntroCamera(float DeltaSeconds);
     void FindRuntime();
+    void AcquireGameInputFocus();
+    void PollKeyboardFallback(
+        float DeltaSeconds,
+        float& OutThrottle,
+        float& OutSteer,
+        float& OutLift,
+        bool& OutBrake);
     void PollGamepadFallback(
         float DeltaSeconds,
         float& OutThrottle,

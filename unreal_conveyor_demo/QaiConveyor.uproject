@@ -52,6 +52,18 @@
       "SupportedTargetPlatforms": [
         "Win64"
       ]
+    },
+    {
+      "Name": "PythonScriptPlugin",
+      "Enabled": false
+    },
+    {
+      "Name": "EditorDataStorage",
+      "Enabled": false
+    },
+    {
+      "Name": "EditorDataStorageFeatures",
+      "Enabled": false
     }
   ]
 }

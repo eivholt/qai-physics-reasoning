@@ -558,8 +558,14 @@ route change and RobotBlue reached the north-bypass goal. In the matched clear
 control, all 37 proposals continued; RobotBlue stayed on the direct route and
 reached the northwest goal. Neither run needed a local-safety takeover.
 
-Each request is a real chronological eight-frame, four-second H.264 clip at
-384 × 216 and 2 FPS. It is not an `EARLIER`/`NOW` still-image composite.
+Each request is a real chronological eight-frame, four-second, pixel-lossless
+RGB H.264 clip at 384 × 216 and 2 FPS. The runner encodes model-bound video
+with `libx264rgb`, CRF 0, and RGB24; it does not use JPEG, ordinary lossy
+H.264, or 4:2:0 chroma subsampling. It is not an `EARLIER`/`NOW` still-image
+composite.
+
+Isaac captures lossless 1280 × 720 PNG frames. The only destructive visual
+preprocessing is the required resize to the verified 384 × 216 NPU grid.
 A live six/eight/twelve-frame sweep selected eight as the operating point:
 six missed the hazard, while twelve produced a correlated false reroute in
 the clear control.

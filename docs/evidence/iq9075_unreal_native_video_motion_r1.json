@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "report_id": "iq9075_unreal_native_video_motion_r1",
+  "created_date": "2026-08-06",
+  "status": "complete_initial_panel",
+  "question": "Does the patched native encoded-video path resolve forklift motion more reliably than two separate still-image attachments?",
+  "anti_cheating_contract": {
+    "allowed": [
+      "complete fixed-camera frames",
+      "chronological ordering",
+      "a fixed temporal sampling interval",
+      "generic task wording"
+    ],
+    "prohibited": [
+      "forklift crops or regions of interest",
+      "object detections or bounding boxes",
+      "known forklift trajectories",
+      "simulator transforms, velocities, or physics state",
+      "camera tracking or forklift-centered framing",
+      "case-specific prompts"
+    ],
+    "compliance": "All tests use the full 384x216 camera frame and only image/video content available to a real fixed camera."
+  },
+  "runtime": {
+    "model": "local/cosmos-reason2-2b:Q4_0",
+    "service": "patched GenieX v0.3.17 native-video runtime",
+    "compute": "NPU profile",
+    "video_sampling_fps": 2,
+    "container": "H.264 MP4",
+    "encoding": "libx264 CRF 0, yuv444p, two frames per clip",
+    "input_resolution": [384, 216]
+  },
+  "three_way_panel": {
+    "prompt": "Review the video in chronological order. Return R if any part of any forklift is inside the marked red zone. Otherwise, return A if any forklift is moving at all. Otherwise, return G. Ignore human workers, parcels, and the stack light. Return one letter only: R, A, or G.",
+    "sampling": {"temperature": 0, "top_k": 1, "seed": 42},
+    "native_video": {
+      "correct": 5,
+      "total": 9,
+      "predictions_by_truth": {
+        "G": ["A", "A", "A"],
+        "A": ["A", "A", "A"],
+        "R": ["R", "G", "R"]
+      },
+      "warm_wall_ms_range": [935.4, 973.8]
+    },
+    "two_still_baseline": {
+      "correct": 2,
+      "total": 9,
+      "predictions_by_truth": {
+        "G": ["A", "G", "A"],
+        "A": ["G", "G", "R"],
+        "R": ["R", "G", "G"]
+      },
+      "interpretation": "The apparent 5/9 improvement requires the controls below; it is not by itself proof of temporal motion understanding."
+    }
+  },
+  "identical_frame_control": {
+    "method": "Encode the same source frame twice in each two-frame clip.",
+    "expected": "No motion for non-red G and A source scenes; red remains red for R source scenes.",
+    "predictions": {
+      "G_source": ["A", "A", "A"],
+      "A_source": ["A", "A", "A"],
+      "R_source": ["R", "R", "R"]
+    },
+    "correct": 3,
+    "total": 9,
+    "finding": "The three-way prompt behaves approximately as red-if-detected, otherwise amber. Its 5/9 score does not demonstrate motion sensitivity."
+  },
+  "binary_motion_control": {
+    "prompt": "Review the full warehouse video in chronological order. Is any forklift moving between frames? Count translation or turning of the forklift body as movement. Do not count human workers, parcels, the conveyor, lighting, or camera noise as forklift movement. Answer exactly YES or NO.",
+    "adjacent_frame_actual": {
+      "stationary_G": {"correct": 3, "total": 3, "predictions": ["NO", "NO", "NO"]},
+      "moving_A": {"correct": 0, "total": 3, "predictions": ["NO", "NO", "NO"]}
+    },
+    "identical_frame_negative_controls": {
+      "correct": 6,
+      "total": 6,
+      "predictions": ["NO", "NO", "NO", "NO", "NO", "NO"]
+    },
+    "finding": "The binary prompt removes the amber bias but collapses to no-motion; the graph does not resolve these moving cases."
+  },
+  "wide_gap_control": {
+    "pairs": ["00-04", "00-08", "04-08"],
+    "stationary_G": {"correct": 3, "total": 3, "predictions": ["NO", "NO", "NO"]},
+    "moving_A": {"correct": 0, "total": 3, "predictions": ["NO", "NO", "NO"]},
+    "finding": "Increasing the full-frame temporal gap does not recover forklift motion, so adjacent-frame subtlety is not the sole cause."
+  },
+  "verdict": "Do not adopt the native-video path as a motion detector based on this panel. It improves the raw three-way score but fails causal controls: duplicated non-red frames are called amber, while a binary motion question calls both adjacent and wider-gap moving clips stationary. No forklift narrowing, trajectory information, or simulator metadata was used.",
+  "next_steps": [
+    "Keep the current production backend and do not add score gating that conceals these failures.",
+    "Evaluate a model or artifact trained/calibrated for full-frame temporal change rather than adding scene-specific crops.",
+    "Use a larger real-camera-style benchmark with multiple camera positions, forklift sizes, lighting conditions, stationary hard negatives, and independent scene motion before deployment decisions."
+  ]
+}

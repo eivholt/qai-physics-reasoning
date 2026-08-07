@@ -17,7 +17,8 @@ public class QaiConveyor : ModuleRules
             "JsonUtilities",
             "ImageWrapper",
             "RenderCore",
-            "RHI"
+            "RHI",
+            "Slate"
         });
 
         // Use Unreal's already-created Microsoft GameInput interface for a

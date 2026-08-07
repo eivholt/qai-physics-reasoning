@@ -3,6 +3,7 @@
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
+#include "Engine/Texture2D.h"
 #include "EngineUtils.h"
 #include "Misc/App.h"
 #include "Misc/CommandLine.h"
@@ -64,8 +65,7 @@ void AQaiConveyorHUD::DrawHUD()
     const float W = 590.0f * Scale;
     const float H = Runtime->IsStageReady() ? 248.0f * Scale : 158.0f * Scale;
     DrawRect(FLinearColor(0.015f, 0.02f, 0.025f, 0.88f), X, Y, W, H);
-    // The bar mirrors the same raw Reason2 output that drives the physical
-    // stack lamps. Ground truth is diagnostic text only.
+    // The bar and the physical stack lamps both expose raw Reason2 output.
     DrawRect(SignalColor(Runtime->GetRawModelSignal()), X, Y, 8.0f * Scale, H);
 
     UFont* Font = GEngine ? GEngine->GetSmallFont() : nullptr;
@@ -136,4 +136,55 @@ void AQaiConveyorHUD::DrawHUD()
     Line(
         FString::Printf(TEXT("F8: collision bounds %s"), Runtime->IsCollisionDebugEnabled() ? TEXT("ON") : TEXT("OFF")),
         Runtime->IsCollisionDebugEnabled() ? FLinearColor(0.3f, 1.0f, 0.45f) : FLinearColor(0.72f, 0.76f, 0.8f));
+
+    const float PreviewW = 246.0f * Scale;
+    const float PreviewH = PreviewW * 9.0f / 16.0f;
+    const float PreviewGap = 10.0f * Scale;
+    const float PreviewPanelW = PreviewW * 2.0f + PreviewGap + 28.0f * Scale;
+    const float PreviewPanelH = PreviewH + 58.0f * Scale;
+    const float PreviewPanelX = Canvas->SizeX - PreviewPanelW - 22.0f * Scale;
+    const float PreviewPanelY = 22.0f * Scale;
+    DrawRect(
+        FLinearColor(0.015f, 0.02f, 0.025f, 0.88f),
+        PreviewPanelX,
+        PreviewPanelY,
+        PreviewPanelW,
+        PreviewPanelH);
+    DrawText(
+        TEXT("REASON2 INPUT  |  LAST SUBMITTED PAIR"),
+        FLinearColor(0.35f, 0.78f, 1.0f),
+        PreviewPanelX + 14.0f * Scale,
+        PreviewPanelY + 10.0f * Scale,
+        Font,
+        Scale,
+        false);
+
+    const int32 SubmittedCount = Runtime->GetSubmittedInferenceFrameCount();
+    for (int32 Index = 0; Index < 2; ++Index)
+    {
+        const float FrameX = PreviewPanelX + 14.0f * Scale + Index * (PreviewW + PreviewGap);
+        const float FrameY = PreviewPanelY + 34.0f * Scale;
+        DrawRect(
+            FLinearColor(0.001f, 0.002f, 0.003f, 1.0f),
+            FrameX - 2.0f,
+            FrameY - 2.0f,
+            PreviewW + 4.0f,
+            PreviewH + 4.0f);
+        if (UTexture2D* Frame = Runtime->GetSubmittedInferenceFrame(Index))
+        {
+            DrawTexture(Frame, FrameX, FrameY, PreviewW, PreviewH, 0.0f, 0.0f, 1.0f, 1.0f);
+        }
+        const FString FrameRole = Index == 0 ? TEXT("OLDER") : TEXT("NEWEST");
+        const FString FrameTime = Runtime->GetSubmittedInferenceFrameTime(Index);
+        DrawText(
+            SubmittedCount > Index
+                ? FString::Printf(TEXT("%s  %s"), *FrameRole, FrameTime.IsEmpty() ? TEXT("--:--:--") : *FrameTime)
+                : FString::Printf(TEXT("%s  waiting for inference"), *FrameRole),
+            FLinearColor(0.72f, 0.76f, 0.8f),
+            FrameX,
+            FrameY + PreviewH + 5.0f * Scale,
+            Font,
+            Scale * 0.92f,
+            false);
+    }
 }

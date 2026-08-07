@@ -137,6 +137,15 @@ private:
         int32 PalletDynamicBody = INDEX_NONE;
         int32 CartonDynamicBody = INDEX_NONE;
         float SpeedCmPerSecond = 0.0f;
+        // Keyboard axes request full lock immediately; this is the resolved
+        // steering-rack position used by vehicle motion and wheel visuals.
+        float SteeringInput = 0.0f;
+        // Actual kinematic surface motion from the last fixed step. This is
+        // intentionally derived from the resolved root pose rather than the
+        // requested wheel speed: a blocked forklift must not drag cargo while
+        // its chassis is stationary.
+        FVector SurfaceLinearVelocityCmPerSecond = FVector::ZeroVector;
+        float SurfaceYawVelocityDegreesPerSecond = 0.0f;
         float LiftCm = 0.0f;
         float LiftDeltaCm = 0.0f;
         float WheelAngleDegrees = 0.0f;
@@ -180,6 +189,7 @@ private:
         float VisualHeadingYawDegrees = 0.0f;
         float MaximumVisualTurnRateDegreesPerSecond = 0.0f;
         float RouteReversalCooldownSeconds = 0.0f;
+        int32 SeparationEvents = 0;
     };
 
     struct FCollisionObstacle
@@ -256,6 +266,8 @@ private:
     void ConfigureForkliftMastMaterials();
 
     void FixedSimulationStep(float StepSeconds);
+    void TickResolutionDataset(float DeltaSeconds);
+    void ApplyResolutionDatasetVariant();
     void SimulateForklifts(float StepSeconds);
     void SimulateDynamicBoxes(float StepSeconds);
     void SimulateConveyor(float StepSeconds);
@@ -277,12 +289,19 @@ private:
     void TickInferenceCapture(float DeltaSeconds);
     void QueueCapture();
     void ReadbackAndCompressCapture();
-    void OnFrameEncoded(FString EncodedPng, TArray<FColor> Pixels);
-    UTexture2D* CreateInferencePreviewTexture(const TArray<FColor>& Pixels);
+    void OnFrameEncoded(
+        FString EncodedPng,
+        TArray<FColor> Pixels,
+        int32 FrameWidth,
+        int32 FrameHeight,
+        uint32 CaptureGeneration);
+    UTexture2D* CreateInferencePreviewTexture(
+        const TArray<FColor>& Pixels,
+        int32 FrameWidth,
+        int32 FrameHeight);
     void SubmitInference();
     void ProbeBackend();
     void HandleModelResponse(const FString& Body, bool bSucceeded, int32 ResponseCode);
-    FString ApplyConsistencyGate(const FString& Proposed) const;
     FString CurrentServerUrl() const;
     FString CurrentModelName() const;
 
@@ -295,6 +314,14 @@ private:
     TSharedPtr<FRHIGPUTextureReadback> CaptureReadback;
     TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> InferenceRequest;
     TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> ProbeRequest;
+    uint32 InferenceCaptureGeneration = 1;
+    uint32 PendingCaptureGeneration = 0;
+    int32 CaptureRenderWidth = 512;
+    int32 CaptureRenderHeight = 288;
+    int32 HostCaptureWidth = 512;
+    int32 HostCaptureHeight = 288;
+    int32 PendingCaptureOutputWidth = 384;
+    int32 PendingCaptureOutputHeight = 216;
 
     FForkliftRuntime Forklifts[2];
     TArray<TWeakObjectPtr<USceneComponent>> Parcels;
@@ -387,18 +414,27 @@ private:
     FString ActiveBackend = TEXT("host");
     FString ActiveModel;
     FString HostServerUrl = TEXT("http://127.0.0.1:18080");
-    FString HostModel = TEXT("Cosmos-Reason2-2B-BF16-split-00001-of-00002.gguf");
+    FString HostModel = TEXT("Cosmos-Reason2-2B-BF16.gguf");
     FString EvkServerUrl = TEXT("http://127.0.0.1:18181");
     FString EvkModel = TEXT("local/cosmos-reason2-2b");
 
     TArray<FString> EncodedFrames;
+    // A transform observation is captured at the same instant as each RGB
+    // frame. It is used only as the Omniverse-style consistency tracker; it is
+    // never included in the Reason2 request.
+    TArray<FTransform> EncodedForkliftFrameTransforms;
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTexture2D>> EncodedFrameTextures;
     TArray<FString> EncodedFrameTimes;
 
+    TArray<FString> SubmittedEncodedFrames;
+
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTexture2D>> SubmittedFrameTextures;
     TArray<FString> SubmittedFrameTimes;
+    FString SubmittedGroundTruthSignal = TEXT("G");
+    bool bSubmittedForkliftMotion = false;
+    bool bSubmittedRedOverlap = false;
     float CommandThrottle = 0.0f;
     float CommandSteer = 0.0f;
     float CommandLift = 0.0f;
@@ -430,6 +466,7 @@ private:
     bool bCaptureReadbackPending = false;
     bool bEncodingFrame = false;
     bool bInferenceBusy = false;
+    bool bIsShuttingDown = false;
     bool bLoggedFirstCapture = false;
     bool bLoggedFirstReadback = false;
     bool bLoggedFirstEncodedFrame = false;
@@ -459,6 +496,12 @@ private:
     bool bRuntimeMotionTestCaptured = false;
     bool bPresentation4K = false;
     bool bPresentation4KCaptured = false;
+    bool bResolutionDataset = false;
+    bool bResolutionDatasetInitialized = false;
+    bool bResolutionDatasetWhiteFloor = false;
+    bool bResolutionDatasetHideWorkers = false;
+    bool bResolutionDatasetHideParcels = false;
+    FString ResolutionDatasetVariant = TEXT("baseline");
     bool bStackLightRigInitialized = false;
     bool bLoggedFirstParcelContact = false;
     bool bWestShelfPlacementApplied = false;
@@ -466,6 +509,7 @@ private:
     float RuntimeMotionTestElapsed = 0.0f;
     float PhysicsContactInitialParcelZ = 0.0f;
     float ShelfForkTestInitialBodyZ = 0.0f;
+    FVector ShelfForkTestInitialBodyLocation = FVector::ZeroVector;
     int32 ShelfForkTestBodyIndex = INDEX_NONE;
     float EvkPhysicsTestInitialZ = 0.0f;
     FVector EvkPhysicsTestInitialLocation = FVector::ZeroVector;
@@ -474,10 +518,15 @@ private:
     float ForkEdgeBalanceTestInitialZ = 0.0f;
     int32 ForkWedgeTestBodyIndex = INDEX_NONE;
     float ForkWedgeTestInitialZ = 0.0f;
+    FVector ForkWedgeTestInitialLocation = FVector::ZeroVector;
     float ForkWedgeTestMaximumZ = 0.0f;
     float WorkerSoakTestElapsed = 0.0f;
     float WorkerMinimumStaticClearanceCm[2] = {
         TNumericLimits<float>::Max(), TNumericLimits<float>::Max()};
     float Presentation4KElapsed = 0.0f;
+    float ResolutionDatasetElapsed = 0.0f;
+    int32 ResolutionDatasetPhase = INDEX_NONE;
+    int32 ResolutionDatasetFrameCounts[3] = {0, 0, 0};
+    FTransform ResolutionDatasetInitialForkliftTransform = FTransform::Identity;
     FString LastLoggedStackSignal;
 };

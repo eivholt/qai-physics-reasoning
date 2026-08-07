@@ -44,6 +44,10 @@ class LiveIsaacEvkSupervisorTests(unittest.TestCase):
         self.assertNotIn("drawtext", video_filter)
         self.assertNotIn("EARLIER", " ".join(command))
         self.assertNotIn("NOW", " ".join(command))
+        self.assertEqual(command[command.index("-c:v") + 1], "libx264rgb")
+        self.assertEqual(command[command.index("-crf") + 1], "0")
+        self.assertEqual(command[command.index("-pix_fmt") + 1], "rgb24")
+        self.assertNotIn("yuv420p", command)
 
     def test_encode_temporal_comparison_for_evk_uses_stable_video_shape(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -77,6 +81,17 @@ class LiveIsaacEvkSupervisorTests(unittest.TestCase):
         self.assertIn("scale=384:216", video_filter)
         self.assertIn("pad=384:216", video_filter)
         self.assertIn("force_original_aspect_ratio=decrease", video_filter)
+        video_command = commands[1]
+        self.assertEqual(
+            video_command[video_command.index("-c:v") + 1],
+            "libx264rgb",
+        )
+        self.assertEqual(video_command[video_command.index("-crf") + 1], "0")
+        self.assertEqual(
+            video_command[video_command.index("-pix_fmt") + 1],
+            "rgb24",
+        )
+        self.assertNotIn("yuv420p", video_command)
 
     def test_decode_tool_response_unwraps_json_output(self):
         response = {

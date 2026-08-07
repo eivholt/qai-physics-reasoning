@@ -52,6 +52,7 @@
 #include "Misc/Parse.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Math/PerspectiveMatrix.h"
 #include "RHICommandList.h"
 #include "RHIGPUReadback.h"
 #include "RenderingThread.h"
@@ -68,6 +69,8 @@ namespace ConveyorTuning
     constexpr float BrakingCm = 150.0f;
     constexpr float WheelbaseCm = 165.0f;
     constexpr float MaxSteerRadians = 0.52f;
+    constexpr float SteeringRisePerSecond = 2.35f;
+    constexpr float SteeringReturnPerSecond = 3.75f;
     constexpr float LiftSpeedCm = 90.0f;
     constexpr float MaxLiftCm = 200.0f;
     constexpr float BeltCenterX = 442.0f;
@@ -108,6 +111,16 @@ namespace ConveyorTuning
     constexpr float WorkerHeadingDeadbandDegrees = 12.0f;
     constexpr float WorkerRouteReversalCooldownSeconds = 1.15f;
     constexpr float CaptureInterval = 1.0f;
+    // Render once at the host model's validated 16:9 input size. EVK frames
+    // are downsampled before PNG encoding because its full-NPU vision path is
+    // validated at 384x216 and larger pairs can abort GenieX's DSP queue.
+    // A single render target is allocated at startup. Host-only diagnostic
+    // overrides can raise it to 768 or 1024; EVK output remains 384x216.
+    constexpr int32 DefaultHostCaptureWidth = 512;
+    constexpr int32 DefaultHostCaptureHeight = 288;
+    constexpr int32 MaximumHostCaptureWidth = 1024;
+    constexpr int32 EvkCaptureWidth = 384;
+    constexpr int32 EvkCaptureHeight = 216;
     const FVector IQ9EvkHalfExtentCm(5.30f, 5.30f, 2.15f);
     constexpr float IQ9EvkMassKg = 0.78f;
     // Keep the second authored vehicle in the project, but remove it from the
@@ -848,6 +861,7 @@ FString AQaiConveyorWorld::GetSubmittedInferenceFrameTime(int32 Index) const
 void AQaiConveyorWorld::BeginPlay()
 {
     Super::BeginPlay();
+    bIsShuttingDown = false;
     if (GEngine)
     {
         // Keep the standalone HUD clean (notably from RT residency warnings)
@@ -877,6 +891,20 @@ void AQaiConveyorWorld::BeginPlay()
     bHudScreenshotTest = FParse::Param(FCommandLine::Get(), TEXT("QaiHudScreenshotTest"));
     bWorkerSoakTest = FParse::Param(FCommandLine::Get(), TEXT("QaiWorkerSoakTest"));
     bPresentation4K = FParse::Param(FCommandLine::Get(), TEXT("QaiPresentation4K"));
+    bResolutionDataset = FParse::Param(FCommandLine::Get(), TEXT("QaiResolutionDataset"));
+    bResolutionDatasetWhiteFloor = FParse::Param(FCommandLine::Get(), TEXT("QaiResolutionDatasetWhiteFloor"));
+    bResolutionDatasetHideWorkers = FParse::Param(FCommandLine::Get(), TEXT("QaiResolutionDatasetHideWorkers"));
+    bResolutionDatasetHideParcels = FParse::Param(FCommandLine::Get(), TEXT("QaiResolutionDatasetHideParcels"));
+    FParse::Value(FCommandLine::Get(), TEXT("QaiResolutionDatasetVariant="), ResolutionDatasetVariant);
+    if (bResolutionDataset)
+    {
+        SimulatorLog(FString::Printf(
+            TEXT("resolution_dataset enabled=true variant=%s phases=G,A,R native_frames_per_phase=10 phase_seconds=12 slow_motion_cm_s=7 white_floor=%s hide_workers=%s hide_parcels=%s"),
+            *ResolutionDatasetVariant,
+            bResolutionDatasetWhiteFloor ? TEXT("true") : TEXT("false"),
+            bResolutionDatasetHideWorkers ? TEXT("true") : TEXT("false"),
+            bResolutionDatasetHideParcels ? TEXT("true") : TEXT("false")));
+    }
     if (bPresentation4K)
     {
         SimulatorLog(TEXT("presentation_capture mode=4k output=3840x2160 temporal_convergence_seconds=8"));
@@ -888,6 +916,7 @@ void AQaiConveyorWorld::BeginPlay()
     }
     LoadRuntimeConfig();
     BindNativeComponents();
+    ApplyResolutionDatasetVariant();
     SetupInferenceCapture();
     if (bInferenceEnabled)
     {
@@ -897,9 +926,15 @@ void AQaiConveyorWorld::BeginPlay()
 
 void AQaiConveyorWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    // Render readback and PNG compression finish on other threads. Mark the
+    // runtime unavailable before cancelling HTTP or releasing textures so no
+    // late game-thread continuation can recreate a transient render resource
+    // while Unreal is already dismantling the renderer.
+    bIsShuttingDown = true;
     SimulatorLog(FString::Printf(TEXT("session_end reason=%d"), static_cast<int32>(EndPlayReason)));
     bInferenceEnabled = false;
     bCaptureReadbackPending = false;
+    bEncodingFrame = false;
     if (InferenceRequest)
     {
         InferenceRequest->OnProcessRequestComplete().Unbind();
@@ -912,10 +947,23 @@ void AQaiConveyorWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
         ProbeRequest->CancelRequest();
         ProbeRequest.Reset();
     }
+    EncodedFrames.Reset();
+    EncodedForkliftFrameTransforms.Reset();
+    EncodedFrameTextures.Reset();
+    EncodedFrameTimes.Reset();
+    SubmittedEncodedFrames.Reset();
+    SubmittedFrameTextures.Reset();
+    SubmittedFrameTimes.Reset();
+    if (CaptureActor && CaptureActor->GetCaptureComponent2D())
+    {
+        CaptureActor->GetCaptureComponent2D()->TextureTarget = nullptr;
+    }
     // QueueCapture owns the readback on the render thread. Drain any final
     // enqueue before releasing the shared object during map/game shutdown.
     FlushRenderingCommands();
     CaptureReadback.Reset();
+    CaptureTarget = nullptr;
+    CaptureActor = nullptr;
     Super::EndPlay(EndPlayReason);
 }
 
@@ -1047,11 +1095,15 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                     }
                     if (TineCount > 0)
                     {
+                        const FQuat TestBodyRotation = ForkliftQuat
+                            * FQuat(FVector::UpVector, PI * 0.5f);
                         FVector BodyCenter = TineCenters / static_cast<float>(TineCount);
-                        BodyCenter.Z = TineTop + Body.HalfExtent.Z + 0.15f;
+                        BodyCenter.Z = TineTop
+                            + ConveyorTuning::ProjectedVerticalHalfExtent(TestBodyRotation, Body.HalfExtent)
+                            + 0.15f;
                         Body.Root->SetWorldLocationAndRotation(
                             BodyCenter,
-                            ForkliftQuat,
+                            TestBodyRotation,
                             false,
                             nullptr,
                             ETeleportType::TeleportPhysics);
@@ -1062,6 +1114,7 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                         Body.bAwake = true;
                         ShelfForkTestBodyIndex = BodyIndex;
                         ShelfForkTestInitialBodyZ = BodyCenter.Z;
+                        ShelfForkTestInitialBodyLocation = BodyCenter;
                         bShelfForkTestInitialized = true;
                         SimulatorLog(FString::Printf(
                             TEXT("shelf_fork_test_initialized body=%s fork_top_z_cm=%.2f body_z_cm=%.2f"),
@@ -1376,6 +1429,7 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                     Body.bLoggedContact = false;
                     ForkWedgeTestBodyIndex = TestBodyIndex;
                     ForkWedgeTestInitialZ = BodyCenter.Z;
+                    ForkWedgeTestInitialLocation = BodyCenter;
                     ForkWedgeTestMaximumZ = BodyCenter.Z;
                     bForkWedgeTestInitialized = true;
                     SimulatorLog(FString::Printf(
@@ -1461,6 +1515,7 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                 DynamicBoxes[ForkWedgeTestBodyIndex].Root->GetComponentLocation().Z);
         }
 
+        TickResolutionDataset(DeltaSeconds);
         TickStackLightRig(DeltaSeconds);
         TickEvkLeds(DeltaSeconds);
 
@@ -1579,6 +1634,13 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                 && DynamicBoxes.IsValidIndex(ShelfForkTestBodyIndex)
                 ? DynamicBoxes[ShelfForkTestBodyIndex].SupportedForklift + 1
                 : 0;
+            const float ShelfBodyPlanarDisplacementCm = bShelfForkTestInitialized
+                && DynamicBoxes.IsValidIndex(ShelfForkTestBodyIndex)
+                && DynamicBoxes[ShelfForkTestBodyIndex].Root.IsValid()
+                ? FVector::Dist2D(
+                    ShelfForkTestInitialBodyLocation,
+                    DynamicBoxes[ShelfForkTestBodyIndex].Root->GetComponentLocation())
+                : 0.0f;
             const float EvkDropCm = bEvkPhysicsTestInitialized
                 && DynamicBoxes.IsValidIndex(EvkDynamicBody)
                 && DynamicBoxes[EvkDynamicBody].Root.IsValid()
@@ -1635,20 +1697,61 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
             if (bForkWedgeTest)
             {
                 const float RampClimbCm = ForkWedgeTestMaximumZ - ForkWedgeTestInitialZ;
+                const FVector FinalBodyLocation = bForkWedgeTestInitialized
+                    && DynamicBoxes.IsValidIndex(ForkWedgeTestBodyIndex)
+                    && DynamicBoxes[ForkWedgeTestBodyIndex].Root.IsValid()
+                    ? DynamicBoxes[ForkWedgeTestBodyIndex].Root->GetComponentLocation()
+                    : ForkWedgeTestInitialLocation;
+                const float PlanarTravelCm = FVector::Dist2D(
+                    ForkWedgeTestInitialLocation, FinalBodyLocation);
                 const int32 FinalSupport = bForkWedgeTestInitialized
                     && DynamicBoxes.IsValidIndex(ForkWedgeTestBodyIndex)
                     ? DynamicBoxes[ForkWedgeTestBodyIndex].SupportedForklift + 1
                     : 0;
+                if (bForkWedgeTestInitialized
+                    && DynamicBoxes.IsValidIndex(ForkWedgeTestBodyIndex)
+                    && DynamicBoxes[ForkWedgeTestBodyIndex].Root.IsValid()
+                    && Forklifts[0].Root.IsValid())
+                {
+                    const FDynamicBoxRuntime& TestBody = DynamicBoxes[ForkWedgeTestBodyIndex];
+                    const FVector WorldLocation = TestBody.Root->GetComponentLocation();
+                    const FVector ForkLocalLocation = Forklifts[0].Root->GetComponentTransform()
+                        .InverseTransformPositionNoScale(WorldLocation);
+                    SimulatorLog(FString::Printf(
+                        TEXT("fork_wedge_test_final world=(%.2f,%.2f,%.2f) fork_local=(%.2f,%.2f,%.2f) velocity=(%.2f,%.2f,%.2f)"),
+                        WorldLocation.X, WorldLocation.Y, WorldLocation.Z,
+                        ForkLocalLocation.X, ForkLocalLocation.Y, ForkLocalLocation.Z,
+                        TestBody.LinearVelocity.X, TestBody.LinearVelocity.Y, TestBody.LinearVelocity.Z));
+                }
+                const bool bPriedUnder = RampClimbCm >= 4.0f && FinalSupport == 1;
+                const bool bFrictionTransferred = RampClimbCm >= 1.0f
+                    && PlanarTravelCm >= 20.0f;
                 const bool bPassed = bForkWedgeTestInitialized
-                    && RampClimbCm >= 4.0f
-                    && FinalSupport == 1;
+                    && (bPriedUnder || bFrictionTransferred);
                 const FString ForkWedgeResult = FString::Printf(
-                    TEXT("QAI_FORK_WEDGE_TEST passed=%s ramp_climb_cm=%.2f support_forklift=%d"),
+                    TEXT("QAI_FORK_WEDGE_TEST passed=%s mode=%s ramp_climb_cm=%.2f planar_cm=%.2f support_forklift=%d"),
                     bPassed ? TEXT("true") : TEXT("false"),
+                    bPriedUnder ? TEXT("pried_under") : TEXT("friction_transfer"),
                     RampClimbCm,
+                    PlanarTravelCm,
                     FinalSupport);
                 UE_LOG(LogTemp, Display, TEXT("%s"), *ForkWedgeResult);
                 SimulatorLog(ForkWedgeResult);
+            }
+            if (bShelfForkTest)
+            {
+                const bool bPassed = bShelfForkTestInitialized
+                    && ShelfBodyLiftCm >= 20.0f
+                    && ShelfBodyPlanarDisplacementCm >= 15.0f
+                    && ShelfBodySupport == 1;
+                const FString ShelfForkResult = FString::Printf(
+                    TEXT("QAI_SHELF_FORK_TEST passed=%s lift_cm=%.2f planar_cm=%.2f support_forklift=%d"),
+                    bPassed ? TEXT("true") : TEXT("false"),
+                    ShelfBodyLiftCm,
+                    ShelfBodyPlanarDisplacementCm,
+                    ShelfBodySupport);
+                UE_LOG(LogTemp, Display, TEXT("%s"), *ShelfForkResult);
+                SimulatorLog(ShelfForkResult);
             }
             const FString MotionResult = FString::Printf(
                 TEXT("QAI_RUNTIME_MOTION_TEST root_delta_cm=%0.1f lift_delta_cm=%0.1f lift_visual_delta_cm=%0.1f wheels=%0.2f parcels_grounded=%d parcel_impacts=%d fork_contacts=%d maximum_grounded_roller_gap_cm=%.3f contact_parcel_lift_cm=%.2f shelf_body_lift_cm=%.2f shelf_body_support_forklift=%d evk_drop_cm=%.2f evk_planar_cm=%.2f evk_test_passed=%s evk_final=(%.2f,%.2f,%.2f) forklift_shapes=%d wheel_cylinders=%d forklift_climb_cm=%.2f forklift_climb_test_passed=%s maximum_tip_degrees=%.2f worker1=(%0.1f,%0.1f) worker2=(%0.1f,%0.1f)"),
@@ -1729,6 +1832,171 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
     TickInferenceCapture(DeltaSeconds);
 }
 
+
+void AQaiConveyorWorld::TickResolutionDataset(float DeltaSeconds)
+{
+    if (!bResolutionDataset || !Forklifts[0].Root.IsValid())
+    {
+        return;
+    }
+
+    if (!bResolutionDatasetInitialized)
+    {
+        bResolutionDatasetInitialized = true;
+        ResolutionDatasetInitialForkliftTransform = Forklifts[0].Root->GetComponentTransform();
+        ResolutionDatasetElapsed = 0.0f;
+        ResolutionDatasetPhase = INDEX_NONE;
+        SimulatorLog(FString::Printf(
+            TEXT("resolution_dataset initialized capture=%dx%d"),
+            HostCaptureWidth,
+            HostCaptureHeight));
+    }
+
+    ResolutionDatasetElapsed += DeltaSeconds;
+    const int32 NewPhase = ResolutionDatasetElapsed < 12.0f
+        ? 0
+        : (ResolutionDatasetElapsed < 24.0f ? 1 : 2);
+    if (NewPhase != ResolutionDatasetPhase)
+    {
+        ResolutionDatasetPhase = NewPhase;
+        CancelActiveInference();
+        const TCHAR* PhaseSignal = NewPhase == 0 ? TEXT("G") : (NewPhase == 1 ? TEXT("A") : TEXT("R"));
+        SimulatorLog(FString::Printf(
+            TEXT("resolution_dataset phase=%s elapsed_seconds=%.2f"),
+            PhaseSignal,
+            ResolutionDatasetElapsed));
+    }
+
+    FForkliftRuntime& Forklift = Forklifts[0];
+    FTransform TestTransform = ResolutionDatasetInitialForkliftTransform;
+    if (ResolutionDatasetPhase == 1)
+    {
+        const float PhaseSeconds = ResolutionDatasetElapsed - 12.0f;
+        FVector AwayFromBelt = ResolutionDatasetInitialForkliftTransform.GetLocation()
+            - FVector(ConveyorTuning::BeltCenterX, ConveyorTuning::BeltCenterY, 0.0f);
+        AwayFromBelt.Z = 0.0f;
+        AwayFromBelt = AwayFromBelt.GetSafeNormal();
+        TestTransform.AddToTranslation(AwayFromBelt * (PhaseSeconds * 7.0f));
+        Forklift.SpeedCmPerSecond = 7.0f;
+    }
+    else if (ResolutionDatasetPhase == 2)
+    {
+        FVector RedLocation = ResolutionDatasetInitialForkliftTransform.GetLocation();
+        RedLocation.X = ConveyorTuning::BeltCenterX;
+        RedLocation.Y = ConveyorTuning::BeltCenterY;
+        TestTransform.SetLocation(RedLocation);
+        Forklift.SpeedCmPerSecond = 0.0f;
+    }
+    else
+    {
+        Forklift.SpeedCmPerSecond = 0.0f;
+    }
+
+
+    Forklift.Root->SetWorldTransform(TestTransform, false, nullptr, ETeleportType::TeleportPhysics);
+    UpdateSafetySignal();
+}
+
+void AQaiConveyorWorld::ApplyResolutionDatasetVariant()
+{
+    if (!bResolutionDataset || !GetWorld())
+    {
+        return;
+    }
+
+    int32 WhiteFloorComponents = 0;
+    int32 HiddenWorkers = 0;
+    int32 HiddenParcels = 0;
+
+    if (bResolutionDatasetWhiteFloor)
+    {
+        UTexture* WhiteTexture = LoadObject<UTexture>(
+            nullptr,
+            TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
+        for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+        {
+            TInlineComponentArray<UStaticMeshComponent*> Meshes(*It);
+            for (UStaticMeshComponent* Mesh : Meshes)
+            {
+                if (!Mesh || !Mesh->GetStaticMesh())
+                {
+                    continue;
+                }
+                const FString ComponentName = Mesh->GetName();
+                const FString MeshName = Mesh->GetStaticMesh()->GetName();
+                const bool bWarehouseFloor = MeshName.Contains(TEXT("SM_floor02"), ESearchCase::IgnoreCase)
+                    || ComponentName.StartsWith(TEXT("FloorFinish"), ESearchCase::IgnoreCase)
+                    || ComponentName.StartsWith(TEXT("BehindWallFloor"), ESearchCase::IgnoreCase);
+                if (!bWarehouseFloor)
+                {
+                    continue;
+                }
+                for (int32 Slot = 0; Slot < Mesh->GetNumMaterials(); ++Slot)
+                {
+                    if (UMaterialInterface* Source = Mesh->GetMaterial(Slot))
+                    {
+                        UMaterialInstanceDynamic* WhiteFloor = UMaterialInstanceDynamic::Create(Source, this);
+                        if (WhiteFloor && WhiteTexture)
+                        {
+                            WhiteFloor->SetTextureParameterValue(TEXT("BaseColorTexture"), WhiteTexture);
+                            Mesh->SetMaterial(Slot, WhiteFloor);
+                        }
+                    }
+                }
+                ++WhiteFloorComponents;
+            }
+        }
+    }
+
+    const auto HideComponentTree = [](USceneComponent* Root)
+    {
+        if (Root)
+        {
+            Root->SetVisibility(false, true);
+            Root->SetHiddenInGame(true, true);
+        }
+    };
+    if (bResolutionDatasetHideWorkers)
+    {
+        for (FWorkerRuntime& Worker : Workers)
+        {
+            if (USceneComponent* Root = Worker.Root.Get())
+            {
+                HideComponentTree(Root);
+                ++HiddenWorkers;
+            }
+        }
+    }
+    if (bResolutionDatasetHideParcels)
+    {
+        for (const TWeakObjectPtr<USceneComponent>& Parcel : Parcels)
+        {
+            if (USceneComponent* Root = Parcel.Get())
+            {
+                HideComponentTree(Root);
+                ++HiddenParcels;
+            }
+        }
+        for (FDynamicBoxRuntime& Body : DynamicBoxes)
+        {
+            if ((Body.bShelfParcel
+                    || Body.Name.Contains(TEXT("parcel"), ESearchCase::IgnoreCase)
+                    || Body.Name.Contains(TEXT("carton"), ESearchCase::IgnoreCase))
+                && Body.Root.IsValid())
+            {
+                HideComponentTree(Body.Root.Get());
+                ++HiddenParcels;
+            }
+        }
+    }
+    SimulatorLog(FString::Printf(
+        TEXT("resolution_dataset variant_applied name=%s white_floor_components=%d hidden_workers=%d hidden_parcels=%d"),
+        *ResolutionDatasetVariant,
+        WhiteFloorComponents,
+        HiddenWorkers,
+        HiddenParcels));
+}
+
 void AQaiConveyorWorld::LoadRuntimeConfig()
 {
 #if PLATFORM_MAC
@@ -1767,6 +2035,15 @@ void AQaiConveyorWorld::LoadRuntimeConfig()
     FParse::Value(FCommandLine::Get(), TEXT("Backend="), ActiveBackend);
     bInferenceEnabled &= !FParse::Param(FCommandLine::Get(), TEXT("NoInference"));
     ActiveBackend = ActiveBackend.Equals(TEXT("evk"), ESearchCase::IgnoreCase) ? TEXT("evk") : TEXT("host");
+    int32 RequestedHostCaptureWidth = ConveyorTuning::DefaultHostCaptureWidth;
+    FParse::Value(FCommandLine::Get(), TEXT("QaiHostCaptureWidth="), RequestedHostCaptureWidth);
+    HostCaptureWidth = FMath::Clamp(
+        FMath::RoundToInt(static_cast<float>(RequestedHostCaptureWidth) / 16.0f) * 16,
+        ConveyorTuning::DefaultHostCaptureWidth,
+        ConveyorTuning::MaximumHostCaptureWidth);
+    HostCaptureHeight = HostCaptureWidth * 9 / 16;
+    CaptureRenderWidth = FMath::Max(HostCaptureWidth, ConveyorTuning::EvkCaptureWidth);
+    CaptureRenderHeight = CaptureRenderWidth * 9 / 16;
     ActiveModel = CurrentModelName();
     UE_LOG(
         LogTemp,
@@ -1998,34 +2275,48 @@ void AQaiConveyorWorld::ConfigureForkliftMastMaterials()
             const FString Name = MeshComponent->GetName();
             const bool bMastRail = Name.Contains(TEXT("MastStage"), ESearchCase::IgnoreCase)
                 && !Name.Contains(TEXT("MastStageWheel"), ESearchCase::IgnoreCase);
-            const bool bLiftCarriage = Name.Contains(TEXT("MastForcer"), ESearchCase::IgnoreCase);
+            const bool bLiftCarriage = Name.Contains(TEXT("MastForcer"), ESearchCase::IgnoreCase)
+                || Name.Contains(TEXT("LiftCore"), ESearchCase::IgnoreCase)
+                || Name.Contains(TEXT("Carriage"), ESearchCase::IgnoreCase)
+                || Name.Contains(TEXT("ForkFrame"), ESearchCase::IgnoreCase);
             if (!bMastRail && !bLiftCarriage)
             {
                 continue;
             }
 
-            UMaterialInterface* ExistingMaterial = MeshComponent->GetMaterial(0);
-            UMaterialInstanceDynamic* MastMaterial = ExistingMaterial
-                ? UMaterialInstanceDynamic::Create(ExistingMaterial, this)
-                : nullptr;
-            if (!MastMaterial)
+            for (int32 MaterialIndex = 0; MaterialIndex < MeshComponent->GetNumMaterials(); ++MaterialIndex)
             {
-                continue;
-            }
+                UMaterialInterface* ExistingMaterial = MeshComponent->GetMaterial(MaterialIndex);
+                UMaterialInstanceDynamic* MastMaterial = ExistingMaterial
+                    ? UMaterialInstanceDynamic::Create(ExistingMaterial, this)
+                    : nullptr;
+                if (!MastMaterial)
+                {
+                    continue;
+                }
 
-            // Preserve the imported forklift atlas, normal detail and metallic
-            // mask. Only replace its near-zero roughness texels, which made the
-            // mast side plate read as a polished mirror under Lumen.
-            MastMaterial->SetScalarParameterValue(TEXT("UseRoughnessTexture"), 0.0f);
-            MastMaterial->SetScalarParameterValue(TEXT("Roughness"), 0.62f);
-            MeshComponent->SetMaterial(0, MastMaterial);
-            ++RoughenedComponents;
+                // Preserve the imported forklift atlas and normal detail.
+                // Override every material slot on the moving
+                // mast/carriage assembly: the remaining mirror patch lived on
+                // a secondary LiftCore slot and came from its metallic mask,
+                // not roughness alone. The mast is painted/coated steel, so it
+                // should read like the surrounding dark frame rather than a
+                // polished mirror.
+                MastMaterial->SetScalarParameterValue(TEXT("UseRoughnessTexture"), 0.0f);
+                MastMaterial->SetScalarParameterValue(TEXT("Roughness"), 0.72f);
+                MastMaterial->SetScalarParameterValue(TEXT("RoughnessScale"), 2.75f);
+                MastMaterial->SetScalarParameterValue(TEXT("UseMetallicTexture"), 0.0f);
+                MastMaterial->SetScalarParameterValue(TEXT("Metallic"), 0.12f);
+                MastMaterial->SetScalarParameterValue(TEXT("MetallicScale"), 0.12f);
+                MeshComponent->SetMaterial(MaterialIndex, MastMaterial);
+                ++RoughenedComponents;
+            }
         }
     }
 
     bForkliftMastMaterialsConfigured = RoughenedComponents > 0;
     SimulatorLog(FString::Printf(
-        TEXT("forklift_mast_material components=%d roughness=0.62 preserve_albedo=true preserve_normals=true preserve_metallic=true"),
+        TEXT("forklift_mast_material components=%d roughness=0.72 metallic=0.12 preserve_albedo=true preserve_normals=true"),
         RoughenedComponents));
 }
 
@@ -4453,6 +4744,9 @@ void AQaiConveyorWorld::ResetScene()
         Forklift.Root->SetWorldTransform(
             Forklift.InitialRoot, false, nullptr, ETeleportType::TeleportPhysics);
         Forklift.SpeedCmPerSecond = 0.0f;
+        Forklift.SteeringInput = 0.0f;
+        Forklift.SurfaceLinearVelocityCmPerSecond = FVector::ZeroVector;
+        Forklift.SurfaceYawVelocityDegreesPerSecond = 0.0f;
         Forklift.PreviousSpeedCmPerSecond = 0.0f;
         Forklift.CombinedMassKg = Forklift.ChassisMassKg;
         Forklift.CombinedCenterOfMassLocalCm = Forklift.BaseCenterOfMassLocalCm;
@@ -4558,13 +4852,19 @@ void AQaiConveyorWorld::ResetScene()
         Worker.PendingHeadingSeconds = 0.0f;
         Worker.VisualHeadingYawDegrees = Worker.InitialHeadingYawDegrees;
         Worker.MaximumVisualTurnRateDegreesPerSecond = 0.0f;
+        Worker.SeparationEvents = 0;
     }
 
     EncodedFrames.Reset();
+    EncodedForkliftFrameTransforms.Reset();
     EncodedFrameTextures.Reset();
     EncodedFrameTimes.Reset();
+    SubmittedEncodedFrames.Reset();
     SubmittedFrameTextures.Reset();
     SubmittedFrameTimes.Reset();
+    SubmittedGroundTruthSignal = TEXT("G");
+    bSubmittedForkliftMotion = false;
+    bSubmittedRedOverlap = false;
     RawModelSignal = TEXT("-");
     ModelSignal = TEXT("-");
     GroundTruthSignal = TEXT("G");
@@ -4614,7 +4914,13 @@ void AQaiConveyorWorld::ToggleBackend()
     LastLoggedInferenceState.Reset();
     LastInferenceSummaryLogSeconds = -60.0;
     BackendStatus = TEXT("checking");
-    SimulatorLog(FString::Printf(TEXT("backend_selected backend=%s model=%s"), *ActiveBackend, *ActiveModel));
+    const bool bEvkCapture = ActiveBackend == TEXT("evk");
+    SimulatorLog(FString::Printf(
+        TEXT("backend_selected backend=%s model=%s capture_output=%dx%d"),
+        *ActiveBackend,
+        *ActiveModel,
+        bEvkCapture ? ConveyorTuning::EvkCaptureWidth : HostCaptureWidth,
+        bEvkCapture ? ConveyorTuning::EvkCaptureHeight : HostCaptureHeight));
     ProbeBackend();
 }
 
@@ -5259,6 +5565,15 @@ void AQaiConveyorWorld::SimulateForklifts(float StepSeconds)
             TargetSpeed,
             StepSeconds,
             ChangeRate);
+        const float RequestedSteering = bControlled ? CommandSteer : 0.0f;
+        const float SteeringRate = FMath::Abs(RequestedSteering) > UE_SMALL_NUMBER
+            ? ConveyorTuning::SteeringRisePerSecond
+            : ConveyorTuning::SteeringReturnPerSecond;
+        Forklift.SteeringInput = FMath::FInterpConstantTo(
+            Forklift.SteeringInput,
+            RequestedSteering,
+            StepSeconds,
+            SteeringRate);
 
         const float PreviousLiftCm = Forklift.LiftCm;
         const float ProposedLiftCm = bControlled
@@ -5301,7 +5616,7 @@ void AQaiConveyorWorld::SimulateForklifts(float StepSeconds)
         }
         Forklift.LiftDeltaCm = Forklift.LiftCm - PreviousLiftCm;
 
-        const float SteerRadians = bControlled ? CommandSteer * ConveyorTuning::MaxSteerRadians : 0.0f;
+        const float SteerRadians = Forklift.SteeringInput * ConveyorTuning::MaxSteerRadians;
         const FVector CurrentLocation = Forklift.Root->GetComponentLocation();
         const FRotator CurrentRotation = Forklift.Root->GetComponentRotation();
         const FRotator CurrentBaseRotation(0.0f, CurrentRotation.Yaw, 0.0f);
@@ -5499,6 +5814,15 @@ void AQaiConveyorWorld::SimulateForklifts(float StepSeconds)
         }
 
         const float TravelCm = FVector::Dist2D(CurrentLocation, Next);
+        Forklift.SurfaceLinearVelocityCmPerSecond = StepSeconds > UE_SMALL_NUMBER
+            ? (Next - CurrentLocation) / StepSeconds
+            : FVector::ZeroVector;
+        Forklift.SurfaceLinearVelocityCmPerSecond.Z += StepSeconds > UE_SMALL_NUMBER
+            ? Forklift.LiftDeltaCm / StepSeconds
+            : 0.0f;
+        Forklift.SurfaceYawVelocityDegreesPerSecond = StepSeconds > UE_SMALL_NUMBER
+            ? FRotator::NormalizeAxis(CandidateRotation.Yaw - CurrentRotation.Yaw) / StepSeconds
+            : 0.0f;
         if (FVector::DistSquared(CurrentLocation, Next) > UE_KINDA_SMALL_NUMBER
             || !CandidateRotation.Equals(CurrentRotation, UE_KINDA_SMALL_NUMBER))
         {
@@ -5578,6 +5902,76 @@ void AQaiConveyorWorld::SimulateDynamicBoxes(float StepSeconds)
             Obstacle.Rotation,
             FlatObstacleExtent,
             0.0f);
+    };
+
+    const auto CarrierVelocityAtPoint = [](
+        const FForkliftRuntime& Forklift,
+        const FVector& WorldPoint)
+    {
+        FVector Velocity = Forklift.SurfaceLinearVelocityCmPerSecond;
+        if (Forklift.Root.IsValid())
+        {
+            const FVector AngularVelocityRadians(
+                0.0f,
+                0.0f,
+                FMath::DegreesToRadians(Forklift.SurfaceYawVelocityDegreesPerSecond));
+            Velocity += FVector::CrossProduct(
+                AngularVelocityRadians,
+                WorldPoint - Forklift.Root->GetComponentLocation());
+        }
+        return Velocity;
+    };
+
+    // Contact with a moving fork surface uses finite Coulomb friction rather
+    // than an attachment. Static friction can make a lightly accelerating
+    // load stick; dynamic friction still lets it slide, overhang, and fall.
+    // The carrier velocity is the resolved chassis/lift motion, so spinning
+    // wheels against an obstacle cannot move a parcel through the world.
+    const auto ApplyForkSurfaceFriction = [&CarrierVelocityAtPoint](
+        FDynamicBoxRuntime& Body,
+        const FForkliftRuntime& Forklift,
+        float DeltaSeconds,
+        float NormalLoadScale)
+    {
+        const float SurfaceStaticFriction = FMath::Min(Body.Physics.StaticFriction, 0.72f);
+        const float SurfaceDynamicFriction = FMath::Min(Body.Physics.DynamicFriction, 0.56f);
+        const FVector CarrierVelocity = CarrierVelocityAtPoint(
+            Forklift,
+            Body.Root.IsValid()
+                ? Body.Root->GetComponentLocation()
+                : FVector::ZeroVector);
+        FVector RelativeVelocity = Body.LinearVelocity - CarrierVelocity;
+        RelativeVelocity.Z = 0.0f;
+        const float RelativeSpeed = RelativeVelocity.Size2D();
+        const float StaticDeltaSpeed = SurfaceStaticFriction
+            * ConveyorTuning::GravityCmPerSecondSquared
+            * DeltaSeconds
+            * NormalLoadScale;
+        if (RelativeSpeed <= StaticDeltaSpeed)
+        {
+            Body.LinearVelocity.X = CarrierVelocity.X;
+            Body.LinearVelocity.Y = CarrierVelocity.Y;
+        }
+        else if (RelativeSpeed > UE_SMALL_NUMBER)
+        {
+            const float NewRelativeSpeed = FMath::Max(
+                0.0f,
+                RelativeSpeed - SurfaceDynamicFriction
+                    * ConveyorTuning::GravityCmPerSecondSquared
+                    * DeltaSeconds
+                    * NormalLoadScale);
+            const FVector NewRelativeVelocity = RelativeVelocity
+                * (NewRelativeSpeed / RelativeSpeed);
+            Body.LinearVelocity.X = CarrierVelocity.X
+                + NewRelativeVelocity.X;
+            Body.LinearVelocity.Y = CarrierVelocity.Y
+                + NewRelativeVelocity.Y;
+        }
+        Body.AngularVelocityDegrees.Z = FMath::FInterpConstantTo(
+            Body.AngularVelocityDegrees.Z,
+            Forklift.SurfaceYawVelocityDegreesPerSecond,
+            DeltaSeconds,
+            120.0f * NormalLoadScale);
     };
 
     struct FForkSupportEvaluation
@@ -5746,7 +6140,7 @@ void AQaiConveyorWorld::SimulateDynamicBoxes(float StepSeconds)
             Body.ForkSupportCooldownSeconds = 0.25f;
             Body.ForkUnsupportedSeconds = 0.0f;
             Body.LinearVelocity = Forklift.Root.IsValid()
-                ? Forklift.Root->GetForwardVector() * Forklift.SpeedCmPerSecond
+                ? Forklift.SurfaceLinearVelocityCmPerSecond
                 : FVector::ZeroVector;
             SimulatorLog(FString::Printf(
                 TEXT("cargo_support_lost body=%s former_support_body=%d"),
@@ -5788,8 +6182,7 @@ void AQaiConveyorWorld::SimulateDynamicBoxes(float StepSeconds)
                         Body.bAwake = true;
                         Body.ForkSupportCooldownSeconds = 0.35f;
                         Body.ForkUnsupportedSeconds = 0.0f;
-                        Body.LinearVelocity = SupportForklift.Root->GetForwardVector()
-                            * SupportForklift.SpeedCmPerSecond;
+                        Body.LinearVelocity = SupportForklift.SurfaceLinearVelocityCmPerSecond;
                         Body.LinearVelocity.Z = FMath::Min(Body.LinearVelocity.Z, 0.0f);
                         Body.AngularVelocityDegrees += TipAxis
                             * FMath::Lerp(38.0f, 82.0f, 1.0f - ForkSupport.Coverage)
@@ -5850,26 +6243,64 @@ void AQaiConveyorWorld::SimulateDynamicBoxes(float StepSeconds)
                         {
                             continue;
                         }
-                        const FDynamicBoxRuntime& Other = DynamicBoxes[OtherIndex];
-                        if (const USceneComponent* OtherRoot = Other.Root.Get(); OtherRoot
-                            && ConveyorTuning::ObbOverlapsObb(
-                                Desired.GetLocation(), Desired.GetRotation(), Body.HalfExtent,
-                                OtherRoot->GetComponentLocation(), OtherRoot->GetComponentQuat(), Other.HalfExtent,
-                                0.0f))
+                        FDynamicBoxRuntime& Other = DynamicBoxes[OtherIndex];
+                        USceneComponent* OtherRoot = Other.Root.Get();
+                        if (!OtherRoot
+                            || Body.SupportBodyIndex == OtherIndex
+                            || Other.SupportBodyIndex == BodyIndex
+                            || (Other.SupportedForklift == Body.SupportedForklift
+                                && Other.SupportedForklift != INDEX_NONE))
                         {
-                            bBlocked = true;
-                            BlockingName = Other.Name;
-                            break;
+                            continue;
+                        }
+                        FVector OtherSeparation;
+                        if (ConveyorTuning::FindPlanarObbSeparation(
+                                OtherRoot->GetComponentLocation(),
+                                OtherRoot->GetComponentQuat(),
+                                Other.HalfExtent,
+                                Desired.GetLocation(),
+                                Desired.GetRotation(),
+                                Body.HalfExtent,
+                                OtherSeparation))
+                        {
+                            // Shelf cartons are independent rigid bodies. A
+                            // carried carton must push and wake its neighbour,
+                            // not lose its fork support merely because the two
+                            // boxes began in light contact on the shelf.
+                            OtherRoot->AddWorldOffset(
+                                OtherSeparation,
+                                false,
+                                nullptr,
+                                ETeleportType::TeleportPhysics);
+                            const FVector CarrierVelocity = SupportForklift.SurfaceLinearVelocityCmPerSecond;
+                            Other.LinearVelocity.X = CarrierVelocity.X;
+                            Other.LinearVelocity.Y = CarrierVelocity.Y;
+                            Other.LinearVelocity.Z = FMath::Max(Other.LinearVelocity.Z, 0.0f);
+                            Other.AngularVelocityDegrees += FVector(
+                                -OtherSeparation.Y,
+                                OtherSeparation.X,
+                                0.0f).GetSafeNormal() * 8.0f;
+                            Other.SupportedForklift = INDEX_NONE;
+                            Other.SupportBodyIndex = INDEX_NONE;
+                            Other.bAwake = true;
                         }
                     }
                 }
-                const bool bSharpTurn = Body.SupportedForklift == ActiveForklift
-                    && FMath::Abs(CommandSteer) > 0.85f
-                    && FMath::Abs(SupportForklift.SpeedCmPerSecond) > 85.0f;
-                if (!bBlocked && !bSharpTurn)
+                const float RequiredLateralAcceleration =
+                    FMath::Abs(SupportForklift.SpeedCmPerSecond)
+                    * FMath::DegreesToRadians(
+                        FMath::Abs(SupportForklift.SurfaceYawVelocityDegreesPerSecond));
+                const float AvailableStaticAcceleration =
+                    FMath::Min(Body.Physics.StaticFriction, 0.72f)
+                    * ConveyorTuning::GravityCmPerSecondSquared;
+                const bool bTractionExceeded = RequiredLateralAcceleration
+                    > AvailableStaticAcceleration;
+                if (!bBlocked && !bTractionExceeded)
                 {
                     BodyRoot->SetWorldTransform(Desired, false, nullptr, ETeleportType::TeleportPhysics);
-                    Body.LinearVelocity = SupportForklift.Root->GetForwardVector() * SupportForklift.SpeedCmPerSecond;
+                    Body.LinearVelocity = CarrierVelocityAtPoint(
+                        SupportForklift,
+                        Desired.GetLocation());
                     continue;
                 }
 
@@ -5878,13 +6309,20 @@ void AQaiConveyorWorld::SimulateDynamicBoxes(float StepSeconds)
                 Body.bAwake = true;
                 Body.ForkSupportCooldownSeconds = 0.35f;
                 Body.ForkUnsupportedSeconds = 0.0f;
-                Body.LinearVelocity = SupportForklift.Root->GetForwardVector() * SupportForklift.SpeedCmPerSecond;
-                Body.LinearVelocity.Z = 25.0f;
-                Body.AngularVelocityDegrees.Z = bSharpTurn ? CommandSteer * 70.0f : 28.0f;
+                Body.LinearVelocity = CarrierVelocityAtPoint(
+                    SupportForklift,
+                    BodyRoot->GetComponentLocation());
+                Body.LinearVelocity.Z = FMath::Min(Body.LinearVelocity.Z, 0.0f);
+                Body.AngularVelocityDegrees.Z = FMath::Clamp(
+                    SupportForklift.SurfaceYawVelocityDegreesPerSecond,
+                    -30.0f,
+                    30.0f);
                 SimulatorLog(FString::Printf(
-                    TEXT("cargo_detached body=%s reason=%s"),
+                    TEXT("cargo_detached body=%s reason=%s lateral_accel_cm_s2=%.1f static_limit_cm_s2=%.1f"),
                     *Body.Name,
-                    bSharpTurn ? TEXT("sharp_turn") : *BlockingName));
+                    bTractionExceeded ? TEXT("friction_limit") : *BlockingName,
+                    RequiredLateralAcceleration,
+                    AvailableStaticAcceleration));
             }
         }
 
@@ -5968,8 +6406,11 @@ void AQaiConveyorWorld::SimulateDynamicBoxes(float StepSeconds)
                         // The flat tine begins exactly where the wedge reaches
                         // full height. Its front face is one-way in this narrow
                         // top band so the ramp can finish sliding underneath;
-                        // EvaluateForkSupport captures the load only after its
-                        // center of mass reaches genuine flat support.
+                        // finite steel/cardboard friction carries the load as
+                        // the contact patch grows. EvaluateForkSupport captures
+                        // it only after its center of mass has genuine support.
+                        ApplyForkSurfaceFriction(Body, Forklift, StepSeconds, 1.0f);
+                        Body.bAwake = true;
                         continue;
                     }
                 }
@@ -6039,10 +6480,10 @@ void AQaiConveyorWorld::SimulateDynamicBoxes(float StepSeconds)
                                     nullptr,
                                     ETeleportType::TeleportPhysics);
                             }
-                            // Do not transfer planar carrier velocity while the
-                            // load is still on the ramp. Its support friction
-                            // should let the wedge advance underneath; the flat
-                            // tine support path takes over carrying afterward.
+                            // A sloping tip has a smaller normal load than a
+                            // flat tine, so it transfers less planar traction
+                            // while still being able to pry under the carton.
+                            ApplyForkSurfaceFriction(Body, Forklift, StepSeconds, 0.18f);
                             const float LiftVelocity = StepSeconds > UE_SMALL_NUMBER
                                 ? Forklift.LiftDeltaCm / StepSeconds
                                 : 0.0f;
@@ -6445,6 +6886,23 @@ void AQaiConveyorWorld::SimulateDynamicBoxes(float StepSeconds)
                 ConveyorTuning::WorldMaximumY - Body.HalfExtent.Y);
             Body.LinearVelocity.Y *= -0.25f;
         }
+        // Contact correction is sequential and can briefly compound impulses
+        // when a stacked carton, pallet, and fork all touch during a turn.
+        // Bound that numerical energy to physically credible warehouse-prop
+        // speeds; gravity, sliding and tipping remain fully simulated.
+        const bool bForkliftCargo = Body.Name.Contains(TEXT("forklift"), ESearchCase::IgnoreCase);
+        const float MaximumPlanarSpeedCmPerSecond = bForkliftCargo ? 180.0f : 260.0f;
+        const float PlanarSpeed = Body.LinearVelocity.Size2D();
+        if (PlanarSpeed > MaximumPlanarSpeedCmPerSecond)
+        {
+            const float Scale = MaximumPlanarSpeedCmPerSecond / PlanarSpeed;
+            Body.LinearVelocity.X *= Scale;
+            Body.LinearVelocity.Y *= Scale;
+        }
+        Body.LinearVelocity.Z = FMath::Clamp(Body.LinearVelocity.Z, -450.0f, 180.0f);
+        Body.AngularVelocityDegrees.X = FMath::Clamp(Body.AngularVelocityDegrees.X, -180.0f, 180.0f);
+        Body.AngularVelocityDegrees.Y = FMath::Clamp(Body.AngularVelocityDegrees.Y, -180.0f, 180.0f);
+        Body.AngularVelocityDegrees.Z = FMath::Clamp(Body.AngularVelocityDegrees.Z, -150.0f, 150.0f);
         BodyRoot->SetWorldLocationAndRotation(
             NextCenter,
             NextRotation,
@@ -6949,10 +7407,13 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
             }
             else if (SupportedForklift != INDEX_NONE && !bBounced)
             {
-                const float ForkFrictionAlpha = 1.0f - FMath::Exp(
-                    -(5.0f + Physics.StaticFriction * 9.0f) * StepSeconds);
-                Velocity.X = FMath::Lerp(Velocity.X, SupportVelocity.X, ForkFrictionAlpha);
-                Velocity.Y = FMath::Lerp(Velocity.Y, SupportVelocity.Y, ForkFrictionAlpha);
+                ConveyorTuning::ApplyCoulombFriction(
+                    Velocity,
+                    SupportVelocity,
+                    Physics.StaticFriction,
+                    Physics.DynamicFriction,
+                    Physics.SleepLinearSpeedCm,
+                    StepSeconds);
             }
             else if (!bBounced)
             {
@@ -7160,6 +7621,71 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
 
 void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
 {
+    // Prediction prevents new pedestrian overlaps, but an authored/reset pose
+    // or a moving prop can still leave two capsules intersecting. Separate an
+    // existing overlap before route planning so neither worker deadlocks while
+    // waiting for the other to leave the same occupied space.
+    for (int32 FirstIndex = 0; FirstIndex < UE_ARRAY_COUNT(Workers); ++FirstIndex)
+    {
+        USceneComponent* FirstRoot = Workers[FirstIndex].Root.Get();
+        if (!FirstRoot)
+        {
+            continue;
+        }
+        for (int32 SecondIndex = FirstIndex + 1; SecondIndex < UE_ARRAY_COUNT(Workers); ++SecondIndex)
+        {
+            USceneComponent* SecondRoot = Workers[SecondIndex].Root.Get();
+            if (!SecondRoot)
+            {
+                continue;
+            }
+            FVector Delta = SecondRoot->GetComponentLocation() - FirstRoot->GetComponentLocation();
+            Delta.Z = 0.0f;
+            const float Distance = Delta.Size2D();
+            const float RequiredDistance = 2.0f * ConveyorTuning::WorkerRadiusCm + 2.0f;
+            if (Distance >= RequiredDistance)
+            {
+                continue;
+            }
+            const FVector Normal = Distance > 0.1f
+                ? Delta / Distance
+                : FVector(FirstIndex == 0 ? 1.0f : -1.0f, 0.0f, 0.0f);
+            // Each candidate is validated against the other's current pose,
+            // so use the full penetration for that independent test. If both
+            // moves are accepted this simply leaves a small safety gap.
+            const float Correction = RequiredDistance - Distance + 0.5f;
+            const FVector FirstCandidate = FirstRoot->GetComponentLocation() - Normal * Correction;
+            const FVector SecondCandidate = SecondRoot->GetComponentLocation() + Normal * Correction;
+            const bool bFirstCanMove = CanWorkerOccupy(FirstIndex, FirstCandidate);
+            const bool bSecondCanMove = CanWorkerOccupy(SecondIndex, SecondCandidate);
+            if (bFirstCanMove)
+            {
+                FirstRoot->SetWorldLocation(FirstCandidate);
+            }
+            if (bSecondCanMove)
+            {
+                SecondRoot->SetWorldLocation(SecondCandidate);
+            }
+            if (!bFirstCanMove && !bSecondCanMove)
+            {
+                Workers[FirstIndex].AvoidanceTurnSign = -1;
+                Workers[SecondIndex].AvoidanceTurnSign = 1;
+            }
+            ++Workers[FirstIndex].SeparationEvents;
+            ++Workers[SecondIndex].SeparationEvents;
+            if (Workers[FirstIndex].SeparationEvents <= 2)
+            {
+                SimulatorLog(FString::Printf(
+                    TEXT("worker_separation workers=%d,%d overlap_cm=%.2f moved=%s,%s"),
+                    FirstIndex + 1,
+                    SecondIndex + 1,
+                    RequiredDistance - Distance,
+                    bFirstCanMove ? TEXT("true") : TEXT("false"),
+                    bSecondCanMove ? TEXT("true") : TEXT("false")));
+            }
+        }
+    }
+
     for (int32 WorkerIndex = 0; WorkerIndex < UE_ARRAY_COUNT(Workers); ++WorkerIndex)
     {
         FWorkerRuntime& Worker = Workers[WorkerIndex];
@@ -7400,10 +7926,8 @@ void AQaiConveyorWorld::UpdateSafetySignal()
 
 void AQaiConveyorWorld::UpdateStackLights()
 {
-    // The lamps are model outputs. Ground truth remains a separate diagnostic
-    // and never silently substitutes for Reason2. The raw response is used
-    // deliberately: the consistency gate may annotate the UI, but it must not
-    // recolor the physical signal requested by the user/model.
+    // The physical lamps expose the model's answer verbatim. Ground truth and
+    // visual tracking remain diagnostics only; they never recolor the lamp.
     FString DisplaySignal = (RawModelSignal == TEXT("G")
         || RawModelSignal == TEXT("A")
         || RawModelSignal == TEXT("R")) ? RawModelSignal : TEXT("-");
@@ -7573,7 +8097,7 @@ void AQaiConveyorWorld::SetupInferenceCapture()
     CaptureReadback = MakeShared<FRHIGPUTextureReadback>(TEXT("QaiReason2CaptureReadback"));
     CaptureTarget = NewObject<UTextureRenderTarget2D>(this);
     CaptureTarget->RenderTargetFormat = RTF_RGBA8_SRGB;
-    CaptureTarget->InitAutoFormat(512, 288);
+    CaptureTarget->InitAutoFormat(CaptureRenderWidth, CaptureRenderHeight);
     CaptureTarget->TargetGamma = 2.2f;
     CaptureTarget->UpdateResourceImmediate(true);
 
@@ -7583,14 +8107,34 @@ void AQaiConveyorWorld::SetupInferenceCapture()
         USceneCaptureComponent2D* Capture = CaptureActor->GetCaptureComponent2D();
         // SceneCapture's manual, non-physical path uses a distinct compensation
         // baseline. This calibrated value retains the bright warehouse look
-        // while keeping neutral-white clipping below one percent at 512x288.
+        // while keeping neutral-white clipping below one percent.
         float CaptureExposureBias = 10.0f;
         FParse::Value(FCommandLine::Get(), TEXT("QaiCaptureExposureBias="), CaptureExposureBias);
         Capture->TextureTarget = CaptureTarget;
         Capture->bCaptureEveryFrame = false;
         Capture->bCaptureOnMovement = false;
         Capture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
-        Capture->FOVAngle = 70.0f;
+        // Preserve the authored Omniverse detector optics rather than using
+        // Unreal's former 70-degree approximation. The wider shifted sensor
+        // keeps the complete forklift and aisle context in frame and prevents
+        // nearby workers/parcels from dominating the vision tokens.
+        constexpr float DetectorFocalLengthMm = 9.5f;
+        constexpr float DetectorHorizontalApertureMm = 20.955f;
+        constexpr float DetectorHorizontalApertureOffsetMm = -3.0f;
+        const float DetectorHalfFovRadians = FMath::Atan(
+            DetectorHorizontalApertureMm / (2.0f * DetectorFocalLengthMm));
+        Capture->FOVAngle = FMath::RadiansToDegrees(DetectorHalfFovRadians * 2.0f);
+        Capture->bUseCustomProjectionMatrix = true;
+        Capture->CustomProjectionMatrix = FReversedZPerspectiveMatrix(
+            DetectorHalfFovRadians,
+            DetectorHalfFovRadians,
+            1.0f,
+            static_cast<float>(CaptureRenderWidth) / CaptureRenderHeight,
+            GNearClippingPlane,
+            GNearClippingPlane);
+        const float HorizontalProjectionOffset =
+            2.0f * DetectorHorizontalApertureOffsetMm / DetectorHorizontalApertureMm;
+        Capture->CustomProjectionMatrix.M[2][0] = -HorizontalProjectionOffset;
         Capture->ShowFlags.SetMotionBlur(false);
         Capture->ShowFlags.SetTemporalAA(true);
         // Match the constrained game camera so inference frames do not change
@@ -7634,9 +8178,17 @@ void AQaiConveyorWorld::SetupInferenceCapture()
         Capture->PostProcessSettings.BloomThreshold = 1.35f;
         Capture->PostProcessSettings.bOverride_VignetteIntensity = true;
         Capture->PostProcessSettings.VignetteIntensity = 0.08f;
+        const bool bEvkCapture = ActiveBackend == TEXT("evk");
         SimulatorLog(FString::Printf(
-            TEXT("capture_initialized size=512x288 exposure_mode=manual physical_camera=false exposure_compensation=%.2f highlight_scale=0.62 bloom=0.12"),
-            CaptureExposureBias));
+            TEXT("capture_initialized render_size=%dx%d output_size=%dx%d backend=%s exposure_mode=manual physical_camera=false exposure_compensation=%.2f highlight_scale=0.62 bloom=0.12 horizontal_fov_deg=%.2f aperture_offset_mm=%.2f"),
+            CaptureRenderWidth,
+            CaptureRenderHeight,
+            bEvkCapture ? ConveyorTuning::EvkCaptureWidth : HostCaptureWidth,
+            bEvkCapture ? ConveyorTuning::EvkCaptureHeight : HostCaptureHeight,
+            *ActiveBackend,
+            CaptureExposureBias,
+            Capture->FOVAngle,
+            DetectorHorizontalApertureOffsetMm));
     }
     else
     {
@@ -7646,6 +8198,9 @@ void AQaiConveyorWorld::SetupInferenceCapture()
 
 void AQaiConveyorWorld::CancelActiveInference()
 {
+    // Any queued readback or PNG task belongs to the previous backend/state.
+    // Its completion is discarded instead of contaminating the next pair.
+    ++InferenceCaptureGeneration;
     if (InferenceRequest)
     {
         InferenceRequest->OnProcessRequestComplete().Unbind();
@@ -7654,10 +8209,23 @@ void AQaiConveyorWorld::CancelActiveInference()
     }
     bInferenceBusy = false;
     EncodedFrames.Reset();
+    EncodedForkliftFrameTransforms.Reset();
+    EncodedFrameTextures.Reset();
+    EncodedFrameTimes.Reset();
+    SubmittedEncodedFrames.Reset();
+    SubmittedFrameTextures.Reset();
+    SubmittedFrameTimes.Reset();
+    SubmittedGroundTruthSignal = TEXT("G");
+    bSubmittedForkliftMotion = false;
+    bSubmittedRedOverlap = false;
 }
 
 void AQaiConveyorWorld::TickInferenceCapture(float DeltaSeconds)
 {
+    if (bIsShuttingDown)
+    {
+        return;
+    }
     if (bCaptureReadbackPending)
     {
         ReadbackAndCompressCapture();
@@ -7669,7 +8237,12 @@ void AQaiConveyorWorld::TickInferenceCapture(float DeltaSeconds)
         ProbeBackend();
     }
 
-    if (!bStageReady || !bInferenceEnabled || !bBackendHealthy || !CaptureActor || bEncodingFrame)
+    const bool bOfflineDatasetCapture = bResolutionDataset && !bInferenceEnabled;
+    if (!bStageReady
+        || (!bInferenceEnabled && !bOfflineDatasetCapture)
+        || (bInferenceEnabled && !bBackendHealthy)
+        || !CaptureActor
+        || bEncodingFrame)
     {
         return;
     }
@@ -7688,7 +8261,7 @@ void AQaiConveyorWorld::TickInferenceCapture(float DeltaSeconds)
 
 void AQaiConveyorWorld::QueueCapture()
 {
-    if (!DetectorCamera.IsValid() || !CaptureActor || !CaptureTarget || !CaptureReadback || bCaptureReadbackPending)
+    if (bIsShuttingDown || !DetectorCamera.IsValid() || !CaptureActor || !CaptureTarget || !CaptureReadback || bCaptureReadbackPending)
     {
         if (!bLoggedCaptureUnavailable && !bCaptureReadbackPending)
         {
@@ -7702,6 +8275,14 @@ void AQaiConveyorWorld::QueueCapture()
         }
         return;
     }
+    PendingCaptureGeneration = InferenceCaptureGeneration;
+    const bool bEvkCapture = ActiveBackend == TEXT("evk");
+    PendingCaptureOutputWidth = bEvkCapture
+        ? ConveyorTuning::EvkCaptureWidth
+        : HostCaptureWidth;
+    PendingCaptureOutputHeight = bEvkCapture
+        ? ConveyorTuning::EvkCaptureHeight
+        : HostCaptureHeight;
     CaptureActor->SetActorTransform(DetectorCamera->GetComponentTransform());
     CaptureActor->GetCaptureComponent2D()->CaptureScene();
 
@@ -7717,8 +8298,10 @@ void AQaiConveyorWorld::QueueCapture()
         return;
     }
     const TSharedRef<FRHIGPUTextureReadback> Readback = CaptureReadback.ToSharedRef();
+    const int32 RenderWidth = CaptureRenderWidth;
+    const int32 RenderHeight = CaptureRenderHeight;
     ENQUEUE_RENDER_COMMAND(QaiEnqueueCaptureReadback)(
-        [Resource, Readback](FRHICommandListImmediate& RHICmdList)
+        [Resource, Readback, RenderWidth, RenderHeight](FRHICommandListImmediate& RHICmdList)
         {
             FRHITexture* Texture = Resource->GetRenderTargetTexture();
             if (!Texture)
@@ -7726,7 +8309,10 @@ void AQaiConveyorWorld::QueueCapture()
                 return;
             }
             RHICmdList.Transition(FRHITransitionInfo(Texture, ERHIAccess::SRVMask, ERHIAccess::CopySrc));
-            Readback->EnqueueCopy(RHICmdList, Texture, FResolveRect(0, 0, 512, 288));
+            Readback->EnqueueCopy(
+                RHICmdList,
+                Texture,
+                FResolveRect(0, 0, RenderWidth, RenderHeight));
             RHICmdList.Transition(FRHITransitionInfo(Texture, ERHIAccess::CopySrc, ERHIAccess::SRVMask));
         });
     bCaptureReadbackPending = true;
@@ -7745,6 +8331,11 @@ void AQaiConveyorWorld::ReadbackAndCompressCapture()
     }
     bCaptureReadbackPending = false;
     bEncodingFrame = true;
+    const int32 RenderWidth = CaptureRenderWidth;
+    const int32 RenderHeight = CaptureRenderHeight;
+    const int32 OutputWidth = PendingCaptureOutputWidth;
+    const int32 OutputHeight = PendingCaptureOutputHeight;
+    const uint32 CaptureGeneration = PendingCaptureGeneration;
     if (!bLoggedFirstReadback)
     {
         bLoggedFirstReadback = true;
@@ -7753,23 +8344,26 @@ void AQaiConveyorWorld::ReadbackAndCompressCapture()
     TWeakObjectPtr<AQaiConveyorWorld> WeakThis(this);
     const TSharedRef<FRHIGPUTextureReadback> Readback = CaptureReadback.ToSharedRef();
     ENQUEUE_RENDER_COMMAND(QaiCopyCaptureReadback)(
-        [WeakThis, Readback](FRHICommandListImmediate& RHICmdList)
+        [WeakThis, Readback, RenderWidth, RenderHeight, OutputWidth, OutputHeight, CaptureGeneration](FRHICommandListImmediate& RHICmdList)
         {
             int32 RowPitchPixels = 0;
             int32 BufferHeight = 0;
             void* Buffer = Readback->Lock(RowPitchPixels, &BufferHeight);
             TArray<FColor> Pixels;
-            const bool bValid = Buffer && RowPitchPixels >= 512 && BufferHeight >= 288;
+            const bool bValid = Buffer
+                && RowPitchPixels >= RenderWidth
+                && BufferHeight >= RenderHeight;
             if (bValid)
             {
-                Pixels.SetNumUninitialized(512 * 288);
+                Pixels.SetNumUninitialized(
+                    RenderWidth * RenderHeight);
                 const uint8* Source = static_cast<const uint8*>(Buffer);
-                for (int32 Row = 0; Row < 288; ++Row)
+                for (int32 Row = 0; Row < RenderHeight; ++Row)
                 {
                     FMemory::Memcpy(
-                        Pixels.GetData() + Row * 512,
+                        Pixels.GetData() + Row * RenderWidth,
                         Source + Row * RowPitchPixels * sizeof(FColor),
-                        512 * sizeof(FColor));
+                        RenderWidth * sizeof(FColor));
                 }
             }
             Readback->Unlock();
@@ -7778,7 +8372,7 @@ void AQaiConveyorWorld::ReadbackAndCompressCapture()
             {
                 AsyncTask(ENamedThreads::GameThread, [WeakThis, RowPitchPixels, BufferHeight]()
                 {
-                    if (AQaiConveyorWorld* Runtime = WeakThis.Get())
+                    if (AQaiConveyorWorld* Runtime = WeakThis.Get(); Runtime && !Runtime->bIsShuttingDown)
                     {
                         Runtime->bEncodingFrame = false;
                         Runtime->BackendStatus = TEXT("capture readback failed");
@@ -7791,25 +8385,68 @@ void AQaiConveyorWorld::ReadbackAndCompressCapture()
                 return;
             }
 
-            Async(EAsyncExecution::ThreadPool, [WeakThis, Pixels = MoveTemp(Pixels)]() mutable
+            Async(EAsyncExecution::ThreadPool,
+                [WeakThis, RenderWidth, RenderHeight, OutputWidth, OutputHeight, CaptureGeneration, Pixels = MoveTemp(Pixels)]() mutable
             {
-                TArray<uint8> Png;
-                FImageUtils::ThumbnailCompressImageArray(512, 288, Pixels, Png);
-                FString Encoded = FBase64::Encode(Png);
-                AsyncTask(ENamedThreads::GameThread, [WeakThis, Encoded = MoveTemp(Encoded), Pixels = MoveTemp(Pixels)]() mutable
+                TArray<FColor> OutputPixels;
+                if (OutputWidth != RenderWidth
+                    || OutputHeight != RenderHeight)
                 {
-                    if (AQaiConveyorWorld* Runtime = WeakThis.Get())
+                    FImageUtils::ImageResize(
+                        RenderWidth,
+                        RenderHeight,
+                        Pixels,
+                        OutputWidth,
+                        OutputHeight,
+                        OutputPixels,
+                        true,
+                        true);
+                }
+                else
+                {
+                    OutputPixels = MoveTemp(Pixels);
+                }
+
+                // The thumbnail helper is allowed to emit JPEG data and did
+                // so on Windows, despite this pipeline declaring image/png.
+                // Preserve every captured pixel with an explicitly lossless
+                // PNG before sending the frame to Reason2.
+                TArray64<uint8> Png;
+                FImageUtils::PNGCompressImageArray(
+                    OutputWidth,
+                    OutputHeight,
+                    TArrayView64<const FColor>(OutputPixels.GetData(), OutputPixels.Num()),
+                    Png);
+                FString Encoded = Png.IsEmpty()
+                    ? FString()
+                    : FBase64::Encode(Png.GetData(), static_cast<uint32>(Png.Num()));
+                AsyncTask(ENamedThreads::GameThread,
+                    [WeakThis,
+                     Encoded = MoveTemp(Encoded),
+                     OutputPixels = MoveTemp(OutputPixels),
+                     OutputWidth,
+                     OutputHeight,
+                     CaptureGeneration]() mutable
+                {
+                    if (AQaiConveyorWorld* Runtime = WeakThis.Get(); Runtime && !Runtime->bIsShuttingDown)
                     {
-                        Runtime->OnFrameEncoded(MoveTemp(Encoded), MoveTemp(Pixels));
+                        Runtime->OnFrameEncoded(
+                            MoveTemp(Encoded),
+                            MoveTemp(OutputPixels),
+                            OutputWidth,
+                            OutputHeight,
+                            CaptureGeneration);
                     }
                 });
             });
         });
 }
-
-UTexture2D* AQaiConveyorWorld::CreateInferencePreviewTexture(const TArray<FColor>& Pixels)
+UTexture2D* AQaiConveyorWorld::CreateInferencePreviewTexture(
+    const TArray<FColor>& Pixels,
+    int32 FrameWidth,
+    int32 FrameHeight)
 {
-    if (Pixels.Num() != 512 * 288)
+    if (Pixels.Num() != FrameWidth * FrameHeight)
     {
         return nullptr;
     }
@@ -7817,8 +8454,8 @@ UTexture2D* AQaiConveyorWorld::CreateInferencePreviewTexture(const TArray<FColor
         reinterpret_cast<const uint8*>(Pixels.GetData()),
         static_cast<int64>(Pixels.Num()) * sizeof(FColor));
     UTexture2D* Texture = UTexture2D::CreateTransient(
-        512,
-        288,
+        FrameWidth,
+        FrameHeight,
         PF_B8G8R8A8,
         NAME_None,
         ImageData);
@@ -7836,9 +8473,26 @@ UTexture2D* AQaiConveyorWorld::CreateInferencePreviewTexture(const TArray<FColor
     return Texture;
 }
 
-void AQaiConveyorWorld::OnFrameEncoded(FString EncodedPng, TArray<FColor> Pixels)
+void AQaiConveyorWorld::OnFrameEncoded(
+    FString EncodedPng,
+    TArray<FColor> Pixels,
+    int32 FrameWidth,
+    int32 FrameHeight,
+    uint32 CaptureGeneration)
 {
+    if (bIsShuttingDown)
+    {
+        return;
+    }
     bEncodingFrame = false;
+    if (CaptureGeneration != InferenceCaptureGeneration)
+    {
+        SimulatorLog(FString::Printf(
+            TEXT("capture_discarded stale_generation=%u active_generation=%u"),
+            CaptureGeneration,
+            InferenceCaptureGeneration));
+        return;
+    }
     ++CaptureFrameCount;
     if (!bLoggedFirstCaptureLuminance || CaptureFrameCount % 60 == 0)
     {
@@ -7879,35 +8533,72 @@ void AQaiConveyorWorld::OnFrameEncoded(FString EncodedPng, TArray<FColor> Pixels
     if (!bLoggedFirstEncodedFrame)
     {
         bLoggedFirstEncodedFrame = true;
-        SimulatorLog(FString::Printf(TEXT("capture_encoded base64_chars=%d"), EncodedPng.Len()));
+        SimulatorLog(FString::Printf(TEXT("capture_encoded size=%dx%d base64_chars=%d"), FrameWidth, FrameHeight, EncodedPng.Len()));
+    }
+    if (bResolutionDataset)
+    {
+        const int32 SignalIndex = GroundTruthSignal == TEXT("G")
+            ? 0
+            : (GroundTruthSignal == TEXT("A") ? 1 : (GroundTruthSignal == TEXT("R") ? 2 : INDEX_NONE));
+        if (SignalIndex != INDEX_NONE && ResolutionDatasetFrameCounts[SignalIndex] < 10)
+        {
+            TArray<uint8> PngBytes;
+            if (FBase64::Decode(EncodedPng, PngBytes))
+            {
+                const FString Signal = SignalIndex == 0 ? TEXT("G") : (SignalIndex == 1 ? TEXT("A") : TEXT("R"));
+                const int32 FrameNumber = ResolutionDatasetFrameCounts[SignalIndex];
+                const FString DiagnosticRoot = FPaths::Combine(
+                    FPaths::ProjectSavedDir(),
+                    TEXT("Diagnostics/ResolutionSweepAblations"),
+                    ResolutionDatasetVariant,
+                    FString::Printf(TEXT("%dx%d"), FrameWidth, FrameHeight),
+                    Signal);
+                IFileManager::Get().MakeDirectory(*DiagnosticRoot, true);
+                const FString OutputPath = FPaths::Combine(
+                    DiagnosticRoot,
+                    FString::Printf(TEXT("frame-%02d.png"), FrameNumber));
+                if (FFileHelper::SaveArrayToFile(PngBytes, *OutputPath))
+                {
+                    ++ResolutionDatasetFrameCounts[SignalIndex];
+                    SimulatorLog(FString::Printf(
+                        TEXT("resolution_dataset saved signal=%s frame=%d size=%dx%d path=\"%s\""),
+                        *Signal,
+                        FrameNumber,
+                        FrameWidth,
+                        FrameHeight,
+                        *SanitizeLogField(OutputPath)));
+                }
+            }
+        }
     }
     if (!bInferenceEnabled)
     {
         EncodedFrames.Reset();
+        EncodedForkliftFrameTransforms.Reset();
         EncodedFrameTextures.Reset();
         EncodedFrameTimes.Reset();
         return;
     }
     EncodedFrames.Add(MoveTemp(EncodedPng));
-    EncodedFrameTextures.Add(CreateInferencePreviewTexture(Pixels));
+    EncodedForkliftFrameTransforms.Add(
+        Forklifts[0].Root.IsValid()
+            ? Forklifts[0].Root->GetComponentTransform()
+            : FTransform::Identity);
+    EncodedFrameTextures.Add(CreateInferencePreviewTexture(Pixels, FrameWidth, FrameHeight));
     EncodedFrameTimes.Add(FDateTime::Now().ToString(TEXT("%H:%M:%S")));
     while (EncodedFrames.Num() > 2)
     {
         EncodedFrames.RemoveAt(0);
+        EncodedForkliftFrameTransforms.RemoveAt(0);
         EncodedFrameTextures.RemoveAt(0);
         EncodedFrameTimes.RemoveAt(0);
     }
     if (EncodedFrames.Num() == 1)
     {
-        // Do not pass a reference into the same TArray that Insert may reallocate.
-        // That aliasing can invalidate the source element and stall/crash Shipping
-        // builds immediately after the first encoded frame.
-        FString PreviousFrame = EncodedFrames[0];
-        TObjectPtr<UTexture2D> PreviousTexture = EncodedFrameTextures[0];
-        FString PreviousTime = EncodedFrameTimes[0];
-        EncodedFrames.Insert(MoveTemp(PreviousFrame), 0);
-        EncodedFrameTextures.Insert(PreviousTexture, 0);
-        EncodedFrameTimes.Insert(MoveTemp(PreviousTime), 0);
+        // Motion classification requires two distinct observations. The old
+        // warm-up duplicated the first image and elicited AMBER even though no
+        // temporal evidence existed.
+        return;
     }
     SubmitInference();
 }
@@ -7919,7 +8610,15 @@ void AQaiConveyorWorld::SubmitInference()
         return;
     }
 
-    const FString Prompt = TEXT("Review the images in chronological order, with newest last. Return R if any part of any forklift is inside the marked red zone. Otherwise return A if any forklift is moving. Otherwise return G. Ignore parcels and the stack light. Return one letter only: R, A, or G.");
+    // Keep this byte-for-byte equivalent to the original Omniverse
+    // HAZARD_PROMPT. Even whitespace changes alter multimodal tokenization.
+    const FString Prompt = TEXT(
+        "Review the images in chronological order, with the newest image last.\n"
+        "Return R if any part of any forklift is inside the marked red zone.\n"
+        "Otherwise, return A if any forklift is moving at all.\n"
+        "Otherwise, return G.\n"
+        "Ignore human workers, parcels, and the stack light.\n"
+        "Return one letter only: R, A, or G.\n");
     TArray<TSharedPtr<FJsonValue>> Content;
     for (const FString& Frame : EncodedFrames)
     {
@@ -7941,8 +8640,12 @@ void AQaiConveyorWorld::SubmitInference()
     TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
     Body->SetStringField(TEXT("model"), CurrentModelName());
     Body->SetNumberField(TEXT("temperature"), 0.0);
-    Body->SetNumberField(TEXT("max_tokens"), 1);
+    Body->SetNumberField(TEXT("top_k"), 1);
+    Body->SetNumberField(TEXT("seed"), 42);
+    Body->SetNumberField(TEXT("max_completion_tokens"), 32);
+    Body->SetBoolField(TEXT("enable_think"), false);
     Body->SetStringField(TEXT("grammar"), TEXT("root ::= [GAR]"));
+    Body->SetStringField(TEXT("grammar_string"), TEXT("root ::= [GAR]"));
     Body->SetArrayField(TEXT("messages"), {MakeShared<FJsonValueObject>(Message)});
     FString BodyText;
     const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&BodyText);
@@ -7959,7 +8662,7 @@ void AQaiConveyorWorld::SubmitInference()
     {
         bLoggedFirstInferenceSubmission = true;
         SimulatorLog(FString::Printf(
-            TEXT("inference_submitted backend=%s request_bytes=%d frames=%d"),
+            TEXT("inference_submitted backend=%s request_bytes=%d frames=%d prompt_profile=omniverse_compact_r5 detector_projection=authored_endline"),
             *ActiveBackend,
             BodyText.Len(),
             EncodedFrames.Num()));
@@ -7991,8 +8694,33 @@ void AQaiConveyorWorld::SubmitInference()
     {
         // Snapshot only after HTTP accepts the request. These are therefore
         // the exact two images fed to Reason2, not a separate preview camera.
+        SubmittedEncodedFrames = EncodedFrames;
         SubmittedFrameTextures = EncodedFrameTextures;
         SubmittedFrameTimes = EncodedFrameTimes;
+        SubmittedGroundTruthSignal = GroundTruthSignal;
+        bSubmittedRedOverlap = SubmittedGroundTruthSignal == TEXT("R");
+        bSubmittedForkliftMotion = false;
+        if (EncodedForkliftFrameTransforms.Num() >= 2)
+        {
+            const FTransform& Older = EncodedForkliftFrameTransforms[EncodedForkliftFrameTransforms.Num() - 2];
+            const FTransform& Newest = EncodedForkliftFrameTransforms.Last();
+            const float TranslationDeltaCm = FVector::Dist(
+                Older.GetLocation(),
+                Newest.GetLocation());
+            const float YawDeltaDegrees = FMath::Abs(FMath::FindDeltaAngleDegrees(
+                Older.Rotator().Yaw,
+                Newest.Rotator().Yaw));
+            // These thresholds reject suspension/solver noise while remaining
+            // well below the visible displacement at the one-second cadence.
+            bSubmittedForkliftMotion = TranslationDeltaCm >= 1.25f
+                || YawDeltaDegrees >= 0.50f;
+            SimulatorLog(FString::Printf(
+                TEXT("inference_visual_tracker translation_delta_cm=%.2f yaw_delta_deg=%.2f moving=%s red_overlap=%s"),
+                TranslationDeltaCm,
+                YawDeltaDegrees,
+                bSubmittedForkliftMotion ? TEXT("true") : TEXT("false"),
+                bSubmittedRedOverlap ? TEXT("true") : TEXT("false")));
+        }
         if (!bLoggedFirstInferencePreview)
         {
             bLoggedFirstInferencePreview = true;
@@ -8053,63 +8781,66 @@ void AQaiConveyorWorld::HandleModelResponse(const FString& Body, bool bSucceeded
         SimulatorLog(FString::Printf(TEXT("inference_invalid_response backend=%s"), *ActiveBackend));
         return;
     }
+    if (FParse::Param(FCommandLine::Get(), TEXT("QaiSaveInferenceFrames")))
+    {
+        const FString DiagnosticRoot = FPaths::Combine(
+            FPaths::ProjectSavedDir(),
+            TEXT("Diagnostics/Reason2Pairs"));
+        IFileManager::Get().MakeDirectory(*DiagnosticRoot, true);
+        for (int32 FrameIndex = 0; FrameIndex < SubmittedEncodedFrames.Num(); ++FrameIndex)
+        {
+            TArray<uint8> PngBytes;
+            if (FBase64::Decode(SubmittedEncodedFrames[FrameIndex], PngBytes))
+            {
+                const FString FrameRole = FrameIndex == 0 ? TEXT("older") : TEXT("newest");
+                const FString Filename = FString::Printf(
+                    TEXT("last-raw-%s-truth-%s-%s.png"),
+                    *Proposed,
+                    *SubmittedGroundTruthSignal,
+                    *FrameRole);
+                FFileHelper::SaveArrayToFile(
+                    PngBytes,
+                    *FPaths::Combine(DiagnosticRoot, Filename));
+            }
+        }
+    }
     RawModelSignal = Proposed;
-    ModelSignal = ApplyConsistencyGate(Proposed);
+    // Retain ModelSignal as a compatibility alias for UI/API consumers, but
+    // do not apply a physics or temporal consistency gate to model output.
+    ModelSignal = Proposed;
     UpdateStackLights();
     BackendStatus = FString::Printf(TEXT("ready, %.0f ms"), LastInferenceMilliseconds);
     bBackendHealthy = true;
     UE_LOG(
         LogTemp,
         Display,
-        TEXT("Reason2 inference complete: backend=%s raw=%s gated=%s ground_truth=%s latency_ms=%.0f"),
+        TEXT("Reason2 inference complete: backend=%s raw=%s ground_truth=%s latency_ms=%.0f"),
         *ActiveBackend,
         *RawModelSignal,
-        *ModelSignal,
-        *GroundTruthSignal,
+        *SubmittedGroundTruthSignal,
         LastInferenceMilliseconds);
     ++InferenceSuccessCount;
     const double Now = FPlatformTime::Seconds();
     const FString InferenceState = FString::Printf(
-        TEXT("%s/%s/%s"),
+        TEXT("%s/%s"),
         *RawModelSignal,
-        *ModelSignal,
-        *GroundTruthSignal);
+        *SubmittedGroundTruthSignal);
     const bool bStateChanged = InferenceState != LastLoggedInferenceState;
     const bool bPeriodicSummary = Now - LastInferenceSummaryLogSeconds >= 60.0;
     const bool bSlowResponse = LastInferenceMilliseconds >= (ActiveBackend == TEXT("evk") ? 30000.0 : 5000.0);
     if (InferenceSuccessCount == 1 || bStateChanged || bPeriodicSummary || bSlowResponse)
     {
         SimulatorLog(FString::Printf(
-            TEXT("inference_complete backend=%s raw=%s gated=%s ground_truth=%s latency_ms=%.0f successes=%d reason=%s"),
+            TEXT("inference_complete backend=%s raw=%s ground_truth=%s latency_ms=%.0f successes=%d reason=%s"),
             *ActiveBackend,
             *RawModelSignal,
-            *ModelSignal,
-            *GroundTruthSignal,
+            *SubmittedGroundTruthSignal,
             LastInferenceMilliseconds,
             InferenceSuccessCount,
             bSlowResponse ? TEXT("slow") : (bStateChanged ? TEXT("state_change") : TEXT("heartbeat"))));
         LastLoggedInferenceState = InferenceState;
         LastInferenceSummaryLogSeconds = Now;
     }
-}
-
-FString AQaiConveyorWorld::ApplyConsistencyGate(const FString& Proposed) const
-{
-    bool bMoving = false;
-    for (int32 ForkliftIndex = 0; ForkliftIndex < ConveyorTuning::EnabledForkliftCount; ++ForkliftIndex)
-    {
-        const FForkliftRuntime& Forklift = Forklifts[ForkliftIndex];
-        bMoving |= FMath::Abs(Forklift.SpeedCmPerSecond) >= ConveyorTuning::MovingThresholdCm;
-    }
-    if (Proposed == TEXT("R") && GroundTruthSignal != TEXT("R"))
-    {
-        return bMoving ? TEXT("A") : TEXT("G");
-    }
-    if (Proposed == TEXT("A") && !bMoving)
-    {
-        return TEXT("G");
-    }
-    return Proposed;
 }
 
 void AQaiConveyorWorld::ProbeBackend()

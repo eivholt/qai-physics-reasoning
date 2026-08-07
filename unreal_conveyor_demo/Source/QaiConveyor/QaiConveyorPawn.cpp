@@ -2,6 +2,7 @@
 
 #include "Camera/CameraComponent.h"
 #include "EngineUtils.h"
+#include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "InputCoreTypes.h"
@@ -27,11 +28,35 @@ namespace QaiCameraTuning
     constexpr float GameplayPitchDegrees = 32.0f;
     constexpr float GameplayFieldOfView = 75.0f;
     constexpr float GameplayFocusHeightCm = 125.0f;
+    constexpr float OrbitStickDeadZone = 0.18f;
+    // Digital keys should turn the steering linkage progressively instead of
+    // teleporting it from centre to full lock. Return is slightly quicker so
+    // releasing a key still feels responsive.
+    constexpr float KeyboardSteerRisePerSecond = 2.35f;
+    constexpr float KeyboardSteerReturnPerSecond = 3.25f;
+
+    FVector2D ApplyRadialStickDeadZone(float X, float Y)
+    {
+        const FVector2D RawInput(X, Y);
+        const float RawMagnitude = RawInput.Size();
+        if (RawMagnitude <= OrbitStickDeadZone)
+        {
+            return FVector2D::ZeroVector;
+        }
+
+        // Remove the inactive centre and remap the remaining travel to 0..1,
+        // avoiding a response jump at the edge of the dead zone.
+        const float ClampedMagnitude = FMath::Min(RawMagnitude, 1.0f);
+        const float RemappedMagnitude =
+            (ClampedMagnitude - OrbitStickDeadZone) / (1.0f - OrbitStickDeadZone);
+        return RawInput * (RemappedMagnitude / RawMagnitude);
+    }
 }
 
 AQaiConveyorPawn::AQaiConveyorPawn()
 {
     PrimaryActorTick.bCanEverTick = true;
+    AutoPossessPlayer = EAutoReceiveInput::Player0;
 
     Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
     SetRootComponent(Root);
@@ -221,12 +246,34 @@ void AQaiConveyorPawn::BeginPlay()
         UpdateIntroCamera(0.0f);
     }
 
-    if (APlayerController* PC = Cast<APlayerController>(GetController()))
+    AcquireGameInputFocus();
+}
+
+void AQaiConveyorPawn::PossessedBy(AController* NewController)
+{
+    Super::PossessedBy(NewController);
+    bInputModeApplied = false;
+    AcquireGameInputFocus();
+}
+
+void AQaiConveyorPawn::AcquireGameInputFocus()
+{
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (!PC)
     {
-        PC->SetShowMouseCursor(false);
-        FInputModeGameOnly Mode;
-        PC->SetInputMode(Mode);
+        bInputModeApplied = false;
+        return;
     }
+    PC->SetShowMouseCursor(false);
+    PC->SetIgnoreMoveInput(false);
+    PC->SetIgnoreLookInput(false);
+    FInputModeGameOnly Mode;
+    PC->SetInputMode(Mode);
+    if (FSlateApplication::IsInitialized())
+    {
+        FSlateApplication::Get().SetAllUserFocusToGameViewport(EFocusCause::SetDirectly);
+    }
+    bInputModeApplied = true;
 }
 
 void AQaiConveyorPawn::FindRuntime()
@@ -246,6 +293,13 @@ void AQaiConveyorPawn::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     FindRuntime();
+    if (!bInputModeApplied)
+    {
+        // BeginPlay may run before the default pawn is possessed. Apply the
+        // game-only mode on the first possessed tick instead of relying on a
+        // controller reconnect or a mouse click to repair viewport focus.
+        AcquireGameInputFocus();
+    }
     if (!Runtime)
     {
         return;
@@ -276,6 +330,12 @@ void AQaiConveyorPawn::Tick(float DeltaSeconds)
         AppliedCameraYaw,
         AppliedCameraPitch,
         bAppliedBrake);
+    PollKeyboardFallback(
+        DeltaSeconds,
+        AppliedThrottle,
+        AppliedSteer,
+        AppliedLift,
+        bAppliedBrake);
 
     if (bIntroCameraActive || bIntroCameraTransitionActive)
     {
@@ -294,6 +354,85 @@ void AQaiConveyorPawn::Tick(float DeltaSeconds)
             : Runtime->GetActiveForkliftLocation() + FVector(0.0f, 0.0f, 125.0f));
     SetActorLocation(Target);
     SpringArm->SetRelativeRotation(FRotator(-OrbitPitch, OrbitYaw, 0.0f));
+}
+
+void AQaiConveyorPawn::PollKeyboardFallback(
+    float DeltaSeconds,
+    float& OutThrottle,
+    float& OutSteer,
+    float& OutLift,
+    bool& OutBrake)
+{
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (!PC)
+    {
+        return;
+    }
+
+    const bool bForward = PC->IsInputKeyDown(EKeys::W) || PC->IsInputKeyDown(EKeys::Up);
+    const bool bReverse = PC->IsInputKeyDown(EKeys::S) || PC->IsInputKeyDown(EKeys::Down);
+    const bool bLeft = PC->IsInputKeyDown(EKeys::A) || PC->IsInputKeyDown(EKeys::Left);
+    const bool bRight = PC->IsInputKeyDown(EKeys::D) || PC->IsInputKeyDown(EKeys::Right);
+    const bool bLiftUp = PC->IsInputKeyDown(EKeys::E);
+    const bool bLiftDown = PC->IsInputKeyDown(EKeys::Q);
+    const bool bSpace = PC->IsInputKeyDown(EKeys::SpaceBar);
+
+    const bool bDirectionalInput = bForward || bReverse || bLeft || bRight
+        || bLiftUp || bLiftDown || bSpace;
+    if (bDirectionalInput && HandleIntroInput())
+    {
+        KeyboardSteerFiltered = 0.0f;
+        OutThrottle = 0.0f;
+        OutSteer = 0.0f;
+        OutLift = 0.0f;
+        OutBrake = false;
+        return;
+    }
+
+    if (bForward || bReverse)
+    {
+        OutThrottle = (bForward ? 1.0f : 0.0f) - (bReverse ? 1.0f : 0.0f);
+    }
+    const bool bKeyboardSteer = bLeft || bRight;
+    if (bKeyboardSteer)
+    {
+        const float TargetSteer = (bRight ? 1.0f : 0.0f) - (bLeft ? 1.0f : 0.0f);
+        KeyboardSteerFiltered = FMath::FInterpConstantTo(
+            KeyboardSteerFiltered,
+            TargetSteer,
+            DeltaSeconds,
+            QaiCameraTuning::KeyboardSteerRisePerSecond);
+        OutSteer = KeyboardSteerFiltered;
+    }
+    else
+    {
+        KeyboardSteerFiltered = FMath::FInterpConstantTo(
+            KeyboardSteerFiltered,
+            0.0f,
+            DeltaSeconds,
+            QaiCameraTuning::KeyboardSteerReturnPerSecond);
+        // Do not replace a live analog stick value while centring the residual
+        // keyboard steering after key release.
+        if (FMath::Abs(OutSteer) < 0.12f && !FMath::IsNearlyZero(KeyboardSteerFiltered))
+        {
+            OutSteer = KeyboardSteerFiltered;
+        }
+        else if (FMath::Abs(OutSteer) >= 0.12f)
+        {
+            KeyboardSteerFiltered = 0.0f;
+        }
+    }
+    if (bLiftUp || bLiftDown)
+    {
+        OutLift = (bLiftUp ? 1.0f : 0.0f) - (bLiftDown ? 1.0f : 0.0f);
+    }
+    OutBrake = OutBrake || bSpace;
+
+    if (bDirectionalInput && !bLoggedKeyboardInput && Runtime)
+    {
+        bLoggedKeyboardInput = true;
+        Runtime->RecordControllerInput(TEXT("keyboard_input_active backend=direct_player_controller_poll"));
+    }
 }
 
 void AQaiConveyorPawn::UpdateIntroCamera(float DeltaSeconds)
@@ -485,8 +624,9 @@ void AQaiConveyorPawn::PollGamepadFallback(
             OutSteer = ApplyDeadZone(LeftX, 0.12f);
             OutLift = ((Buttons & static_cast<uint64>(GameInputGamepadDPadUp)) != 0 ? 1.0f : 0.0f)
                 - ((Buttons & static_cast<uint64>(GameInputGamepadDPadDown)) != 0 ? 1.0f : 0.0f);
-            OutCameraYaw = ApplyDeadZone(RightX, 0.12f);
-            OutCameraPitch = -ApplyDeadZone(RightY, 0.12f);
+            const FVector2D OrbitInput = QaiCameraTuning::ApplyRadialStickDeadZone(RightX, -RightY);
+            OutCameraYaw = OrbitInput.X;
+            OutCameraPitch = OrbitInput.Y;
             OutBrake = OutBrake || (Buttons & static_cast<uint64>(GameInputGamepadA)) != 0;
             if (Runtime)
             {
@@ -732,8 +872,9 @@ void AQaiConveyorPawn::PollGamepadFallback(
     OutThrottle = FMath::Abs(RightTrigger - LeftTrigger) < 0.08f ? 0.0f : RightTrigger - LeftTrigger;
     OutSteer = FMath::Abs(LeftX) < 0.12f ? 0.0f : LeftX;
     OutLift = (bLiftUp ? 1.0f : 0.0f) - (bLiftDown ? 1.0f : 0.0f);
-    OutCameraYaw = FMath::Abs(RightX) < 0.12f ? 0.0f : RightX;
-    OutCameraPitch = FMath::Abs(RightY) < 0.12f ? 0.0f : -RightY;
+    const FVector2D OrbitInput = QaiCameraTuning::ApplyRadialStickDeadZone(RightX, -RightY);
+    OutCameraYaw = OrbitInput.X;
+    OutCameraPitch = OrbitInput.Y;
     OutBrake = OutBrake || PC->IsInputKeyDown(EKeys::Gamepad_FaceButton_Bottom);
 
     if (!bLoggedGamepadInput)
@@ -826,22 +967,24 @@ void AQaiConveyorPawn::InputCameraPitchMouse(float Value)
 
 void AQaiConveyorPawn::InputCameraYawGamepad(float Value)
 {
-    if (bIntroCameraTransitionActive || (FMath::Abs(Value) >= 0.12f && HandleIntroInput()))
+    if (bIntroCameraTransitionActive
+        || (FMath::Abs(Value) >= QaiCameraTuning::OrbitStickDeadZone && HandleIntroInput()))
     {
         CameraYawRateInput = 0.0f;
         return;
     }
-    CameraYawRateInput = FMath::Abs(Value) < 0.12f ? 0.0f : Value;
+    CameraYawRateInput = FMath::Abs(Value) < QaiCameraTuning::OrbitStickDeadZone ? 0.0f : Value;
 }
 
 void AQaiConveyorPawn::InputCameraPitchGamepad(float Value)
 {
-    if (bIntroCameraTransitionActive || (FMath::Abs(Value) >= 0.12f && HandleIntroInput()))
+    if (bIntroCameraTransitionActive
+        || (FMath::Abs(Value) >= QaiCameraTuning::OrbitStickDeadZone && HandleIntroInput()))
     {
         CameraPitchRateInput = 0.0f;
         return;
     }
-    CameraPitchRateInput = FMath::Abs(Value) < 0.12f ? 0.0f : Value;
+    CameraPitchRateInput = FMath::Abs(Value) < QaiCameraTuning::OrbitStickDeadZone ? 0.0f : Value;
 }
 
 void AQaiConveyorPawn::InputCameraZoom(float Value)
@@ -900,5 +1043,20 @@ void AQaiConveyorPawn::QuitDemo()
     {
         return;
     }
+#if WITH_EDITOR
+    // `UnrealEditor.exe -game` deliberately sets GIsEditor=false even though
+    // this is still an editor build. UE 5.8 then faults in editor-only TEDS
+    // teardown after the game has otherwise shut down cleanly. All editor
+    // target launches are disposable iteration processes, so bypass that
+    // teardown regardless of the runtime GIsEditor value. Packaged targets
+    // compile this branch out and continue through QuitGame below.
+    if (Runtime)
+    {
+        Runtime->RecordControllerInput(TEXT("exit_requested source=escape mode=editor_target_forced_workaround"));
+    }
+    FPlatformMisc::RequestExit(true);
+    return;
+#else
     UKismetSystemLibrary::QuitGame(this, Cast<APlayerController>(GetController()), EQuitPreference::Quit, false);
+#endif
 }

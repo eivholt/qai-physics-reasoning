@@ -17,10 +17,10 @@ from .logging_support import InstallLogger, user_data_dir
 from .payload import Payload, model_search_paths, sha256
 
 
-HOST_MODEL_NAME = "Cosmos-Reason2-2B-BF16-split-00001-of-00002.gguf"
-HOST_MODEL_PART_2_NAME = "Cosmos-Reason2-2B-BF16-split-00002-of-00002.gguf"
-PROJECTOR_NAME = "mmproj-Cosmos-Reason2-2B-BF16.gguf"
+HOST_MODEL_NAME = "Cosmos-Reason2-2B-BF16.gguf"
+PROJECTOR_NAME = "mmproj-Cosmos-Reason2-2B-F16.gguf"
 HOST_PORT = 18080
+HOST_IMAGE_TOKENS = 1024
 
 
 def endpoint_ready(url: str, expected_model: str | None = None, timeout: float = 2.0) -> bool:
@@ -135,19 +135,12 @@ def is_cpu_runtime(executable: Path) -> bool:
 def ensure_host_models(payload: Payload, logger: InstallLogger) -> tuple[Path, Path]:
     model_dir = user_data_dir() / "Models"
     model = payload.ensure_file(
-        "host-model-bf16-part-1",
+        "host-model-bf16",
         model_dir / HOST_MODEL_NAME,
         model_search_paths(HOST_MODEL_NAME),
     )
-    # llama.cpp auto-discovers the second shard from the standard split name,
-    # but both files must be present and hash-verified in the same directory.
-    payload.ensure_file(
-        "host-model-bf16-part-2",
-        model_dir / HOST_MODEL_PART_2_NAME,
-        model_search_paths(HOST_MODEL_PART_2_NAME),
-    )
     projector = payload.ensure_file(
-        "vision-projector-bf16",
+        "vision-projector-f16",
         model_dir / PROJECTOR_NAME,
         model_search_paths(PROJECTOR_NAME),
     )
@@ -183,9 +176,9 @@ def start_host_server(
         "--port",
         str(HOST_PORT),
         "--image-min-tokens",
-        "384",
+        str(HOST_IMAGE_TOKENS),
         "--image-max-tokens",
-        "768",
+        str(HOST_IMAGE_TOKENS),
         "--no-cache-prompt",
         "--slot-prompt-similarity",
         "0",

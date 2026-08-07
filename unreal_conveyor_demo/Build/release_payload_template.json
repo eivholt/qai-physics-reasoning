@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "id": "host-model-bf16",
+      "filename": "Cosmos-Reason2-2B-BF16.gguf",
+      "path": "Models/Cosmos-Reason2-2B-BF16.gguf",
+      "required": true,
+      "bytes": 4069680800,
+      "sha256": "b61833984940aa27e0d6a5c27fe550d24a0fbcf36acd2263ff21586242d6b7ef",
+      "description": "Exact unsplit BF16 Cosmos Reason2 2B GGUF validated by the Omniverse conveyor demo"
+    },
+    {
+      "id": "vision-projector-f16",
+      "filename": "mmproj-Cosmos-Reason2-2B-F16.gguf",
+      "path": "Models/mmproj-Cosmos-Reason2-2B-F16.gguf",
+      "required": true,
+      "bytes": 819395424,
+      "sha256": "43df50be60fd6c9075548cd6d759e21253a3c62da69055bab7864cc64aa00c2c",
+      "description": "Exact F16 multimodal projector validated by the Omniverse conveyor demo"
+    },
+    {
+      "id": "evk-geniex-bundle",
+      "filename": "evk-geniex-cosmos-v0317.tar.gz",
+      "path": "EVK/evk-geniex-cosmos-v0317.tar.gz",
+      "required": true,
+      "bytes": 1902613511,
+      "sha256": "89a7262a017e92338768a9f0c8336971a7f497b3a8d5290bedaf4b3501e6bc82",
+      "description": "Patched GenieX v0.3.17 ARM64 runtime and exact local Cosmos Q4_0/F16 GGUF files for IQ-9075"
+    },
+    {
+      "id": "host-runtime-windows-bin",
+      "filename": "llama-b10218-bin-win-cuda-13.3-x64.zip",
+      "path": "Runtime/Windows/llama-b10218-bin-win-cuda-13.3-x64.zip",
+      "platform": "windows",
+      "required": true,
+      "bytes": 146509386,
+      "sha256": "c275a6a5923e1d665d0b1d2b32ae266241a83936e9a5c2f0453b99d21877c88f",
+      "download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b10218/llama-b10218-bin-win-cuda-13.3-x64.zip",
+      "description": "Official pinned llama.cpp b10218 Windows CUDA 13.3 binaries"
+    },
+    {
+      "id": "host-runtime-windows-cudart",
+      "filename": "cudart-llama-bin-win-cuda-13.3-x64.zip",
+      "path": "Runtime/Windows/cudart-llama-bin-win-cuda-13.3-x64.zip",
+      "platform": "windows",
+      "required": true,
+      "bytes": 390970417,
+      "sha256": "1462a050eb4c684921ba51dcc4cc488a036674c3e73e9945ee705b854808d03e",
+      "download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b10218/cudart-llama-bin-win-cuda-13.3-x64.zip",
+      "description": "Official pinned CUDA 13.3 runtime libraries for llama.cpp b10218"
+    },
+    {
+      "id": "host-runtime-windows-cpu",
+      "filename": "llama-b10218-bin-win-cpu-x64.zip",
+      "path": "Runtime/Windows/llama-b10218-bin-win-cpu-x64.zip",
+      "platform": "windows",
+      "required": true,
+      "bytes": 18353134,
+      "sha256": "678d67405b12abd8ea3541ec6f501c10c9c15ba3cd0767bf090f79eb51168a17",
+      "download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b10218/llama-b10218-bin-win-cpu-x64.zip",
+      "description": "Official pinned llama.cpp b10218 portable Windows CPU fallback"
+    },
+    {
+      "id": "host-runtime-macos-arm64",
+      "filename": "llama-b10218-bin-macos-arm64.tar.gz",
+      "path": "Runtime/Mac/llama-b10218-bin-macos-arm64.tar.gz",
+      "platform": "macos",
+      "required": true,
+      "bytes": 10938782,
+      "sha256": "f3e87f1664c09183a861f16758c55a5adc925672705cd3a47e3dc4444504c914",
+      "download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b10218/llama-b10218-bin-macos-arm64.tar.gz",
+      "description": "Official pinned llama.cpp b10218 Apple Silicon Metal runtime"
+    },
+    {
+      "id": "host-runtime-macos-x64",
+      "filename": "llama-b10218-bin-macos-x64.tar.gz",
+      "path": "Runtime/Mac/llama-b10218-bin-macos-x64.tar.gz",
+      "platform": "macos",
+      "required": true,
+      "bytes": 11219742,
+      "sha256": "3cfdcb4c0a2071b470577cf26e182baf9a51edff09a8c89d9252d2d5c7d4b849",
+      "download_url": "https://github.com/ggml-org/llama.cpp/releases/download/b10218/llama-b10218-bin-macos-x64.tar.gz",
+      "description": "Official pinned llama.cpp b10218 Intel macOS Metal runtime"
+    }
+  ]
+}

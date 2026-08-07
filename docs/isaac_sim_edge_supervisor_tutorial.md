@@ -32,8 +32,9 @@ This tutorial does not cover steps in creating a simulation in Omniverse. One ma
 | Blind-corner congestion | 15 | two-vote EVK north reroute before RobotBlue can see the forklift | bypass goal reached |
 
 The EVK endpoint exposed `local/cosmos-reason2-2b:Q4_0`. Model input was a
-real eight-frame, four-second H.264 video generated from the clean tactical
-camera at 384 × 216 and 2 FPS. Isaac continued running while each request was
+real eight-frame, four-second, pixel-lossless RGB H.264 video generated from
+the clean tactical camera at 384 × 216 and 2 FPS. Isaac continued running
+while each request was
 processed.
 
 ### Historical frame-count sweep
@@ -147,8 +148,16 @@ at 2 FPS, so each request contains four seconds of visible motion. No
 `EARLIER`/`NOW` labels, side-by-side layout, timestamps, route lines, or UI
 overlays are burned into the 384 × 216 input.
 
-The model frames come from a fixed 1280 × 720 offscreen sensor and are
-downsampled to 384 × 216, so both are 16:9 and no stretch or crop is applied.
+The model frames come from a fixed 1280 × 720 offscreen sensor as lossless PNG
+files. They are downsampled to 384 × 216, so both are 16:9 and no stretch or
+crop is applied. The runner then uses `libx264rgb` at CRF 0 with RGB24: decoded
+video pixels exactly match those resized RGB frames. Do not replace this with
+JPEG or default `libx264`/`yuv420p`; quantization and 4:2:0 chroma subsampling
+can remove small safety-relevant details before the model sees them.
+
+The resize is still destructive preprocessing: 384 × 216 contains only 9%
+of the 1280 × 720 sensor pixels. Keep important objects large in the tactical
+view, or use an explicit crop/ROI rather than relying on codec quality alone.
 The docked interactive viewport may have a different aspect ratio when the
 operator resizes it; that UI viewport is not the model input.
 
@@ -512,6 +521,13 @@ as a real-camera control. It is an illustrative prompt, parser, quantization,
 and temporal-consensus experiment—not a safety benchmark or a claim about the
 video's original purpose.
 
+> **Historical media warning:** the three archived presentations below were
+> produced before the lossless-input invariant was added. The GPU run used a
+> JPEG storyboard, and the EVK run used ordinary lossy H.264 with 4:2:0 chroma
+> subsampling. Their statistics describe those exact historical inputs; rerun
+> the benchmark with PNG or lossless RGB H.264 before treating the values as a
+> current quality baseline.
+
 The 42.18-second source was divided into 21 non-overlapping two-second
 windows. Each window contains eight chronological frames at 4 FPS. The event
 definition is deliberately narrow:
@@ -567,7 +583,7 @@ expected temporal lag of a three-result filter, not another model inference.
 The EVK cannot use the host storyboard unchanged. Submitting the 1546 × 438
 image to this full-NPU GenieX build reproduces the known
 `dspqueue_read failed: 0x0000002e` large-image failure. The successful EVK run
-therefore sends each same two-second window as a native 384 × 216 H.264 MP4.
+therefore sent each same two-second window as a native lossy 384 × 216 H.264 MP4.
 The patched persistent service samples it at a verified 4 FPS, giving the
 model eight temporal frames, and runs `local/cosmos-reason2-2b:Q4_0` with
 GenieX `--compute npu --ngl -1`.
@@ -727,3 +743,76 @@ cannot guarantee that the constrained answer is grounded.
 8. Respect the deployable visual envelope. Increasing image size triggered an
    NPU runtime failure; native low-resolution video was more useful than a
    nominally identical but unsupported storyboard.
+
+## Appendix: Codex-to-Omniverse MCP bridge
+
+The simulation was built and inspected through a small local Model Context
+Protocol (MCP) bridge. It lets Codex call named tools such as `isaac_ping`,
+`isaac_list_prims`, `isaac_capture_viewport`, and the live-aisle setup and
+navigation operations. The data path is:
+
+```mermaid
+flowchart LR
+    CODEX["Codex"]
+    MCP["Local MCP adapter<br/>integrations/isaac_sim_mcp/server.py"]
+    ISAAC["Isaac Sim<br/>isaacsim.code_editor.python_server"]
+    KIT["Omniverse Kit APIs<br/>USD · timeline · viewport · Isaac"]
+
+    CODEX -->|"JSON-RPC over stdio"| MCP
+    MCP -->|"TCP 127.0.0.1:8226"| ISAAC
+    ISAAC --> KIT
+```
+
+Codex does not receive a general-purpose remote Python tool. The MCP server
+publishes an explicit set of JSON-schema tool definitions, validates their
+arguments, and maps each call to a predefined source builder. The generated
+code runs inside Isaac Sim, where it can use `omni.usd`, `omni.timeline`,
+viewport utilities, and Isaac controllers. Results are serialized back as
+JSON and returned as the MCP tool result. This keeps the agent-facing surface
+small even though the final operation executes in Omniverse Kit.
+
+The main code references are:
+
+| Component | Purpose |
+| --- | --- |
+| [`.codex/config.toml`](../.codex/config.toml) | Registers the local stdio MCP process when a Codex task starts. |
+| [`server.py`](../integrations/isaac_sim_mcp/server.py#L98) | Implements the loopback TCP client, MCP tool schemas, argument validation, dispatch, and stdio JSON-RPC loop. |
+| [`live_aisle_supervisor.py`](../integrations/isaac_sim_mcp/live_aisle_supervisor.py#L163) | Builds the bounded USD, camera, navigation, capture, and advisory operations used by this demo. |
+| [`edge_supervisor.py`](../integrations/isaac_sim_mcp/edge_supervisor.py#L900) | Builds the lightweight warehouse and related camera operations. |
+| [`launch_isaac_sim_poc.ps1`](../integrations/isaac_sim_mcp/launch_isaac_sim_poc.ps1#L26) | Starts Isaac Sim with the localhost Python server and tutorial extensions enabled. |
+| [`qai.edge_ai_supervisor`](../isaac_sim_supervisor_omniverse/exts/qai.edge_ai_supervisor/qai/edge_ai_supervisor/extension.py#L89) | Implements the in-viewport supervisor panel; it is loaded into Kit but is not the MCP transport. |
+
+To reproduce the setup, register the server in the repository's
+`.codex/config.toml`. Replace `<REPO ROOT>` with the absolute checkout path:
+
+```toml
+[mcp_servers.isaac_sim_control]
+enabled = true
+required = false
+command = "python"
+args = ["-u", "integrations/isaac_sim_mcp/server.py"]
+cwd = "<REPO ROOT>"
+env = { ISAAC_SIM_HOST = "127.0.0.1", ISAAC_SIM_PORT = "8226" }
+startup_timeout_sec = 10.0
+tool_timeout_sec = 60.0
+```
+
+Launch Isaac Sim from the repository and check the application-level bridge:
+
+```powershell
+.\integrations\isaac_sim_mcp\launch_isaac_sim_poc.ps1
+
+# Run this in a second terminal after the Isaac Sim UI is responsive.
+python .\integrations\isaac_sim_mcp\server.py --check-isaac
+```
+
+Codex reads MCP configuration when a task starts, so open a new Codex task or
+restart the current one after changing the configuration. A useful first
+request is: “Ping Isaac Sim, report the stage status, and list the prims under
+`/World/CodexPoC`.” The complete tool inventory and a minimal scene exercise
+are in the [bridge README](../integrations/isaac_sim_mcp/README.md).
+
+Keep the Isaac Python server bound to `127.0.0.1`. Its native protocol can
+execute Python inside Kit and must not be exposed directly to a LAN. The MCP
+adapter adds a bounded tool interface, but loopback binding remains the
+primary network-security boundary.

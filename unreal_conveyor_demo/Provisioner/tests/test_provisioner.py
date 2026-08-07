@@ -147,8 +147,14 @@ class ProvisionerTests(unittest.TestCase):
         path = write_runtime_config("http://127.0.0.1:18080", "http://192.168.1.158:18181", logger)
         config = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(config["backend"], "host")
+        self.assertEqual(config["host_model"], "Cosmos-Reason2-2B-BF16.gguf")
         self.assertEqual(config["evk_server_url"], "http://192.168.1.158:18181")
         self.assertFalse(path.with_suffix(".json.tmp").exists())
+
+    def test_host_uses_omniverse_model_and_vision_token_budget(self) -> None:
+        self.assertEqual(host.HOST_MODEL_NAME, "Cosmos-Reason2-2B-BF16.gguf")
+        self.assertEqual(host.PROJECTOR_NAME, "mmproj-Cosmos-Reason2-2B-F16.gguf")
+        self.assertEqual(host.HOST_IMAGE_TOKENS, 1024)
 
     def test_explicit_evk_is_prioritized_and_deduplicated(self) -> None:
         logger = InstallLogger("test")

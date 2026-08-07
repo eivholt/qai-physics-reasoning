@@ -717,6 +717,19 @@ def _encode_frames(
     comparison_video: bool = False,
     clean_video: bool = False,
 ) -> Path:
+    # Model inputs must not use JPEG-like quantization or chroma subsampling.
+    # libx264rgb at CRF 0 is pixel-lossless after decode while retaining the
+    # H.264-in-MP4 contract expected by the patched GenieX native-video path.
+    lossless_video_args = [
+        "-c:v",
+        "libx264rgb",
+        "-crf",
+        "0",
+        "-preset",
+        "medium",
+        "-pix_fmt",
+        "rgb24",
+    ]
     output_dir.mkdir(parents=True, exist_ok=True)
     for index, source in enumerate(frame_paths):
         shutil.copy2(source, output_dir / f"frame_{index:03d}.png")
@@ -788,10 +801,7 @@ def _encode_frames(
                     "1",
                     "-r",
                     f"{model_fps:g}",
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
+                    *lossless_video_args,
                     _windows_path_to_wsl(clip),
                 ],
                 timeout_seconds=60.0,
@@ -825,10 +835,7 @@ def _encode_frames(
             _windows_path_to_wsl(output_dir / "frame_%03d.png"),
             "-vf",
             video_filter,
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
+            *lossless_video_args,
             "-r",
             f"{model_fps:g}",
             _windows_path_to_wsl(clip),

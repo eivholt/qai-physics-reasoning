@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "report_id": "iq9075_unreal_artifact_comparison_r1",
+  "created_date": "2026-08-06",
+  "status": "completed_initial_controlled_panel",
+  "target": {
+    "board": "Qualcomm Dragonwing IQ-9075 EVK",
+    "address": "192.168.1.158",
+    "qairt": "2.45.0.260326",
+    "htp_arch": "v73"
+  },
+  "decision": {
+    "replace_current_q4": false,
+    "reason": "Neither QAIRT candidate beats the current Q4 backend sufficiently to justify replacement. Boundary-FP16 collapses to amber on this panel, while the all-W8 decoder cannot map all contexts into HTP memory."
+  },
+  "protocol": {
+    "source": "unreal_conveyor_demo/Saved/Diagnostics/ResolutionSweepAblations/controlled-baseline-lossless-png/512x288",
+    "cases": [
+      "G-00-01", "G-04-05", "G-08-09",
+      "A-00-01", "A-04-05", "A-08-09",
+      "R-00-01", "R-04-05", "R-08-09"
+    ],
+    "prompt": "Review the images in chronological order, with the newest image last.\nReturn R if any part of any forklift is inside the marked red zone.\nOtherwise, return A if any forklift is moving at all.\nOtherwise, return G.\nIgnore human workers, parcels, and the stack light.\nReturn one letter only: R, A, or G.",
+    "sampling": {
+      "temperature": 0,
+      "top_k": 1,
+      "seed": 42,
+      "output_tokens": 1
+    },
+    "notes": [
+      "All source images are lossless PNGs.",
+      "QAIRT uses the pinned patched raw-video runner and validates float32[336,1536], grid [1,14,24], 84 visual tokens per temporal pair before inference.",
+      "Current Q4 is measured through its production HTTP path at the supported 384x216 capture resolution."
+    ]
+  },
+  "artifacts": {
+    "boundary_fp16_vision": {
+      "sha256": "6e217777c18cff6dd60ebff6a1422750b8e93d5c8ab05df1abb00eaaa17e2cac"
+    },
+    "boundary_fp16_w8_decoder": {
+      "part1_sha256": "8ea7ba19baaaa90cbb8e1ee34ab07f37ea982860d3718d96a2a3d3405a341125",
+      "part2_sha256": "d65f751739ea4410920c7c04b06729f4f468e512e665c91577989653bdf0f50a",
+      "part3_sha256": "41b7e3d8576e3904f74714941360cf9dadb140905f287663de5044efb67689f9",
+      "part4_sha256": "f3a460e2310e425bfd8df0c56ee4dea35463bfe060fbd5692bb0a0f97ed3c604"
+    },
+    "current_q4_model_id": "local/cosmos-reason2-2b:Q4_0"
+  },
+  "results": {
+    "current_q4_384x216": {
+      "correct": 2,
+      "total": 9,
+      "by_truth": {
+        "G": {"correct": 1, "total": 3, "predictions": ["A", "G", "A"]},
+        "A": {"correct": 0, "total": 3, "predictions": ["G", "G", "R"]},
+        "R": {"correct": 1, "total": 3, "predictions": ["R", "G", "G"]}
+      },
+      "warm_wall_ms": {
+        "range": [815.1, 838.1],
+        "note": "The first cold request was 3499.5 ms and is excluded from the warm range."
+      }
+    },
+    "boundary_fp16_qairt": {
+      "correct": 3,
+      "total": 9,
+      "predictions": ["A", "A", "A", "A", "A", "A", "A", "A", "A"],
+      "ttft_vision_plus_prefill_ms": {
+        "min": 427.2,
+        "max": 436.2,
+        "mean": 431.8
+      },
+      "process_wall_ms": {
+        "min": 3595,
+        "max": 3663,
+        "note": "Includes cold context creation for every case."
+      }
+    },
+    "boundary_fp16_qairt_w8_all_decoder": {
+      "scoreable": false,
+      "failure": "QNN failed to map the shared weights buffer while creating context 5 (err 1002 / rpc transport 8003).",
+      "interpretation": "The complete all-W8 decoder assembly is not deployable on the tested physical EVK with the current context layout. Any emitted token after this initialization error is invalid and was excluded."
+    }
+  },
+  "compatibility_findings": [
+    "The stock QAIRT genie-app rejects the preprocessed temporal tensor through node set image. Historical and current valid runs require the repository's pinned patched raw-video GenieX runner.",
+    "The Q4 EVK VLM service aborts in GGML buffer allocation when this panel is submitted at 512x288. It remains operational at the production 384x216 capture size after restarting the service.",
+    "The failed all-W8 load can leave accelerator allocation unhealthy; the service/runtime must be restarted before subsequent Q4 measurements."
+  ],
+  "next_steps": [
+    "Keep Q4_0 as the EVK default.",
+    "Run the larger frozen suite with the exact production prompt and captures before considering Boundary-FP16 again.",
+    "Test W8 decoder partitions incrementally (one partition at a time) to identify the HTP memory threshold instead of loading all four W8 contexts.",
+    "Add a persistent QAIRT service wrapper only after a candidate demonstrates better accuracy; cold process wall time is not representative of a resident service."
+  ]
+}
