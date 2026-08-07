@@ -31,11 +31,11 @@ This tutorial does not cover steps in creating a simulation in Omniverse. One ma
 | Clear-route | 37 | stayed on the direct route | northwest goal reached |
 | Blind-corner congestion | 15 | two-vote EVK north reroute before RobotBlue can see the forklift | bypass goal reached |
 
-The EVK endpoint exposed `local/cosmos-reason2-2b:Q4_0`. Model input was a
-real eight-frame, four-second, pixel-lossless RGB H.264 video generated from
-the clean tactical camera at 384 × 216 and 2 FPS. Isaac continued running
-while each request was
-processed.
+The EVK endpoint exposed `local/cosmos-reason2-2b:Q4_0`. The archived
+closed-loop run used an ordinary H.264 eight-frame, four-second video at
+384 × 216 and 2 FPS. The current runner replaces that model-bound encoding
+with pixel-lossless RGB H.264; the archived behavior counts below have not yet
+been rerun under the new codec profile.
 
 ### Historical frame-count sweep
 
