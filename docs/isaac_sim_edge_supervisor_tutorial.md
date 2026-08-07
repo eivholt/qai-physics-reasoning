@@ -521,12 +521,11 @@ as a real-camera control. It is an illustrative prompt, parser, quantization,
 and temporal-consensus experiment—not a safety benchmark or a claim about the
 video's original purpose.
 
-> **Historical media warning:** the three archived presentations below were
-> produced before the lossless-input invariant was added. The GPU run used a
-> JPEG storyboard, and the EVK run used ordinary lossy H.264 with 4:2:0 chroma
-> subsampling. Their statistics describe those exact historical inputs; rerun
-> the benchmark with PNG or lossless RGB H.264 before treating the values as a
-> current quality baseline.
+> **Lossless preprocessing boundary:** the downloaded YouTube source is an
+> H.264/yuv420p MP4, so information already absent from that source cannot be
+> recovered. Every added inference-preparation step is lossless: GPU frames
+> and storyboards are PNG, and EVK videos use RGB H.264 at CRF 0. The delivery
+> MP4/GIF demonstrations are compressed separately and are never model input.
 
 The 42.18-second source was divided into 21 non-overlapping two-second
 windows. Each window contains eight chronological frames at 4 FPS. The event
@@ -551,50 +550,52 @@ silently converted to inactive.
 
 ### GPU BF16: latest result
 
-The host run sends one 1546 × 438 JPEG storyboard per request. The storyboard
-contains all eight 384 × 216 frames in a 4-by-2 layout. The overlay displays
-the latest raw semantic result and the end-to-end request time.
+The host run sends one lossless 1546 × 438 PNG storyboard per request. The
+storyboard contains all eight lossless 384 × 216 frames in a 4-by-2 layout.
+The overlay displays the latest raw semantic result and the end-to-end request
+time.
 
 ![GPU BF16 latest-result inference](media/reason2_forklift_conveyor_comparison/gpu_latest.gif)
 
-This run detects all four active windows without a false active decision, but
-three late responses do not contain a parsable answer label. Counting those
-inconclusive windows as errors gives 18/21 overall accuracy; accuracy is 18/18
-over conclusive decisions.
+This raw run detects three of the four active windows. It also produces four
+isolated false-active decisions, giving 16/21 overall accuracy. All 21 replies
+contain an unambiguous semantic label, although only one uses the requested
+`<answer>` wrapper.
 
 ### GPU BF16: rolling average of three results
 
 The second presentation uses the same GPU requests and keeps the latest three
 inference attempts. Green is inactive, red is active, and grey is
-inconclusive. An inconclusive attempt remains visible as a grey history square
-but contributes no numeric vote. The fourth square is active when the mean of
-the remaining votes is at least 0.5. Its `AVG` time is the sum of the three
-displayed request times, including an inconclusive attempt.
+inconclusive. The fourth square is active when the mean of the available votes
+is at least 0.5. Its `AVG` time is the sum of the three displayed request
+times.
 
 ![GPU BF16 rolling three-result average](media/reason2_forklift_conveyor_comparison/gpu_rolling_average.gif)
 
-Consensus removes all inconclusive final decisions and improves overall
-accuracy to 19/21. It is not free: the majority decision starts one window
-late and remains active one window after the reference event ends. This is the
-expected temporal lag of a three-result filter, not another model inference.
+The four raw false positives are isolated, while the missed active window is
+adjacent to three correct active results. AVG-3 therefore scores 21/21 on this
+small frozen sequence. This is a favorable error pattern, not evidence that
+averaging is universally correct; the filter still adds temporal memory and
+can delay or extend a state transition on other sequences.
 
 ### IQ9 EVK: latest full-NPU result
 
 The EVK cannot use the host storyboard unchanged. Submitting the 1546 × 438
 image to this full-NPU GenieX build reproduces the known
 `dspqueue_read failed: 0x0000002e` large-image failure. The successful EVK run
-therefore sent each same two-second window as a native lossy 384 × 216 H.264 MP4.
-The patched persistent service samples it at a verified 4 FPS, giving the
-model eight temporal frames, and runs `local/cosmos-reason2-2b:Q4_0` with
-GenieX `--compute npu --ngl -1`.
+therefore sends each same two-second window as a pixel-lossless RGB H.264 MP4
+at 384 × 216. `libx264rgb`, CRF 0, and RGB24 avoid quantization and chroma
+subsampling. All 168 decoded RGB frames were compared with their PNG inputs
+and matched byte for byte. The patched service gives the model eight ordered
+frames through its native-video path and runs `local/cosmos-reason2-2b:Q4_0`
+with GenieX `--compute npu --ngl -1`.
 
 ![IQ9 EVK NPU latest-result inference](media/reason2_forklift_conveyor_comparison/evk_npu_latest.gif)
 
-The EVK marks three of the four reference-active windows active, misses
-18–20 seconds, and produces early active decisions at 2–4 and 16–18 seconds.
-It reaches 18/21 overall accuracy, but its active precision is lower than the
-GPU run because its errors are conclusive false positives rather than missing
-answers.
+The lossless EVK run marks 22–24 seconds active and produces one false-active
+decision at 38–40 seconds. It misses the other three reference-active windows,
+reaching 17/21 overall accuracy with 50% active precision and 25% active recall
+on this small sequence.
 
 ### Accuracy and latency
 
@@ -604,14 +605,59 @@ active windows; `TN` and `FP` refer to the 17 inactive windows.
 
 | Presentation | Correct | Overall accuracy | TP / TN / FP / FN | Inconclusive | Active precision / recall | Mean / median / P95 request time |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| GPU BF16, latest | 18/21 | 85.7% | 4 / 14 / 0 / 0 | 3 | 100% / 100% | 6.195 / 5.421 / 11.530 s |
-| GPU BF16, average of three | 19/21 | 90.5% | 3 / 16 / 1 / 1 | 0 | 75% / 75% | same 21 underlying GPU requests |
-| IQ9 EVK Q4_0 NPU, latest | 18/21 | 85.7% | 3 / 15 / 2 / 1 | 0 | 60% / 75% | 4.956 / 4.137 / 8.002 s |
+| GPU BF16, latest | 16/21 | 76.2% | 3 / 13 / 4 / 1 | 0 | 42.9% / 75% | 1.005 / 0.950 / 1.563 s |
+| GPU BF16, average of three | 21/21 | 100% | 4 / 17 / 0 / 0 | 0 | 100% / 100% | same 21 underlying GPU requests |
+| IQ9 EVK Q4_0 NPU, latest | 17/21 | 81.0% | 1 / 16 / 1 / 3 | 0 | 50% / 25% | 4.767 / 4.012 / 6.565 s |
 
 After the first three results are available, the average presentation's
-displayed three-request total ranges from 9.79 to 34.66 seconds and averages
-18.24 seconds. That sum describes the evidence represented by the three
-squares; it is not a claim that one inference takes 18.24 seconds.
+displayed three-request total ranges from 2.26 to 3.61 seconds and averages
+3.05 seconds. That sum describes the evidence represented by the three
+squares; it is not a claim that one inference takes 3.05 seconds.
+
+### What lossless media changed
+
+The old JPEG/default-H.264 inputs were rerun on the same currently running
+services before comparing them with the lossless replacements. This avoids
+confusing codec effects with a different server build or warm state:
+
+| Current-service input | Latest | AVG-3 | Main change after going lossless |
+| --- | ---: | ---: | --- |
+| Host JPEG storyboard control | 18/21 | 17/21 | baseline control |
+| Host lossless PNG storyboard | 16/21 | **21/21** | more isolated false positives, all removed by AVG-3 |
+| EVK lossy H.264/yuv420p control | 18/21 | 18/21 | baseline control |
+| EVK lossless RGB H.264 | 17/21 | 17/21 | false positives 2 → 1; true positives 3 → 1 |
+
+Lossless transport is therefore a correctness requirement, but it is not an
+accuracy guarantee. It did not improve raw overall accuracy on this clip. It
+changed which borderline details survived preprocessing, which changed the
+model's error distribution. The GPU consensus policy happened to benefit;
+the same policy suppresses both isolated EVK active decisions, including its
+only true positive.
+
+### Temporal-spacing experiment
+
+The Unreal conveyor demo sends two separate lossless PNGs about two seconds
+apart. That sparse representation was tested here, together with a wider
+dense history:
+
+| Host BF16 lossless profile | Latest | AVG-3 |
+| --- | ---: | ---: |
+| 8 frames across 2 seconds (0.25 s cadence) | 16/21 | **21/21** |
+| 8 frames across up to 4 seconds (0.5 s cadence) | 17/21 | 18/21 |
+| 2 images 1.75 seconds apart | 12/21 | 11/21 |
+| 2 images up to 4 seconds apart | 10/21 | 9/21 |
+
+The exact two-PNG transport was also tried on the EVK. It scored 5/9 on the
+initial all-negative windows, then request 10 timed out after 180 seconds and
+left the persistent service unresponsive. The service was restarted, and the
+profile was rejected rather than used for a presentation.
+
+The Unreal task has a strong red-zone landmark and asks whether any forklift
+moves. This clip has no floor marker and asks for the conjunction of motion
+with an inferred 50 cm threshold. Sparse images expose displacement but remove
+the trajectory evidence that helps distinguish ordinary movement from passage
+through the opening. More temporal spacing is therefore not automatically
+better; the deployed window must be measured against the exact event geometry.
 
 ### Prompts and input contracts
 
@@ -669,28 +715,26 @@ tensor-equivalent:
 | Property | Host GPU | IQ9 EVK |
 | --- | --- | --- |
 | Model precision | BF16 | Q4_0 |
-| Visual transport | one 1546 × 438 storyboard JPEG | native 384 × 216 MP4 |
+| Visual transport | one lossless 1546 × 438 storyboard PNG | pixel-lossless RGB H.264 MP4 at 384 × 216 |
 | Temporal representation | eight visible storyboard tiles | eight frames sampled at 4 FPS and paired by the native-video path |
 | Completion limit | 512 tokens | 256 tokens |
-| Mean completion length | 308.8 tokens | 45.9 tokens |
-| Result parsing | `<answer>` label | final semantic-label fallback |
+| Mean completion length | 216.0 tokens | 39.7 tokens |
+| Result parsing | prefer `<answer>`, then final semantic-label fallback | prefer `<answer>`, then final semantic-label fallback |
 | Service state | already-running host server | warm persistent GenieX NPU server |
 
 The token counters from the two serving wrappers do not account for visual
 tokens in exactly the same way, so prompt-token totals should not be compared
 as a hardware throughput metric.
 
-### Why the EVK looks faster but follows the format less reliably
+### Why the two services still differ
 
-The EVK's 4.956-second mean is only about 1.25 times faster than the GPU's
-6.195-second mean, even though its responses contain about 6.7 times fewer
-completion tokens. Several GPU requests generate 400–512 tokens and dominate
-the slow tail; the EVK usually stops after 19–60 tokens. Q4_0 also moves much
-less weight data than BF16, and the NPU is efficient at low-batch quantized
-decoding. These measurements therefore do **not** establish that the IQ9 NPU
-is faster than the host GPU for equivalent inference.
+The current host run averages 1.005 seconds, while the EVK averages 4.767
+seconds despite producing much shorter completions. The transports, precision,
+vision execution, completion budgets, and serving wrappers differ, so this is
+not a hardware-only throughput comparison. It shows only that lossless input
+does not make the two deployed pipelines tensor- or latency-equivalent.
 
-Formatting shows the opposite quality tradeoff. A typical GPU response is:
+A fully compliant response would be:
 
 ```text
 <think>
@@ -699,26 +743,23 @@ The forklift moves across the tiles and passes through the opening.
 <answer>ACTIVE</answer>
 ```
 
-A typical EVK response is semantically clear but malformed:
+A common response from either current service is semantically clear but omits
+the requested wrapper:
 
 ```text
 <think>: The forklift moves through the opening between the conveyors.
 </think>: ACTIVE
 ```
 
-The GPU produces a parsable opening `<answer>` label in 18/21 responses and a
-fully closed `<answer>...</answer>` block in 11/21. The EVK produces no
-`<answer>` block in 21 attempts, although every response ends in an
-unambiguous standalone `ACTIVE` or `INACTIVE`. The overlay preserves that
-semantic result through an explicit final-label fallback.
+The GPU produces a parsable `<answer>` label in only 1/21 current responses;
+the EVK produces none in 21 attempts. Every response finishes with `stop` and
+contains an unambiguous standalone semantic label, so the overlay preserves
+the result through an explicit final-label fallback.
 
-This pattern points first to different GenieX/chat-template and
-`enable_think` handling, then to Q4_0 numerical sensitivity around low-value
-punctuation and tag tokens. It is not ordinary truncation: all EVK responses
-finish with `stop`, and none reaches the 256-token limit. A grammar-constrained
-label-only experiment returns correctly shaped output in about 1.5 seconds,
-but collapses to `ACTIVE` for all 21 windows. Grammar can guarantee syntax; it
-cannot guarantee that the constrained answer is grounded.
+Because both BF16 and Q4_0 omit the wrapper in this rerun, serving-template and
+`enable_think` behavior are stronger suspects than quantization alone. A
+grammar can guarantee syntax, but earlier label-only grammar experiments
+collapsed to one class; constrained shape does not guarantee grounded output.
 
 ### Lessons for constrained edge deployments
 
@@ -727,9 +768,9 @@ cannot guarantee that the constrained answer is grounded.
 2. Preserve raw model text, parsed output, parse mode, latency, and input media.
    A clean application label can otherwise hide malformed or unsupported
    reasoning.
-3. Measure coverage separately from accuracy. The GPU makes fewer wrong
-   conclusive decisions here, but it also declines three windows implicitly by
-   failing the parser.
+3. Measure precision, recall, and temporal error shape separately from overall
+   accuracy. The lossless EVK run reduces false positives but misses three of
+   four active windows.
 4. Treat grammar as a protocol tool, not an accuracy tool. Establish that the
    unconstrained model can distinguish the classes before forcing a small
    answer set.
@@ -738,11 +779,12 @@ cannot guarantee that the constrained answer is grounded.
    decision. Keep a declared `INCONCLUSIVE` state when neither path is safe.
 6. Match precision, preprocessing, frame sampling, prompt, output budget, and
    server load before comparing hardware latency.
-7. Use temporal consensus only with an explicit lag budget. It improves this
-   case from 18/21 to 19/21, but delays onset and holds the event after it ends.
+7. Use temporal consensus only after measuring the error sequence. It improves
+   the lossless GPU run from 16/21 to 21/21, but suppresses the lossless EVK's
+   only true positive and leaves that run at 17/21.
 8. Respect the deployable visual envelope. Increasing image size triggered an
-   NPU runtime failure; native low-resolution video was more useful than a
-   nominally identical but unsupported storyboard.
+   NPU runtime failure, and a two-PNG EVK sequence hung the persistent service.
+   Pixel-lossless native low-resolution video is the stable NPU transport here.
 
 ## Appendix: Codex-to-Omniverse MCP bridge
 
