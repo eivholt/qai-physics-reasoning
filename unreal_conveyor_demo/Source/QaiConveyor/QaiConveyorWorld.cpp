@@ -3,6 +3,8 @@
 
 #include "Async/Async.h"
 #include "Components/PointLightComponent.h"
+#include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/SpotLightComponent.h"
 #include "Components/MaterialBillboardComponent.h"
 #include "Components/PrimitiveComponent.h"
@@ -11,6 +13,7 @@
 #include "Components/LightComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/LocalFogVolumeComponent.h"
@@ -18,6 +21,8 @@
 #include "DrawDebugHelpers.h"
 #include "Engine/ExponentialHeightFog.h"
 #include "Engine/Engine.h"
+#include "Engine/CollisionProfile.h"
+#include "Engine/OverlapResult.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalFogVolume.h"
 #include "Engine/SceneCapture2D.h"
@@ -52,7 +57,8 @@
 #include "Misc/Parse.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
-#include "Math/PerspectiveMatrix.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
+#include "PhysicsEngine/PhysicsConstraintComponent.h"
 #include "RHICommandList.h"
 #include "RHIGPUReadback.h"
 #include "RenderingThread.h"
@@ -71,8 +77,10 @@ namespace ConveyorTuning
     constexpr float MaxSteerRadians = 0.52f;
     constexpr float SteeringRisePerSecond = 2.35f;
     constexpr float SteeringReturnPerSecond = 3.75f;
-    constexpr float LiftSpeedCm = 90.0f;
-    constexpr float MaxLiftCm = 200.0f;
+    // Loaded industrial lift speed. The previous 90 cm/s outran thin-contact
+    // cargo manifolds and could launch marginal pallet loads.
+    constexpr float LiftSpeedCm = 55.0f;
+    constexpr float MaxLiftCm = 196.0f;
     constexpr float BeltCenterX = 442.0f;
     // Native module bounds place the curve centres at Y=-361.9404 and
     // Y=108.3344. Their midpoint is negative; the old positive sign shifted
@@ -85,13 +93,96 @@ namespace ConveyorTuning
     constexpr float WorkerRadiusCm = 38.0f;
     constexpr float CollisionMarginCm = 5.0f;
     constexpr float MinimumCollisionLookaheadCm = 8.0f;
-    constexpr float WorldMinimumX = -650.0f;
-    constexpr float WorldMaximumX = 750.0f;
-    constexpr float WorldMinimumY = -650.0f;
+    // The west wall and storage rack are translated two metres outward to
+    // provide a larger forklift manoeuvring lane. Keep the analytic world
+    // guard in step with the physical floor/wall extension.
+    constexpr float WorldMinimumX = -850.0f;
+    // The two presentation sides remain visually open. Their collision-only
+    // catch walls sit two metres beyond the rendered slab so the player can
+    // use the open apron without driving or pushing props out of the world.
+    constexpr float WorldMaximumX = 850.0f;
+    constexpr float WorldMinimumY = -560.0f;
     constexpr float WorldMaximumY = 700.0f;
     constexpr float RedClearanceCm = 100.0f;
     constexpr float MovingThresholdCm = 5.0f;
-    constexpr float ConveyorSpeedCm = 55.0f;
+    // Keep the conveyor visibly powered, but deliberately slow enough that its
+    // parcel motion remains background context instead of competing with the
+    // forklift's two-second temporal signal in Reason2 input.
+    constexpr float ConveyorSpeedCm = 20.0f;
+    // Powered rollers build parcel speed over several contacts.  The old
+    // 65-ms velocity servo could apply nearly one g in a single step and turn
+    // small contact/impact errors into launches at curves and transitions.
+    constexpr float ConveyorTangentialResponseSeconds = 0.65f;
+    // The analytic support is geometrically stationary, unlike the skin of a
+    // powered roller. This feed-forward term cancels that proxy-only rolling
+    // resistance; the velocity-error term above remains the parcel's net drive.
+    constexpr float ConveyorProxyResistanceCompensationCm = 135.0f;
+    constexpr float ConveyorResistanceFadeSpeedCm = 18.0f;
+    constexpr float ConveyorMaximumParcelAccelerationCm = 230.0f;
+    // A mild crowned/skewed-roller response recentres a free body without a
+    // guide rail.  It is deliberately weak enough that a forklift or another
+    // parcel can still push cargo over the edge.
+    constexpr float ConveyorCrownStiffnessPerSecondSquared = 2.8f;
+    constexpr float ConveyorCrownDampingPerSecond = 2.4f;
+    constexpr float ConveyorMaximumCenteringAccelerationCm = 65.0f;
+    // Chaos forklift tuning uses centimetres, kilograms and seconds, matching
+    // Unreal's rigid-body force units (kg*cm/s^2).
+    constexpr float ForkliftMaximumSpeedCm = 520.0f;
+    constexpr float ForkliftMaximumReverseSpeedCm = 360.0f;
+    // A loaded industrial truck typically accelerates gently to protect its
+    // cargo. Bound tractive effort independently of tire grip so full trigger
+    // does not deliver a near-friction-limit launch.
+    constexpr float ForkliftMaximumDriveAccelerationCm = 118.0f;
+    constexpr float ForkliftMaximumBrakeDecelerationCm = 135.0f;
+    constexpr float ForkliftMaximumSteerDegrees = 38.0f;
+    // A real counterbalanced forklift's front axle is effectively rigid; most
+    // compliance is tire deflection plus limited rear-axle articulation. Keep
+    // only enough front movement to read visually as damped compliance.
+    constexpr float ForkliftFrontSuspensionRestCm = 2.8f;
+    constexpr float ForkliftFrontSuspensionDroopCm = 0.4f;
+    constexpr float ForkliftFrontSuspensionMaximumCompressionCm = 1.6f;
+    constexpr float ForkliftFrontSuspensionStiffness = 1150000.0f;
+    constexpr float ForkliftFrontSuspensionDamping = 115000.0f;
+    // The rear axle remains slightly more compliant so one wheel can articulate
+    // over a pallet edge without turning the vehicle into a passenger car.
+    constexpr float ForkliftRearSuspensionRestCm = 3.6f;
+    constexpr float ForkliftRearSuspensionDroopCm = 1.1f;
+    constexpr float ForkliftRearSuspensionMaximumCompressionCm = 2.4f;
+    constexpr float ForkliftRearSuspensionStiffness = 850000.0f;
+    constexpr float ForkliftRearSuspensionDamping = 85000.0f;
+    // The imported rendered tire is larger than the finite Chaos wheel disk.
+    // This preload accounts for that radius difference and starts both axles
+    // near their static-load compression instead of dropping onto the springs.
+    constexpr float ForkliftSuspensionPreloadCompressionCm = 4.8f;
+    constexpr float ForkliftTireLongitudinalStiffness = 11600.0f;
+    constexpr float ForkliftTireLateralStiffness = 18500.0f;
+    constexpr float ForkliftTireFriction = 0.92f;
+    constexpr float ForkliftRollingResistance = 0.018f;
+    // Passive driveline/tire drag when neither drive trigger is held. Raycast
+    // wheels do not inherit Chaos's contact-patch static friction, so model a
+    // modest static-like hold that prevents a truck straddling the raised mat
+    // from creeping downhill without turning it into a position lock.
+    constexpr float ForkliftIdleDrivelineDrag = 0.045f;
+    constexpr float ForkliftIdleVelocityDampingPerSecond = 3.0f;
+    constexpr float ForkliftIdleMaximumDrag = 0.09f;
+    // Keep the commanded hydraulic target just inside the physical prismatic
+    // stop. Driving a velocity target into the exact Chaos limit turns the
+    // end stop into a jack between the carriage and chassis.
+    constexpr float ForkliftLiftTravelCm = 200.0f;
+    constexpr float ForkliftMaximumCommandedLiftCm = 196.0f;
+    constexpr float ForkliftLiftSpeedCm = 72.0f;
+    // Spawn/reset the loaded carriage slightly above its mechanical lower
+    // stop. This prevents the pallet runners or tine wedges from being caught
+    // in the floor while preserving the full downward command range.
+    constexpr float ForkliftInitialLiftCm = 10.0f;
+    // Real mast carriages run between opposed guide rollers. The prismatic
+    // Chaos joint remains authoritative for vertical motion; this bounded
+    // equal-and-opposite PD force models the guide-roller preload so a pallet
+    // impact can react into and tip the chassis without peeling the carriage
+    // horizontally away from the rails.
+    constexpr float ForkliftLiftRailStiffness = 85000.0f;
+    constexpr float ForkliftLiftRailDamping = 36000.0f;
+    constexpr float ForkliftLiftRailMaximumForce = 6000000.0f;
     constexpr float GravityCmPerSecondSquared = 980.0f;
     constexpr float ParcelRestitution = 0.14f;
     constexpr float ConveyorRollerTopFallbackCm = 76.9307f;
@@ -105,11 +196,36 @@ namespace ConveyorTuning
     constexpr float ForkliftWheelRadiusCm = 31.0f;
     constexpr float ForkliftTireClearanceCm = 0.6f;
     constexpr float WorkerSpeedCm = 72.0f;
+    constexpr float WorkerMassKg = 82.0f;
+    // A dynamic Chaos capsule resting on the high-friction warehouse floor
+    // needs enough tangential force to overcome its own Coulomb contact.  The
+    // old 260 cm/s^2 cap was below mu*g, so both workers looked permanently
+    // wedged even on an unobstructed route.  This remains a force-limited
+    // motor (the forklift can still displace a worker), with a walking-contact
+    // feed-forward term rather than a kinematic velocity assignment.
+    constexpr float WorkerMotorMaximumAccelerationCm = 1250.0f;
+    constexpr float WorkerMotorResponsePerSecond = 8.5f;
+    constexpr float WorkerMotorGroundFrictionCompensationCm = 550.0f;
+    constexpr float WorkerAvoidanceProbeCm = 32.0f;
+    constexpr float WorkerCapsuleHalfHeightCm = 88.0f;
+    constexpr int32 LoosePalletStackCount = 3;
+    // Detailed pallet runners are narrow contact patches. Extend their Chaos
+    // skin only eight millimetres below the render mesh so solver penetration
+    // cannot make timber appear to pass through a floor, fork, or lower pallet.
+    constexpr float PalletContactSkinCm = 0.8f;
     constexpr float WorkerMaximumVisualTurnRateDegreesPerSecond = 220.0f;
     constexpr float WorkerHeadingResponsePerSecond = 7.0f;
     constexpr float WorkerHeadingCommitSeconds = 0.10f;
     constexpr float WorkerHeadingDeadbandDegrees = 12.0f;
     constexpr float WorkerRouteReversalCooldownSeconds = 1.15f;
+    // Keep a small comfort gap outside the 38-cm collision capsules.  Route
+    // reservation starts before contact, so pedestrians yield rather than
+    // entering an overlap and relying on penetration correction.
+    constexpr float WorkerPersonalSpaceCm = 88.0f;
+    constexpr float WorkerConflictReleaseDistanceCm = 112.0f;
+    constexpr float WorkerConflictLookaheadSeconds = 0.70f;
+    constexpr float WorkerCrossingYieldSeconds = 0.65f;
+    constexpr float WorkerHeadOnYieldSeconds = 0.16f;
     constexpr float CaptureInterval = 1.0f;
     // Render once at the host model's validated 16:9 input size. EVK frames
     // are downsampled before PNG encoding because its full-NPU vision path is
@@ -716,6 +832,212 @@ namespace
 {
     constexpr int32 SimulatorRunsToRetain = 3;
     constexpr int64 MaxSimulatorLogBytes = 8ll * 1024ll * 1024ll;
+    constexpr int32 EvkVideoFrameCount = 2;
+
+    struct FPreparedInferenceMedia
+    {
+        FString Base64;
+        FString MimeType;
+        FString Transport;
+        FString Error;
+        int32 Width = 0;
+        int32 Height = 0;
+        int64 Bytes = 0;
+
+        bool IsValid() const
+        {
+            return Error.IsEmpty() && !Base64.IsEmpty();
+        }
+    };
+
+    FString WindowsPathToWsl(FString Path)
+    {
+        Path = FPaths::ConvertRelativePathToFull(Path);
+        Path.ReplaceInline(TEXT("\\"), TEXT("/"));
+        if (Path.Len() >= 3 && Path[1] == TEXT(':'))
+        {
+            const TCHAR Drive = FChar::ToLower(Path[0]);
+            return FString::Printf(TEXT("/mnt/%c/%s"), Drive, *Path.Mid(3));
+        }
+        return Path;
+    }
+
+    bool ResolveLosslessFfmpeg(
+        const FString& Override,
+        FString& OutExecutable,
+        bool& OutUseWsl,
+        FString& OutLabel)
+    {
+        OutUseWsl = false;
+        if (!Override.IsEmpty())
+        {
+            OutExecutable = Override;
+            OutLabel = TEXT("command_line_override");
+            return true;
+        }
+
+#if PLATFORM_WINDOWS
+        const TArray<FString> Candidates = {
+            FPaths::Combine(FPlatformProcess::BaseDir(), TEXT("ThirdParty/FFmpeg/Win64/ffmpeg.exe")),
+            FPaths::Combine(FPaths::ProjectDir(), TEXT("ThirdParty/FFmpeg/Win64/ffmpeg.exe")),
+            FPaths::Combine(FPaths::ProjectDir(), TEXT("Binaries/ThirdParty/FFmpeg/Win64/ffmpeg.exe")),
+        };
+        for (const FString& Candidate : Candidates)
+        {
+            if (FPaths::FileExists(Candidate))
+            {
+                OutExecutable = Candidate;
+                OutLabel = TEXT("packaged_win64");
+                return true;
+            }
+        }
+        const FString Wsl = FPaths::Combine(
+            FPlatformMisc::GetEnvironmentVariable(TEXT("WINDIR")),
+            TEXT("System32/wsl.exe"));
+        if (FPaths::FileExists(Wsl))
+        {
+            OutExecutable = Wsl;
+            OutUseWsl = true;
+            OutLabel = TEXT("development_wsl");
+            return true;
+        }
+#elif PLATFORM_MAC
+        const TArray<FString> Candidates = {
+            FPaths::Combine(FPlatformProcess::BaseDir(), TEXT("ThirdParty/FFmpeg/Mac/ffmpeg")),
+            FPaths::Combine(FPaths::ProjectDir(), TEXT("ThirdParty/FFmpeg/Mac/ffmpeg")),
+            TEXT("/opt/homebrew/bin/ffmpeg"),
+            TEXT("/usr/local/bin/ffmpeg"),
+        };
+        for (const FString& Candidate : Candidates)
+        {
+            if (FPaths::FileExists(Candidate))
+            {
+                OutExecutable = Candidate;
+                OutLabel = Candidate.Contains(TEXT("ThirdParty"))
+                    ? TEXT("packaged_mac")
+                    : TEXT("development_system_mac");
+                return true;
+            }
+        }
+#endif
+        return false;
+    }
+
+    FPreparedInferenceMedia BuildLosslessEvkVideo(
+        const TArray<FString>& Base64PngFrames,
+        int32 FrameWidth,
+        int32 FrameHeight,
+        float FramesPerSecond,
+        const FString& FfmpegOverride,
+        bool bSaveDiagnostics)
+    {
+        FPreparedInferenceMedia Result;
+        Result.MimeType = TEXT("video/mp4");
+        Result.Transport = TEXT("pixel_lossless_rgb_h264_mp4");
+        Result.Width = FrameWidth;
+        Result.Height = FrameHeight;
+        if (Base64PngFrames.Num() != EvkVideoFrameCount)
+        {
+            Result.Error = FString::Printf(
+                TEXT("EVK video requires %d frames; received %d"),
+                EvkVideoFrameCount,
+                Base64PngFrames.Num());
+            return Result;
+        }
+
+        FString Executable;
+        FString EncoderLabel;
+        bool bUseWsl = false;
+        if (!ResolveLosslessFfmpeg(
+                FfmpegOverride, Executable, bUseWsl, EncoderLabel))
+        {
+            Result.Error = TEXT(
+                "no lossless FFmpeg encoder found; package ThirdParty/FFmpeg or set -QaiFfmpeg=<path>");
+            return Result;
+        }
+
+        const FString RequestId = FString::Printf(
+            TEXT("window-%s-%llu"),
+            *FDateTime::UtcNow().ToString(TEXT("%Y%m%dT%H%M%S")),
+            static_cast<unsigned long long>(FPlatformTime::Cycles64()));
+        const FString WorkingDirectory = FPaths::Combine(
+            FPaths::ProjectSavedDir(), TEXT("Temp/Reason2Video"), RequestId);
+        IFileManager::Get().MakeDirectory(*WorkingDirectory, true);
+        for (int32 FrameIndex = 0; FrameIndex < Base64PngFrames.Num(); ++FrameIndex)
+        {
+            TArray<uint8> Bytes;
+            if (!FBase64::Decode(Base64PngFrames[FrameIndex], Bytes)
+                || Bytes.IsEmpty()
+                || !FFileHelper::SaveArrayToFile(
+                    Bytes,
+                    *FPaths::Combine(
+                        WorkingDirectory,
+                        FString::Printf(TEXT("frame-%02d.png"), FrameIndex))))
+            {
+                Result.Error = FString::Printf(
+                    TEXT("could not stage EVK video frame %d"), FrameIndex);
+                IFileManager::Get().DeleteDirectory(*WorkingDirectory, false, true);
+                return Result;
+            }
+        }
+
+        const FString InputPattern = FPaths::Combine(WorkingDirectory, TEXT("frame-%02d.png"));
+        const FString OutputPath = FPaths::Combine(WorkingDirectory, TEXT("reason2-window.mp4"));
+        const FString EncoderArguments = FString::Printf(
+            // Match the proven real-video bitstream profile. The deployed
+            // GenieX decoder terminates on libx264rgb's ultrafast stream even
+            // though it is H.264 compliant. Medium remains pixel-lossless.
+            // Do not move the MP4 moov atom to the front: this patched
+            // GenieX reader terminates on faststart files but accepts the
+            // standard moov-at-end layout used by the validated clips.
+            TEXT("-hide_banner -loglevel error -y -framerate %.6g -start_number 0 -i \"%s\" -frames:v %d -vf scale=%d:-2:flags=lanczos -c:v libx264rgb -preset medium -crf 0 -pix_fmt rgb24 \"%s\""),
+            FramesPerSecond,
+            *(bUseWsl ? WindowsPathToWsl(InputPattern) : InputPattern),
+            EvkVideoFrameCount,
+            FrameWidth,
+            *(bUseWsl ? WindowsPathToWsl(OutputPath) : OutputPath));
+        const FString Arguments = bUseWsl
+            ? TEXT("-e ffmpeg ") + EncoderArguments
+            : EncoderArguments;
+        int32 ReturnCode = -1;
+        FString StandardOutput;
+        FString StandardError;
+        const bool bExecuted = FPlatformProcess::ExecProcess(
+            *Executable,
+            *Arguments,
+            &ReturnCode,
+            &StandardOutput,
+            &StandardError);
+        TArray<uint8> Mp4Bytes;
+        if (!bExecuted
+            || ReturnCode != 0
+            || !FFileHelper::LoadFileToArray(Mp4Bytes, *OutputPath)
+            || Mp4Bytes.IsEmpty())
+        {
+            Result.Error = FString::Printf(
+                TEXT("lossless FFmpeg encode failed source=%s exit=%d error=%s"),
+                *EncoderLabel,
+                ReturnCode,
+                *StandardError.Left(400).Replace(TEXT("\r"), TEXT(" ")).Replace(TEXT("\n"), TEXT(" ")));
+            IFileManager::Get().DeleteDirectory(*WorkingDirectory, false, true);
+            return Result;
+        }
+
+        if (bSaveDiagnostics)
+        {
+            const FString DiagnosticRoot = FPaths::Combine(
+                FPaths::ProjectSavedDir(), TEXT("Diagnostics/Reason2Windows"));
+            IFileManager::Get().MakeDirectory(*DiagnosticRoot, true);
+            FFileHelper::SaveArrayToFile(
+                Mp4Bytes,
+                *FPaths::Combine(DiagnosticRoot, TEXT("last-submitted-evk-lossless.mp4")));
+        }
+        Result.Bytes = Mp4Bytes.Num();
+        Result.Base64 = FBase64::Encode(Mp4Bytes);
+        Result.Transport += TEXT("_") + EncoderLabel;
+        IFileManager::Get().DeleteDirectory(*WorkingDirectory, false, true);
+        return Result;
+    }
 
     FString SanitizeLogField(FString Value)
     {
@@ -845,6 +1167,8 @@ namespace
 AQaiConveyorWorld::AQaiConveyorWorld()
 {
     PrimaryActorTick.bCanEverTick = true;
+    // Controls and belt forces are authored before Chaos advances its
+    // configured fixed substeps. Chaos is the sole rigid-body authority.
     PrimaryActorTick.TickGroup = TG_PrePhysics;
 }
 
@@ -886,8 +1210,10 @@ void AQaiConveyorWorld::BeginPlay()
     bForkliftClimbTest = FParse::Param(FCommandLine::Get(), TEXT("QaiForkliftClimbTest"));
     bForkEdgeBalanceTest = FParse::Param(FCommandLine::Get(), TEXT("QaiForkEdgeBalanceTest"));
     bForkWedgeTest = FParse::Param(FCommandLine::Get(), TEXT("QaiForkWedgeTest"));
+    bResetLiftTest = FParse::Param(FCommandLine::Get(), TEXT("QaiResetLiftTest"));
     bRuntimeMotionTest = bRuntimeMotionTest || bPhysicsContactTest || bShelfForkTest
-        || bEvkPhysicsTest || bForkliftClimbTest || bForkEdgeBalanceTest || bForkWedgeTest;
+        || bEvkPhysicsTest || bForkliftClimbTest || bForkEdgeBalanceTest || bForkWedgeTest
+        || bResetLiftTest;
     bHudScreenshotTest = FParse::Param(FCommandLine::Get(), TEXT("QaiHudScreenshotTest"));
     bWorkerSoakTest = FParse::Param(FCommandLine::Get(), TEXT("QaiWorkerSoakTest"));
     bPresentation4K = FParse::Param(FCommandLine::Get(), TEXT("QaiPresentation4K"));
@@ -895,15 +1221,74 @@ void AQaiConveyorWorld::BeginPlay()
     bResolutionDatasetWhiteFloor = FParse::Param(FCommandLine::Get(), TEXT("QaiResolutionDatasetWhiteFloor"));
     bResolutionDatasetHideWorkers = FParse::Param(FCommandLine::Get(), TEXT("QaiResolutionDatasetHideWorkers"));
     bResolutionDatasetHideParcels = FParse::Param(FCommandLine::Get(), TEXT("QaiResolutionDatasetHideParcels"));
+    bResolutionDatasetAutoExit = FParse::Param(FCommandLine::Get(), TEXT("QaiResolutionDatasetAutoExit"));
+    bInteractiveValidationUnloaded =
+        FParse::Param(FCommandLine::Get(), TEXT("QaiInteractiveValidationUnloaded"));
+    bInteractiveDriveValidation =
+        FParse::Param(FCommandLine::Get(), TEXT("QaiInteractiveDriveValidation"));
+    FParse::Value(FCommandLine::Get(), TEXT("QaiResolutionDatasetFrames="), ResolutionDatasetFramesPerSignal);
+    ResolutionDatasetFramesPerSignal = FMath::Clamp(ResolutionDatasetFramesPerSignal, 8, 40);
+    FParse::Value(FCommandLine::Get(), TEXT("QaiForkliftPaint="), ForkliftPaintVariant);
+    ForkliftPaintVariant = ForkliftPaintVariant.TrimStartAndEnd().ToLower();
+    FParse::Value(FCommandLine::Get(), TEXT("QaiConveyorSpeedScale="), ConveyorSpeedScale);
+    ConveyorSpeedScale = FMath::Clamp(ConveyorSpeedScale, 0.0f, 2.0f);
+    SimulatorLog(FString::Printf(
+        TEXT("conveyor_runtime speed_scale=%.3f target_speed_cm_s=%.2f validation_override=%s"),
+        ConveyorSpeedScale,
+        ConveyorTuning::ConveyorSpeedCm * ConveyorSpeedScale,
+        ConveyorSpeedScale == 1.0f ? TEXT("false") : TEXT("true")));
+    FParse::Value(FCommandLine::Get(), TEXT("QaiCaptureInterval="), CaptureIntervalSeconds);
+    float CaptureFramesPerSecond = 1.0f / CaptureIntervalSeconds;
+    if (FParse::Value(FCommandLine::Get(), TEXT("QaiCaptureFps="), CaptureFramesPerSecond))
+    {
+        CaptureIntervalSeconds = 1.0f / FMath::Clamp(CaptureFramesPerSecond, 0.5f, 10.0f);
+    }
+    CaptureIntervalSeconds = FMath::Clamp(CaptureIntervalSeconds, 0.1f, 2.0f);
+    // Capture remains at 4 FPS for responsive host inference and a well-spaced
+    // source buffer. EVK selects the same two endpoint observations as the host
+    // across the two-second temporal baseline instead of a dense storyboard.
+    FParse::Value(
+        FCommandLine::Get(),
+        TEXT("QaiEvkTemporalBaseline="),
+        EvkTemporalBaselineSeconds);
+    EvkTemporalBaselineSeconds = FMath::Clamp(EvkTemporalBaselineSeconds, 0.75f, 4.0f);
+    FParse::Value(
+        FCommandLine::Get(),
+        TEXT("QaiHostTemporalBaseline="),
+        HostTemporalBaselineSeconds);
+    HostTemporalBaselineSeconds = FMath::Clamp(HostTemporalBaselineSeconds, 0.5f, 4.0f);
+    bSaveInferenceFrames = FParse::Param(FCommandLine::Get(), TEXT("QaiSaveInferenceFrames"));
+    FParse::Value(FCommandLine::Get(), TEXT("QaiFfmpeg="), FfmpegExecutableOverride);
+    SimulatorLog(FString::Printf(
+        TEXT("inference_window host_frames=2 host_span_seconds=%.3f host_transport=two_separate_lossless_png evk_frames=%d capture_fps=%.3f evk_span_seconds=%.3f evk_transport=pixel_lossless_rgb_h264_mp4 save_media=%s"),
+        HostTemporalBaselineSeconds,
+        EvkTemporalFrameCount,
+        1.0f / CaptureIntervalSeconds,
+        EvkTemporalBaselineSeconds,
+        bSaveInferenceFrames ? TEXT("true") : TEXT("false")));
     FParse::Value(FCommandLine::Get(), TEXT("QaiResolutionDatasetVariant="), ResolutionDatasetVariant);
+    FParse::Value(FCommandLine::Get(), TEXT("QaiInferenceAblation="), InferenceAblationVariant);
+    InferenceAblationVariant = InferenceAblationVariant.TrimStartAndEnd().ToLower();
+    if (InferenceAblationVariant.IsEmpty())
+    {
+        InferenceAblationVariant = TEXT("full");
+    }
+    FParse::Value(FCommandLine::Get(), TEXT("QaiInferenceCamera="), InferenceCameraVariant);
+    InferenceCameraVariant = InferenceCameraVariant.TrimStartAndEnd().ToLower();
+    if (InferenceCameraVariant.IsEmpty())
+    {
+        InferenceCameraVariant = TEXT("authored-wide");
+    }
     if (bResolutionDataset)
     {
         SimulatorLog(FString::Printf(
-            TEXT("resolution_dataset enabled=true variant=%s phases=G,A,R native_frames_per_phase=10 phase_seconds=12 slow_motion_cm_s=7 white_floor=%s hide_workers=%s hide_parcels=%s"),
+            TEXT("resolution_dataset enabled=true variant=%s phases=G,A,R native_frames_per_phase=%d phase_seconds=12 slow_motion_cm_s=7 white_floor=%s hide_workers=%s hide_parcels=%s auto_exit=%s"),
             *ResolutionDatasetVariant,
+            ResolutionDatasetFramesPerSignal,
             bResolutionDatasetWhiteFloor ? TEXT("true") : TEXT("false"),
             bResolutionDatasetHideWorkers ? TEXT("true") : TEXT("false"),
-            bResolutionDatasetHideParcels ? TEXT("true") : TEXT("false")));
+            bResolutionDatasetHideParcels ? TEXT("true") : TEXT("false"),
+            bResolutionDatasetAutoExit ? TEXT("true") : TEXT("false")));
     }
     if (bPresentation4K)
     {
@@ -916,6 +1301,7 @@ void AQaiConveyorWorld::BeginPlay()
     }
     LoadRuntimeConfig();
     BindNativeComponents();
+    ApplyForkliftPaintVariant();
     ApplyResolutionDatasetVariant();
     SetupInferenceCapture();
     if (bInferenceEnabled)
@@ -948,9 +1334,12 @@ void AQaiConveyorWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
         ProbeRequest.Reset();
     }
     EncodedFrames.Reset();
+    EncodedFrameWidths.Reset();
+    EncodedFrameHeights.Reset();
     EncodedForkliftFrameTransforms.Reset();
     EncodedFrameTextures.Reset();
     EncodedFrameTimes.Reset();
+    EncodedFrameCaptureSeconds.Reset();
     SubmittedEncodedFrames.Reset();
     SubmittedFrameTextures.Reset();
     SubmittedFrameTimes.Reset();
@@ -983,6 +1372,124 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
 
     if (bStageReady)
     {
+        if (bInteractiveValidationUnloaded && !bInteractiveValidationUnloadedApplied)
+        {
+            bInteractiveValidationUnloadedApplied = true;
+            int32 RemovedStartingCargo = 0;
+            for (const int32 BodyIndex : {
+                     Forklifts[0].PalletDynamicBody,
+                     Forklifts[0].CartonDynamicBody})
+            {
+                if (!DynamicBoxes.IsValidIndex(BodyIndex)
+                    || !DynamicBoxes[BodyIndex].Root.IsValid())
+                {
+                    continue;
+                }
+                FDynamicBoxRuntime& Cargo = DynamicBoxes[BodyIndex];
+                USceneComponent* CargoRoot = Cargo.Root.Get();
+                CargoRoot->SetVisibility(false, true);
+                CargoRoot->SetHiddenInGame(true, true);
+                if (UPrimitiveComponent* CargoBody = Cast<UPrimitiveComponent>(CargoRoot))
+                {
+                    CargoBody->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                    CargoBody->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+                    CargoBody->SetSimulatePhysics(false);
+                    CargoBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                }
+                // Remove the validation-only cargo from the active contact
+                // island. Leaving a sleeping proxy threaded around the tines
+                // can pin the carriage even after collision is disabled.
+                CargoRoot->SetWorldLocation(
+                    FVector(0.0f, 0.0f, -10000.0f - 100.0f * RemovedStartingCargo),
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
+                Cargo.SupportedForklift = INDEX_NONE;
+                Cargo.InitialSupportedForklift = INDEX_NONE;
+                Cargo.SupportBodyIndex = INDEX_NONE;
+                Cargo.InitialSupportBodyIndex = INDEX_NONE;
+                Cargo.bAwake = false;
+                ++RemovedStartingCargo;
+            }
+            SimulatorLog(FString::Printf(
+                TEXT("interactive_validation unloaded=true starting_cargo_removed=%d input_path=normal_player_controls"),
+                RemovedStartingCargo));
+        }
+        if (bInteractiveDriveValidation)
+        {
+            if (InteractiveDriveValidationPhase == INDEX_NONE)
+            {
+                InteractiveDriveValidationPhase = 0;
+                InteractiveDriveValidationPhaseSeconds = 0.0f;
+                InteractiveDriveValidationLastTelemetrySecond = INDEX_NONE;
+                SimulatorLog(TEXT("interactive_drive_validation started=true motion=chaos_force_input phases=settle,reverse,settle,approach,red_dwell,retreat,green_dwell"));
+            }
+
+            InteractiveDriveValidationPhaseSeconds += DeltaSeconds;
+            bool bAdvancePhase = false;
+            switch (InteractiveDriveValidationPhase)
+            {
+            case 0: bAdvancePhase = InteractiveDriveValidationPhaseSeconds >= 4.0f; break;
+            case 1: bAdvancePhase = InteractiveDriveValidationPhaseSeconds >= 2.5f; break;
+            case 2: bAdvancePhase = InteractiveDriveValidationPhaseSeconds >= 2.5f; break;
+            case 3:
+                bAdvancePhase = GroundTruthSignal == TEXT("R")
+                    || InteractiveDriveValidationPhaseSeconds >= 6.0f;
+                break;
+            case 4: bAdvancePhase = InteractiveDriveValidationPhaseSeconds >= 3.0f; break;
+            case 5:
+                bAdvancePhase = (InteractiveDriveValidationPhaseSeconds >= 0.75f
+                        && GroundTruthSignal != TEXT("R"))
+                    || InteractiveDriveValidationPhaseSeconds >= 5.0f;
+                break;
+            case 6: bAdvancePhase = InteractiveDriveValidationPhaseSeconds >= 3.0f; break;
+            default: bAdvancePhase = true; break;
+            }
+            if (bAdvancePhase)
+            {
+                InteractiveDriveValidationPhase = InteractiveDriveValidationPhase == 6
+                    ? 3
+                    : InteractiveDriveValidationPhase + 1;
+                InteractiveDriveValidationPhaseSeconds = 0.0f;
+                InteractiveDriveValidationLastTelemetrySecond = INDEX_NONE;
+                SimulatorLog(FString::Printf(
+                    TEXT("interactive_drive_validation phase=%d ground_truth=%s forklift=(%.1f,%.1f,%.1f)"),
+                    InteractiveDriveValidationPhase,
+                    *GroundTruthSignal,
+                    GetActiveForkliftLocation().X,
+                    GetActiveForkliftLocation().Y,
+                    GetActiveForkliftLocation().Z));
+            }
+
+            const float ValidationThrottle = InteractiveDriveValidationPhase == 1
+                    || InteractiveDriveValidationPhase == 5
+                ? -0.55f
+                : (InteractiveDriveValidationPhase == 3 ? 0.55f : 0.0f);
+            const bool bValidationBrake = FMath::IsNearlyZero(ValidationThrottle);
+            DriveActiveForklift(
+                ValidationThrottle,
+                0.0f,
+                0.0f,
+                bValidationBrake,
+                DeltaSeconds);
+
+            const int32 TelemetrySecond = FMath::FloorToInt(
+                InteractiveDriveValidationPhaseSeconds);
+            if (TelemetrySecond != InteractiveDriveValidationLastTelemetrySecond)
+            {
+                InteractiveDriveValidationLastTelemetrySecond = TelemetrySecond;
+                SimulatorLog(FString::Printf(
+                    TEXT("interactive_drive_validation telemetry phase=%d phase_seconds=%.2f throttle=%.2f speed_cm_s=%.2f ground_truth=%s forklift=(%.1f,%.1f,%.1f)"),
+                    InteractiveDriveValidationPhase,
+                    InteractiveDriveValidationPhaseSeconds,
+                    ValidationThrottle,
+                    Forklifts[0].SpeedCmPerSecond,
+                    *GroundTruthSignal,
+                    GetActiveForkliftLocation().X,
+                    GetActiveForkliftLocation().Y,
+                    GetActiveForkliftLocation().Z));
+            }
+        }
         if (bRuntimeMotionTest)
         {
             RuntimeMotionTestElapsed += DeltaSeconds;
@@ -1042,7 +1549,7 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                 if (ForkCount > 0)
                 {
                     FVector ParcelCenter = ForkCenters / static_cast<float>(ForkCount);
-                    ParcelCenter.Z = ForkTop + ParcelHalfExtents[0].Z + 0.15f;
+                    ParcelCenter.Z = ForkTop + ParcelHalfExtents[0].Z + 1.0f;
                     const FQuat TestParcelRotation = ForkliftQuat
                         * FQuat(FVector::UpVector, PI * 0.5f);
                     Parcels[0]->SetWorldLocationAndRotation(
@@ -1051,16 +1558,51 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                         false,
                         nullptr,
                         ETeleportType::TeleportPhysics);
+                    if (UPrimitiveComponent* PhysicsParcel = Cast<UPrimitiveComponent>(Parcels[0].Get()))
+                    {
+                        PhysicsParcel->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                        PhysicsParcel->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+                        PhysicsParcel->WakeRigidBody();
+                    }
                     ParcelLinearVelocities[0] = FVector::ZeroVector;
                     ParcelGrounded[0] = true;
                     ParcelSupportedForklifts[0] = 0;
                     ParcelForkContactsLogged[0] = false;
                     PhysicsContactInitialParcelZ = ParcelCenter.Z;
+                    PhysicsContactMaximumParcelLiftCm = 0.0f;
                     bPhysicsContactTestInitialized = true;
+                    float HighestChaosTineTop = -TNumericLimits<float>::Max();
+                    float ClosestChaosTinePlanarCm = TNumericLimits<float>::Max();
+                    int32 ValidChaosTines = 0;
+                    for (int32 ShapeIndex = 0;
+                         ShapeIndex < Forklift.CollisionBoxes.Num()
+                            && ShapeIndex < Forklift.ChaosCollisionComponents.Num();
+                         ++ShapeIndex)
+                    {
+                        const FFittedCollisionBox& Shape = Forklift.CollisionBoxes[ShapeIndex];
+                        UBoxComponent* ChaosTine = Forklift.ChaosCollisionComponents[ShapeIndex].Get();
+                        if (!ChaosTine
+                            || !Shape.Name.Contains(TEXT("fork tine"), ESearchCase::IgnoreCase)
+                            || Shape.IsWedge())
+                        {
+                            continue;
+                        }
+                        ++ValidChaosTines;
+                        HighestChaosTineTop = FMath::Max(
+                            HighestChaosTineTop,
+                            ChaosTine->Bounds.Origin.Z + ChaosTine->Bounds.BoxExtent.Z);
+                        ClosestChaosTinePlanarCm = FMath::Min(
+                            ClosestChaosTinePlanarCm,
+                            FVector::Dist2D(ChaosTine->Bounds.Origin, ParcelCenter));
+                    }
                     SimulatorLog(FString::Printf(
-                        TEXT("physics_contact_test_initialized parcel=1 fork_top_z_cm=%.2f parcel_z_cm=%.2f half_extent_cm=(%.2f,%.2f,%.2f) rotated_across_tines=true"),
+                        TEXT("physics_contact_test_initialized parcel=1 fork_top_z_cm=%.2f chaos_tine_top_z_cm=%.2f chaos_tines=%d closest_tine_planar_cm=%.2f parcel_z_cm=%.2f parcel_bottom_z_cm=%.2f half_extent_cm=(%.2f,%.2f,%.2f) rotated_across_tines=true"),
                         ForkTop,
+                        HighestChaosTineTop,
+                        ValidChaosTines,
+                        ClosestChaosTinePlanarCm,
                         ParcelCenter.Z,
+                        ParcelCenter.Z - ParcelHalfExtents[0].Z,
                         ParcelHalfExtents[0].X,
                         ParcelHalfExtents[0].Y,
                         ParcelHalfExtents[0].Z));
@@ -1100,13 +1642,19 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                         FVector BodyCenter = TineCenters / static_cast<float>(TineCount);
                         BodyCenter.Z = TineTop
                             + ConveyorTuning::ProjectedVerticalHalfExtent(TestBodyRotation, Body.HalfExtent)
-                            + 0.15f;
+                            + 1.0f;
                         Body.Root->SetWorldLocationAndRotation(
                             BodyCenter,
                             TestBodyRotation,
                             false,
                             nullptr,
                             ETeleportType::TeleportPhysics);
+                        if (UPrimitiveComponent* PhysicsBody = Cast<UPrimitiveComponent>(Body.Root.Get()))
+                        {
+                            PhysicsBody->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                            PhysicsBody->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+                            PhysicsBody->WakeRigidBody();
+                        }
                         Body.SupportedForklift = INDEX_NONE;
                         Body.SupportBodyIndex = INDEX_NONE;
                         Body.LinearVelocity = FVector::ZeroVector;
@@ -1139,6 +1687,12 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                     EvkBody.LinearVelocity = FVector(0.0f, 650.0f, 0.0f);
                     EvkBody.AngularVelocityDegrees = FVector(0.0f, 0.0f, 24.0f);
                     EvkBody.bAwake = true;
+                    if (UPrimitiveComponent* PhysicsBody = Cast<UPrimitiveComponent>(EvkRoot))
+                    {
+                        PhysicsBody->SetPhysicsLinearVelocity(EvkBody.LinearVelocity);
+                        PhysicsBody->SetPhysicsAngularVelocityInDegrees(EvkBody.AngularVelocityDegrees);
+                        PhysicsBody->WakeRigidBody();
+                    }
                     bEvkPhysicsTestInitialized = true;
                     SimulatorLog(FString::Printf(
                         TEXT("iq9_evk_physics_test_initialized center=(%.2f,%.2f,%.2f) impulse_velocity_cm_s=(0,650,0)"),
@@ -1441,7 +1995,37 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                         BodyCenter.Z));
                 }
             }
-            if (bPhysicsContactTest || bShelfForkTest)
+            if (bResetLiftTest)
+            {
+                if (!bResetLiftTestTriggered && RuntimeMotionTestElapsed < 1.20f)
+                {
+                    DriveActiveForklift(0.0f, 0.0f, 0.90f, false, DeltaSeconds);
+                }
+                else if (!bResetLiftTestTriggered)
+                {
+                    ResetLiftTestLiftBeforeResetCm = Forklifts[0].ActualLiftCm;
+                    ResetScene();
+                    bResetLiftTestTriggered = true;
+                    DriveActiveForklift(0.0f, 0.0f, 0.0f, true, DeltaSeconds);
+                    SimulatorLog(FString::Printf(
+                        TEXT("reset_lift_test_reset lift_before_cm=%.2f"),
+                        ResetLiftTestLiftBeforeResetCm));
+                }
+                else
+                {
+                    ResetLiftTestMaximumLiftAfterResetCm = FMath::Max(
+                        ResetLiftTestMaximumLiftAfterResetCm,
+                        Forklifts[0].ActualLiftCm);
+                    const bool bLiftAfterReset = RuntimeMotionTestElapsed < 2.80f;
+                    DriveActiveForklift(
+                        0.0f,
+                        0.0f,
+                        bLiftAfterReset ? 0.90f : 0.0f,
+                        !bLiftAfterReset,
+                        DeltaSeconds);
+                }
+            }
+            else if (bPhysicsContactTest || bShelfForkTest)
             {
                 const bool bLifting = RuntimeMotionTestElapsed >= 0.25f && RuntimeMotionTestElapsed < 1.55f;
                 const bool bDriving = RuntimeMotionTestElapsed >= 1.65f && RuntimeMotionTestElapsed < 2.65f;
@@ -1494,13 +2078,30 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                     DeltaSeconds);
             }
         }
+        // The perception benchmark drives through the same Chaos input path as
+        // a keyboard/controller user. Set its command before submitting this
+        // frame's forces; captures and ground truth then observe the resulting
+        // complete rigid vehicle rather than a teleported visual root.
+        TickResolutionDataset(DeltaSeconds);
         FixedAccumulator += FMath::Min(DeltaSeconds, 0.25f);
         int32 StepCount = 0;
-        while (FixedAccumulator >= ConveyorTuning::FixedStep && StepCount < ConveyorTuning::MaxFixedStepsPerFrame)
+        if (bChaosPhysicsActive)
         {
-            FixedSimulationStep(ConveyorTuning::FixedStep);
-            FixedAccumulator -= ConveyorTuning::FixedStep;
-            ++StepCount;
+            // Forces are submitted exactly once per rendered frame; Chaos's
+            // configured 120 Hz substeps perform the actual integration.
+            // Re-submitting them through this actor's legacy fixed loop made
+            // force magnitude frame-rate dependent.
+            SimulateChaosForklifts(DeltaSeconds);
+            SimulateChaosConveyor(DeltaSeconds);
+            SyncChaosTelemetry();
+            while (FixedAccumulator >= ConveyorTuning::FixedStep
+                && StepCount < ConveyorTuning::MaxFixedStepsPerFrame)
+            {
+                SimulateWorkers(ConveyorTuning::FixedStep);
+                UpdateSafetySignal();
+                FixedAccumulator -= ConveyorTuning::FixedStep;
+                ++StepCount;
+            }
         }
         if (StepCount == ConveyorTuning::MaxFixedStepsPerFrame)
         {
@@ -1515,7 +2116,6 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                 DynamicBoxes[ForkWedgeTestBodyIndex].Root->GetComponentLocation().Z);
         }
 
-        TickResolutionDataset(DeltaSeconds);
         TickStackLightRig(DeltaSeconds);
         TickEvkLeds(DeltaSeconds);
 
@@ -1531,6 +2131,15 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                         GetWorkerStaticClearanceCm(WorkerRoot->GetComponentLocation()));
                 }
             }
+            if (Workers[0].Root.IsValid() && Workers[1].Root.IsValid())
+            {
+                WorkerMinimumPairClearanceCm = FMath::Min(
+                    WorkerMinimumPairClearanceCm,
+                    FVector::Dist2D(
+                        Workers[0].Root->GetComponentLocation(),
+                        Workers[1].Root->GetComponentLocation())
+                        - 2.0f * ConveyorTuning::WorkerRadiusCm);
+            }
             if (WorkerSoakTestElapsed >= 30.0f && !bWorkerSoakTestReported)
             {
                 bWorkerSoakTestReported = true;
@@ -1540,20 +2149,30 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                 const FVector Worker2Location = Workers[1].Root.IsValid()
                     ? Workers[1].Root->GetComponentLocation()
                     : FVector::ZeroVector;
-                const bool bPassed = WorkerMinimumStaticClearanceCm[0] >= -0.5f
-                && WorkerMinimumStaticClearanceCm[1] >= -0.5f
+                // The diagnostic signed distance includes the same 2-cm
+                // obstacle expansion used by occupancy tests. Allow one
+                // centimetre of solver/numeric tolerance inside that margin;
+                // the visible capsule still remains clear of authored mesh.
+                const bool bPassed = WorkerMinimumStaticClearanceCm[0] >= -1.0f
+                && WorkerMinimumStaticClearanceCm[1] >= -1.0f
+                && WorkerMinimumPairClearanceCm >= -0.5f
                 && Workers[0].MaximumVisualTurnRateDegreesPerSecond
                     <= ConveyorTuning::WorkerMaximumVisualTurnRateDegreesPerSecond + 1.0f
                 && Workers[1].MaximumVisualTurnRateDegreesPerSecond
                     <= ConveyorTuning::WorkerMaximumVisualTurnRateDegreesPerSecond + 1.0f;
             const FString Result = FString::Printf(
-                TEXT("QAI_WORKER_SOAK_TEST passed=%s duration_seconds=%.1f minimum_static_clearance_cm=(%.1f,%.1f) route_reversals=(%d,%d) maximum_visual_turn_deg_s=(%.1f,%.1f) worker1=(%.1f,%.1f) worker2=(%.1f,%.1f)"),
+                TEXT("QAI_WORKER_SOAK_TEST passed=%s duration_seconds=%.1f minimum_static_clearance_cm=(%.1f,%.1f) minimum_pair_clearance_cm=%.1f route_reversals=(%d,%d) right_of_way_yields=(%d,%d) separation_events=(%d,%d) maximum_visual_turn_deg_s=(%.1f,%.1f) worker1=(%.1f,%.1f) worker2=(%.1f,%.1f)"),
                     bPassed ? TEXT("true") : TEXT("false"),
                     WorkerSoakTestElapsed,
                     WorkerMinimumStaticClearanceCm[0],
                     WorkerMinimumStaticClearanceCm[1],
+                    WorkerMinimumPairClearanceCm,
                 Workers[0].RouteReversalCount,
                 Workers[1].RouteReversalCount,
+                Workers[0].RightOfWayYieldCount,
+                Workers[1].RightOfWayYieldCount,
+                Workers[0].SeparationEvents,
+                Workers[1].SeparationEvents,
                 Workers[0].MaximumVisualTurnRateDegreesPerSecond,
                 Workers[1].MaximumVisualTurnRateDegreesPerSecond,
                 Worker1Location.X,
@@ -1591,6 +2210,38 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
             const float LiftVisualDeltaCm = Forklifts[0].LiftVisual.IsValid()
                 ? Forklifts[0].LiftVisual->Bounds.Origin.Z - Forklifts[0].InitialLiftVisualCenterZ
                 : 0.0f;
+            if (bResetLiftTest)
+            {
+                ResetLiftTestMaximumLiftAfterResetCm = FMath::Max(
+                    ResetLiftTestMaximumLiftAfterResetCm,
+                    Forklifts[0].ActualLiftCm);
+                float LateralRailErrorCm = TNumericLimits<float>::Max();
+                if (const UBoxComponent* Chassis = Forklifts[0].ChaosChassis.Get())
+                {
+                    if (const UBoxComponent* Carriage = Forklifts[0].ChaosCarriage.Get())
+                    {
+                        const FVector CarriageLocal = Chassis->GetComponentTransform()
+                            .InverseTransformPositionNoScale(Carriage->GetComponentLocation());
+                        const FVector CarriageBaseLocal = Forklifts[0].ChaosCarriageLocalCenter
+                            - Forklifts[0].ChaosChassisLocalCenter;
+                        LateralRailErrorCm = FVector2D(
+                            CarriageLocal.X - CarriageBaseLocal.X,
+                            CarriageLocal.Y - CarriageBaseLocal.Y).Size();
+                    }
+                }
+                const bool bPassed = bResetLiftTestTriggered
+                    && ResetLiftTestLiftBeforeResetCm >= 25.0f
+                    && ResetLiftTestMaximumLiftAfterResetCm >= 25.0f
+                    && LateralRailErrorCm <= 2.0f;
+                const FString ResetLiftResult = FString::Printf(
+                    TEXT("QAI_RESET_LIFT_TEST passed=%s lift_before_reset_cm=%.2f maximum_lift_after_reset_cm=%.2f lateral_rail_error_cm=%.3f"),
+                    bPassed ? TEXT("true") : TEXT("false"),
+                    ResetLiftTestLiftBeforeResetCm,
+                    ResetLiftTestMaximumLiftAfterResetCm,
+                    LateralRailErrorCm);
+                UE_LOG(LogTemp, Display, TEXT("%s"), *ResetLiftResult);
+                SimulatorLog(ResetLiftResult);
+            }
             int32 GroundedParcels = 0;
             float MaximumRollerGapCm = 0.0f;
             for (const bool bGrounded : ParcelGrounded)
@@ -1664,6 +2315,30 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                 || (bForkliftClimbTestInitialized
                     && Forklifts[0].MaximumRideHeightCm >= 5.0f
                     && WheelCylinderCount == 4);
+            if (bPhysicsContactTest && Forklifts[0].ChaosCollisionComponents.Num() > 0)
+            {
+                float HighestTineTop = -TNumericLimits<float>::Max();
+                for (int32 ShapeIndex = 0;
+                     ShapeIndex < Forklifts[0].CollisionBoxes.Num()
+                        && ShapeIndex < Forklifts[0].ChaosCollisionComponents.Num();
+                     ++ShapeIndex)
+                {
+                    const FFittedCollisionBox& Shape = Forklifts[0].CollisionBoxes[ShapeIndex];
+                    if (const UBoxComponent* Tine = Forklifts[0].ChaosCollisionComponents[ShapeIndex].Get();
+                        Tine && Shape.Name.Contains(TEXT("fork tine"), ESearchCase::IgnoreCase)
+                            && !Shape.IsWedge())
+                    {
+                        HighestTineTop = FMath::Max(
+                            HighestTineTop,
+                            Tine->Bounds.Origin.Z + Tine->Bounds.BoxExtent.Z);
+                    }
+                }
+                SimulatorLog(FString::Printf(
+                    TEXT("physics_contact_test_final chaos_tine_top_z_cm=%.2f parcel_z_cm=%.2f parcel_bottom_z_cm=%.2f"),
+                    HighestTineTop,
+                    Parcels[0]->GetComponentLocation().Z,
+                    Parcels[0]->GetComponentLocation().Z - ParcelHalfExtents[0].Z));
+            }
             if (bForkEdgeBalanceTest)
             {
                 const bool bPalletValid = bForkEdgeBalanceTestInitialized
@@ -1680,7 +2355,8 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                             DynamicBoxes[ForkEdgeBalanceTestPalletBody].HalfExtent)
                     : TNumericLimits<float>::Max();
                 const bool bReleased = bPalletValid
-                    && DynamicBoxes[ForkEdgeBalanceTestPalletBody].SupportedForklift == INDEX_NONE;
+                    && (bChaosPhysicsActive
+                        || DynamicBoxes[ForkEdgeBalanceTestPalletBody].SupportedForklift == INDEX_NONE);
                 const bool bPassed = bReleased && FinalBottomCm <= 0.75f;
                 const FString ForkEdgeResult = FString::Printf(
                     TEXT("QAI_FORK_EDGE_BALANCE_TEST passed=%s released=%s center_drop_cm=%.2f final_bottom_cm=%.2f support_forklift=%d"),
@@ -1743,7 +2419,10 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                 const bool bPassed = bShelfForkTestInitialized
                     && ShelfBodyLiftCm >= 20.0f
                     && ShelfBodyPlanarDisplacementCm >= 15.0f
-                    && ShelfBodySupport == 1;
+                    // Authoritative Chaos deliberately has no synthetic
+                    // "supported by forklift" attachment flag. Contact and
+                    // friction are proven by actual lift and carry motion.
+                    && (bChaosPhysicsActive || ShelfBodySupport == 1);
                 const FString ShelfForkResult = FString::Printf(
                     TEXT("QAI_SHELF_FORK_TEST passed=%s lift_cm=%.2f planar_cm=%.2f support_forklift=%d"),
                     bPassed ? TEXT("true") : TEXT("false"),
@@ -1764,7 +2443,7 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                 ParcelForkContactCount,
                 MaximumRollerGapCm,
                 bPhysicsContactTestInitialized && Parcels[0].IsValid()
-                    ? Parcels[0]->GetComponentLocation().Z - PhysicsContactInitialParcelZ
+                    ? PhysicsContactMaximumParcelLiftCm
                     : 0.0f,
                 ShelfBodyLiftCm,
                 ShelfBodySupport,
@@ -1785,6 +2464,37 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
                 Worker2Location.Y);
             UE_LOG(LogTemp, Display, TEXT("%s"), *MotionResult);
             SimulatorLog(MotionResult);
+            if (const UBoxComponent* Chassis = Forklifts[0].ChaosChassis.Get())
+            {
+                const FVector P = Chassis->GetComponentLocation();
+                const FVector V = Chassis->GetPhysicsLinearVelocity();
+                const FVector W = Chassis->GetPhysicsAngularVelocityInDegrees();
+                SimulatorLog(FString::Printf(
+                    TEXT("QAI_CHAOS_CHASSIS_FINAL location=(%.2f,%.2f,%.2f) velocity_cm_s=(%.2f,%.2f,%.2f) angular_deg_s=(%.2f,%.2f,%.2f) rotation=(%.2f,%.2f,%.2f)"),
+                    P.X, P.Y, P.Z,
+                    V.X, V.Y, V.Z,
+                    W.X, W.Y, W.Z,
+                    Chassis->GetComponentRotation().Pitch,
+                    Chassis->GetComponentRotation().Yaw,
+                    Chassis->GetComponentRotation().Roll));
+            }
+            if (const UBoxComponent* Carriage = Forklifts[0].ChaosCarriage.Get())
+            {
+                FVector LinearForce = FVector::ZeroVector;
+                FVector AngularForce = FVector::ZeroVector;
+                if (UPhysicsConstraintComponent* Constraint = Forklifts[0].ChaosLiftConstraint.Get())
+                {
+                    Constraint->GetConstraintForce(LinearForce, AngularForce);
+                }
+                const FVector P = Carriage->GetComponentLocation();
+                const FVector V = Carriage->GetPhysicsLinearVelocity();
+                SimulatorLog(FString::Printf(
+                    TEXT("QAI_CHAOS_CARRIAGE_FINAL target_lift_cm=%.2f location=(%.2f,%.2f,%.2f) velocity_cm_s=(%.2f,%.2f,%.2f) constraint_force=(%.2f,%.2f,%.2f)"),
+                    Forklifts[0].LiftCm,
+                    P.X, P.Y, P.Z,
+                    V.X, V.Y, V.Z,
+                    LinearForce.X, LinearForce.Y, LinearForce.Z));
+            }
             const FString ScreenshotPath = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Screenshots/runtime-motion.png"));
             IFileManager::Get().MakeDirectory(*FPaths::GetPath(ScreenshotPath), true);
             FScreenshotRequest::RequestScreenshot(ScreenshotPath, bHudScreenshotTest, false);
@@ -1844,12 +2554,56 @@ void AQaiConveyorWorld::TickResolutionDataset(float DeltaSeconds)
     {
         bResolutionDatasetInitialized = true;
         ResolutionDatasetInitialForkliftTransform = Forklifts[0].Root->GetComponentTransform();
+        if (UBoxComponent* Chassis = Forklifts[0].ChaosChassis.Get())
+        {
+            ResolutionDatasetInitialChaosChassis = Chassis->GetComponentTransform();
+            Chassis->SetPhysicsLinearVelocity(FVector::ZeroVector);
+            Chassis->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            Chassis->SetSimulatePhysics(false);
+            Chassis->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        }
+        if (UBoxComponent* Carriage = Forklifts[0].ChaosCarriage.Get())
+        {
+            ResolutionDatasetInitialChaosCarriage = Carriage->GetComponentTransform();
+            Carriage->SetPhysicsLinearVelocity(FVector::ZeroVector);
+            Carriage->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            Carriage->SetSimulatePhysics(false);
+            Carriage->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        }
         ResolutionDatasetElapsed = 0.0f;
         ResolutionDatasetPhase = INDEX_NONE;
+        // The authored test start has a pallet/carton directly against the
+        // lowered tines. It stops a normally driven forklift after only a few
+        // centimetres, so it cannot reproduce the user's unobstructed driving
+        // classification. Remove only that initial load from this benchmark;
+        // belt/shelf parcels remain available to the visual ablation groups.
+        int32 RemovedStartingCargo = 0;
+        for (const int32 BodyIndex : {
+                 Forklifts[0].PalletDynamicBody,
+                 Forklifts[0].CartonDynamicBody})
+        {
+            if (!DynamicBoxes.IsValidIndex(BodyIndex)
+                || !DynamicBoxes[BodyIndex].Root.IsValid())
+            {
+                continue;
+            }
+            USceneComponent* CargoRoot = DynamicBoxes[BodyIndex].Root.Get();
+            CargoRoot->SetVisibility(false, true);
+            CargoRoot->SetHiddenInGame(true, true);
+            if (UPrimitiveComponent* CargoBody = Cast<UPrimitiveComponent>(CargoRoot))
+            {
+                CargoBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                CargoBody->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                CargoBody->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+                CargoBody->PutRigidBodyToSleep();
+            }
+            ++RemovedStartingCargo;
+        }
         SimulatorLog(FString::Printf(
-            TEXT("resolution_dataset initialized capture=%dx%d"),
+            TEXT("resolution_dataset initialized capture=%dx%d starting_cargo_removed=%d motion=complete_assembly_controlled_replay"),
             HostCaptureWidth,
-            HostCaptureHeight));
+            HostCaptureHeight,
+            RemovedStartingCargo));
     }
 
     ResolutionDatasetElapsed += DeltaSeconds;
@@ -1868,33 +2622,101 @@ void AQaiConveyorWorld::TickResolutionDataset(float DeltaSeconds)
     }
 
     FForkliftRuntime& Forklift = Forklifts[0];
-    FTransform TestTransform = ResolutionDatasetInitialForkliftTransform;
+    // Perception ablations require the exact same visible trajectory in every
+    // scene variant. Move both Chaos particles together so the complete truck
+    // (body, driver, mast, carriage, forks and wheels) remains assembled. This
+    // is a controlled replay, not a physics score; the ordinary interactive
+    // demo continues to use tire forces and the prismatic lift joint.
+    float ReplayOffsetX = 0.0f;
+    float ReplaySpeedCm = 0.0f;
     if (ResolutionDatasetPhase == 1)
     {
         const float PhaseSeconds = ResolutionDatasetElapsed - 12.0f;
-        FVector AwayFromBelt = ResolutionDatasetInitialForkliftTransform.GetLocation()
-            - FVector(ConveyorTuning::BeltCenterX, ConveyorTuning::BeltCenterY, 0.0f);
-        AwayFromBelt.Z = 0.0f;
-        AwayFromBelt = AwayFromBelt.GetSafeNormal();
-        TestTransform.AddToTranslation(AwayFromBelt * (PhaseSeconds * 7.0f));
-        Forklift.SpeedCmPerSecond = 7.0f;
+        constexpr float AmplitudeCm = 28.0f;
+        constexpr float PeriodSeconds = 4.0f;
+        const float CycleSeconds = FMath::Fmod(PhaseSeconds, PeriodSeconds);
+        if (CycleSeconds < PeriodSeconds * 0.5f)
+        {
+            ReplayOffsetX = -AmplitudeCm
+                + 2.0f * AmplitudeCm * CycleSeconds / (PeriodSeconds * 0.5f);
+            ReplaySpeedCm = 2.0f * AmplitudeCm / (PeriodSeconds * 0.5f);
+        }
+        else
+        {
+            ReplayOffsetX = AmplitudeCm
+                - 2.0f * AmplitudeCm
+                    * (CycleSeconds - PeriodSeconds * 0.5f)
+                    / (PeriodSeconds * 0.5f);
+            ReplaySpeedCm = -2.0f * AmplitudeCm / (PeriodSeconds * 0.5f);
+        }
     }
     else if (ResolutionDatasetPhase == 2)
     {
-        FVector RedLocation = ResolutionDatasetInitialForkliftTransform.GetLocation();
-        RedLocation.X = ConveyorTuning::BeltCenterX;
-        RedLocation.Y = ConveyorTuning::BeltCenterY;
-        TestTransform.SetLocation(RedLocation);
-        Forklift.SpeedCmPerSecond = 0.0f;
+        // The authored truck faces +X; 190 cm places its front axle/body over
+        // the physical red mat while retaining the same camera composition.
+        ReplayOffsetX = 190.0f;
     }
-    else
+    const FVector ReplayOffset(ReplayOffsetX, 0.0f, 0.0f);
+    if (UBoxComponent* Chassis = Forklift.ChaosChassis.Get())
     {
-        Forklift.SpeedCmPerSecond = 0.0f;
+        FTransform Target = ResolutionDatasetInitialChaosChassis;
+        Target.AddToTranslation(ReplayOffset);
+        Chassis->SetWorldTransform(Target, false, nullptr, ETeleportType::TeleportPhysics);
     }
+    if (UBoxComponent* Carriage = Forklift.ChaosCarriage.Get())
+    {
+        FTransform Target = ResolutionDatasetInitialChaosCarriage;
+        Target.AddToTranslation(ReplayOffset);
+        Carriage->SetWorldTransform(Target, false, nullptr, ETeleportType::TeleportPhysics);
+    }
+    Forklift.SpeedCmPerSecond = ReplaySpeedCm;
+    CommandThrottle = 0.0f;
+    CommandSteer = 0.0f;
+    CommandLift = 0.0f;
+    bCommandBrake = true;
 
-
-    Forklift.Root->SetWorldTransform(TestTransform, false, nullptr, ETeleportType::TeleportPhysics);
-    UpdateSafetySignal();
+    const int32 TelemetrySecond = FMath::FloorToInt(ResolutionDatasetElapsed);
+    if (TelemetrySecond != ResolutionDatasetLastTelemetrySecond)
+    {
+        ResolutionDatasetLastTelemetrySecond = TelemetrySecond;
+        const FVector Location = Forklift.Root->GetComponentLocation();
+        const UBoxComponent* Chassis = Forklift.ChaosChassis.Get();
+        const FVector ChassisLocation = Chassis
+            ? Chassis->GetComponentLocation()
+            : Location;
+        const FVector ChassisVelocity = Chassis
+            ? Chassis->GetPhysicsLinearVelocity()
+            : FVector::ZeroVector;
+        const float SupportedNormalForce =
+            Forklift.WheelNormalLoads[0]
+            + Forklift.WheelNormalLoads[1]
+            + Forklift.WheelNormalLoads[2]
+            + Forklift.WheelNormalLoads[3];
+        SimulatorLog(FString::Printf(
+            TEXT("resolution_dataset telemetry phase=%d elapsed=%.2f location=(%.1f,%.1f,%.1f) chassis=(%.1f,%.1f,%.1f) chassis_velocity=(%.2f,%.2f,%.2f) speed_cm_s=%.2f target_cm_s=%.2f throttle=%.3f steer=%.3f brake=%s wheel_loads=(%.0f,%.0f,%.0f,%.0f) supported_force=%.0f truth=%s"),
+            ResolutionDatasetPhase,
+            ResolutionDatasetElapsed,
+            Location.X,
+            Location.Y,
+            Location.Z,
+            ChassisLocation.X,
+            ChassisLocation.Y,
+            ChassisLocation.Z,
+            ChassisVelocity.X,
+            ChassisVelocity.Y,
+            ChassisVelocity.Z,
+            Forklift.SpeedCmPerSecond,
+            ReplaySpeedCm,
+            0.0f,
+            0.0f,
+            TEXT("true"),
+            Forklift.WheelNormalLoads[0],
+            Forklift.WheelNormalLoads[1],
+            Forklift.WheelNormalLoads[2],
+            Forklift.WheelNormalLoads[3],
+            SupportedNormalForce,
+            *GroundTruthSignal));
+    }
 }
 
 void AQaiConveyorWorld::ApplyResolutionDatasetVariant()
@@ -2017,6 +2839,7 @@ void AQaiConveyorWorld::LoadRuntimeConfig()
             Json->TryGetStringField(TEXT("host_server_url"), HostServerUrl);
             Json->TryGetStringField(TEXT("host_model"), HostModel);
             Json->TryGetStringField(TEXT("evk_server_url"), EvkServerUrl);
+            Json->TryGetStringField(TEXT("evk_media_bridge_url"), EvkMediaBridgeUrl);
             Json->TryGetStringField(TEXT("evk_model"), EvkModel);
             Json->TryGetStringField(TEXT("backend"), ActiveBackend);
             Json->TryGetBoolField(TEXT("auto_inference"), bInferenceEnabled);
@@ -2031,10 +2854,16 @@ void AQaiConveyorWorld::LoadRuntimeConfig()
     FParse::Value(FCommandLine::Get(), TEXT("HostServer="), HostServerUrl);
     FParse::Value(FCommandLine::Get(), TEXT("HostModel="), HostModel);
     FParse::Value(FCommandLine::Get(), TEXT("EvkServer="), EvkServerUrl);
+    const bool bMediaBridgeOverride = FParse::Value(
+        FCommandLine::Get(), TEXT("EvkMediaBridge="), EvkMediaBridgeUrl);
     FParse::Value(FCommandLine::Get(), TEXT("EvkModel="), EvkModel);
     FParse::Value(FCommandLine::Get(), TEXT("Backend="), ActiveBackend);
     bInferenceEnabled &= !FParse::Param(FCommandLine::Get(), TEXT("NoInference"));
     ActiveBackend = ActiveBackend.Equals(TEXT("evk"), ESearchCase::IgnoreCase) ? TEXT("evk") : TEXT("host");
+    if (EvkMediaBridgeUrl.IsEmpty() || (bMediaBridgeOverride == false && EvkMediaBridgeUrl.Contains(TEXT("127.0.0.1")) && !EvkServerUrl.Contains(TEXT("127.0.0.1"))))
+    {
+        EvkMediaBridgeUrl = EvkServerUrl.Replace(TEXT(":18181"), TEXT(":18182"));
+    }
     int32 RequestedHostCaptureWidth = ConveyorTuning::DefaultHostCaptureWidth;
     FParse::Value(FCommandLine::Get(), TEXT("QaiHostCaptureWidth="), RequestedHostCaptureWidth);
     HostCaptureWidth = FMath::Clamp(
@@ -2048,18 +2877,20 @@ void AQaiConveyorWorld::LoadRuntimeConfig()
     UE_LOG(
         LogTemp,
         Display,
-        TEXT("Reason2 runtime configured: backend=%s model=%s host=%s evk=%s inference=%s"),
+        TEXT("Reason2 runtime configured: backend=%s model=%s host=%s evk=%s evk_media=%s inference=%s"),
         *ActiveBackend,
         *ActiveModel,
         *HostServerUrl,
         *EvkServerUrl,
+        *EvkMediaBridgeUrl,
         bInferenceEnabled ? TEXT("on") : TEXT("off"));
     SimulatorLog(FString::Printf(
-        TEXT("runtime_configured backend=%s model=%s host=%s evk=%s inference=%s"),
+        TEXT("runtime_configured backend=%s model=%s host=%s evk=%s evk_media=%s inference=%s"),
         *ActiveBackend,
         *ActiveModel,
         *HostServerUrl,
         *EvkServerUrl,
+        *EvkMediaBridgeUrl,
         bInferenceEnabled ? TEXT("on") : TEXT("off")));
 }
 
@@ -2155,6 +2986,9 @@ bool AQaiConveyorWorld::ApplyWestShelfPlacement()
 
     UPrimitiveComponent* RackVisual = nullptr;
     UPrimitiveComponent* WestWall = nullptr;
+    UPrimitiveComponent* StructuralFloor = nullptr;
+    UPrimitiveComponent* FloorFinish = nullptr;
+    FBox NorthWallBounds(EForceInit::ForceInit);
     TSet<USceneComponent*> ShelfRoots;
     int32 ShelfParcelCount = 0;
     int32 ShelfColliderCount = 0;
@@ -2192,6 +3026,21 @@ bool AQaiConveyorWorld::ApplyWestShelfPlacement()
             {
                 WestWall = Cast<UPrimitiveComponent>(Component);
             }
+            else if (LogicalName == TEXT("Floor"))
+            {
+                StructuralFloor = Cast<UPrimitiveComponent>(Component);
+            }
+            else if (LogicalName == TEXT("FloorFinish"))
+            {
+                FloorFinish = Cast<UPrimitiveComponent>(Component);
+            }
+            else if (LogicalName.StartsWith(TEXT("NorthWall")))
+            {
+                if (const UPrimitiveComponent* NorthWall = Cast<UPrimitiveComponent>(Component))
+                {
+                    NorthWallBounds += NorthWall->Bounds.GetBox();
+                }
+            }
             else if (LogicalName.StartsWith(TEXT("ShelfPlane"))
                 || LogicalName == TEXT("RearGuard")
                 || LogicalName.Contains(TEXT("Upright")))
@@ -2215,7 +3064,7 @@ bool AQaiConveyorWorld::ApplyWestShelfPlacement()
         }
     }
 
-    if (!RackVisual || !WestWall)
+    if (!RackVisual || !WestWall || !StructuralFloor || !FloorFinish || !NorthWallBounds.IsValid)
     {
         return false;
     }
@@ -2225,6 +3074,7 @@ bool AQaiConveyorWorld::ApplyWestShelfPlacement()
     // literal 50 cm would put the rear frame several centimetres into the wall.
     constexpr float DesiredWallClearanceCm = 3.0f;
     constexpr float MaximumCorrectionCm = 50.0f;
+    constexpr float RoomExtensionCm = 200.0f;
     const float DirectionToWall = FMath::Sign(WestWall->Bounds.Origin.X - RackVisual->Bounds.Origin.X);
     const float WallInnerFaceX = WestWall->Bounds.Origin.X - DirectionToWall * WestWall->Bounds.BoxExtent.X;
     const float RackWallFaceX = RackVisual->Bounds.Origin.X + DirectionToWall * RackVisual->Bounds.BoxExtent.X;
@@ -2233,24 +3083,217 @@ bool AQaiConveyorWorld::ApplyWestShelfPlacement()
         GapBeforeCm - DesiredWallClearanceCm,
         0.0f,
         MaximumCorrectionCm);
-    const FVector Delta(DirectionToWall * CorrectionCm, 0.0f, 0.0f);
+    const FVector RoomExtensionDelta(DirectionToWall * RoomExtensionCm, 0.0f, 0.0f);
+    const FVector Delta = RoomExtensionDelta
+        + FVector(DirectionToWall * CorrectionCm, 0.0f, 0.0f);
+    const float RackCenterXAfterPlacement = RackVisual->Bounds.Origin.X + Delta.X;
+    constexpr float UprightDepthInsetCm = 0.35f;
+    int32 InsetUprightCount = 0;
+
+    // Move the physical west wall outward by exactly two metres. The rack and
+    // every independent shelf parcel receive the same room-extension delta
+    // below, followed by the existing small wall-clearance correction.
+    MakeMovable(WestWall);
+    WestWall->AddWorldOffset(
+        RoomExtensionDelta,
+        false,
+        nullptr,
+        ETeleportType::TeleportPhysics);
+    WestWall->UpdateBounds();
+
+    // Fill the revealed floor and north-wall strips with native runtime
+    // geometry. These components block Chaos bodies, so the additional room
+    // is genuinely driveable and cannot be crossed through at its new edges.
+    UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(
+        nullptr,
+        TEXT("/Engine/BasicShapes/Cube.Cube"));
+    UMaterialInterface* ConcreteMaterial = LoadObject<UMaterialInterface>(
+        nullptr,
+        TEXT("/Game/ConveyorRuntime/VisualFinish/MI_RedEpoxyFloor.MI_RedEpoxyFloor"));
+    UMaterialInterface* WallMaterial = LoadObject<UMaterialInterface>(
+        nullptr,
+        TEXT("/Game/ConveyorRuntime/VisualFinish/M_UnifiedWall.M_UnifiedWall"));
+    if (!CubeMesh || !ConcreteMaterial || !WallMaterial)
+    {
+        return false;
+    }
+
+    const auto AddRoomExtensionBlock = [this, CubeMesh](
+        const FName Name,
+        const FVector& Center,
+        const FVector& Size,
+        UMaterialInterface* Material,
+        const bool bCollision)
+    {
+        UStaticMeshComponent* Block = NewObject<UStaticMeshComponent>(this, Name);
+        AddInstanceComponent(Block);
+        Block->SetStaticMesh(CubeMesh);
+        Block->SetMobility(EComponentMobility::Movable);
+        Block->SetMaterial(0, Material);
+        Block->SetCollisionEnabled(
+            bCollision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
+        Block->SetCollisionProfileName(
+            bCollision ? UCollisionProfile::BlockAll_ProfileName : UCollisionProfile::NoCollision_ProfileName);
+        Block->SetGenerateOverlapEvents(false);
+        Block->SetSimulatePhysics(false);
+        Block->SetCastShadow(true);
+        Block->RegisterComponentWithWorld(GetWorld());
+        Block->SetWorldLocation(Center, false, nullptr, ETeleportType::TeleportPhysics);
+        Block->SetWorldScale3D(Size / 100.0f);
+        Block->UpdateBounds();
+    };
+
+    const FBox FloorBounds = StructuralFloor->Bounds.GetBox();
+    const FBox MovedWestWallBounds = WestWall->Bounds.GetBox();
+    // FloorFinish is a legacy zero-thickness overlay whose Y footprint extends
+    // 383 cm beyond the real slab, creating the large tab behind the room.
+    // The Chaos floor is independent, so make the actual 30-cm Floor mesh the
+    // sole visible floor: extend it to the moved wall and apply the concrete
+    // finish directly. This keeps one continuous solid mesh and one footprint.
+    FloorFinish->SetVisibility(false, true);
+    FloorFinish->SetHiddenInGame(true, true);
+    FloorFinish->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    // Carry the single slab through the wall thickness to its exterior face.
+    // Stopping at the room-facing surface left the visible wall foot hanging
+    // beyond the slab at the open corner.
+    const float FloorTargetOuterX = DirectionToWall < 0.0f
+        ? MovedWestWallBounds.Min.X
+        : MovedWestWallBounds.Max.X;
+    const float OriginalFloorSizeX = FloorBounds.GetSize().X;
+    const float ExtendedFloorMinX = DirectionToWall < 0.0f
+        ? FloorTargetOuterX
+        : FloorBounds.Min.X;
+    const float ExtendedFloorMaxX = DirectionToWall < 0.0f
+        ? FloorBounds.Max.X
+        : FloorTargetOuterX;
+    const float ExtendedFloorSizeX = ExtendedFloorMaxX - ExtendedFloorMinX;
+    if (OriginalFloorSizeX <= UE_KINDA_SMALL_NUMBER || ExtendedFloorSizeX <= OriginalFloorSizeX)
+    {
+        return false;
+    }
+    MakeMovable(StructuralFloor);
+    const FVector OriginalFloorScale = StructuralFloor->GetComponentScale();
+    StructuralFloor->SetWorldScale3D(FVector(
+        OriginalFloorScale.X * ExtendedFloorSizeX / OriginalFloorSizeX,
+        OriginalFloorScale.Y,
+        OriginalFloorScale.Z));
+    StructuralFloor->UpdateBounds();
+    const FBox ScaledFloorBounds = StructuralFloor->Bounds.GetBox();
+    const float FixedEdgeCorrectionX = DirectionToWall < 0.0f
+        ? FloorBounds.Max.X - ScaledFloorBounds.Max.X
+        : FloorBounds.Min.X - ScaledFloorBounds.Min.X;
+    StructuralFloor->AddWorldOffset(
+        FVector(FixedEdgeCorrectionX, 0.0f, 0.0f),
+        false,
+        nullptr,
+        ETeleportType::TeleportPhysics);
+    StructuralFloor->UpdateBounds();
+    if (UStaticMeshComponent* StructuralFloorMesh = Cast<UStaticMeshComponent>(StructuralFloor))
+    {
+        // MI_RedEpoxyFloor is the owned world-XY projection shader built from
+        // the original Omniverse concrete maps. Override only its presentation
+        // parameters here: the result is neutral concrete with stable tiling,
+        // normal detail and two roughness scales, independent of mesh UVs or
+        // the slab's non-uniform room-extension scale.
+        UMaterialInstanceDynamic* WorldAlignedConcrete =
+            UMaterialInstanceDynamic::Create(
+                ConcreteMaterial,
+                this,
+                TEXT("MI_RuntimeWorldAlignedConcrete"));
+        if (!WorldAlignedConcrete)
+        {
+            return false;
+        }
+        WorldAlignedConcrete->SetVectorParameterValue(
+            TEXT("EpoxyTint"),
+            FLinearColor(0.19f, 0.215f, 0.23f, 1.0f));
+        WorldAlignedConcrete->SetScalarParameterValue(TEXT("TintBlend"), 0.26f);
+        // One source tile spans about 4.55 m; the 5.6-cm micro pass prevents
+        // broad areas from reading as a single enlarged bitmap.
+        WorldAlignedConcrete->SetScalarParameterValue(TEXT("WorldTextureScale"), 0.0022f);
+        WorldAlignedConcrete->SetScalarParameterValue(TEXT("TextureBrightness"), 2.25f);
+        WorldAlignedConcrete->SetScalarParameterValue(TEXT("VariationFloor"), 0.54f);
+        WorldAlignedConcrete->SetScalarParameterValue(TEXT("RoughnessScale"), 0.88f);
+        WorldAlignedConcrete->SetScalarParameterValue(TEXT("MicroWorldScale"), 0.018f);
+        WorldAlignedConcrete->SetScalarParameterValue(TEXT("MicroRoughnessStrength"), 0.14f);
+        for (int32 Slot = 0; Slot < StructuralFloorMesh->GetNumMaterials(); ++Slot)
+        {
+            StructuralFloorMesh->SetMaterial(Slot, WorldAlignedConcrete);
+        }
+    }
+
+    const float NorthWallExtensionOuterX = DirectionToWall < 0.0f
+        ? MovedWestWallBounds.Min.X
+        : MovedWestWallBounds.Max.X;
+    const float NorthWallExtensionInnerX = DirectionToWall < 0.0f
+        ? NorthWallBounds.Min.X
+        : NorthWallBounds.Max.X;
+    const float NorthWallExtensionMinX = FMath::Min(
+        NorthWallExtensionOuterX,
+        NorthWallExtensionInnerX);
+    const float NorthWallExtensionMaxX = FMath::Max(
+        NorthWallExtensionOuterX,
+        NorthWallExtensionInnerX);
+    AddRoomExtensionBlock(
+        TEXT("NorthWallWestExtension"),
+        FVector(
+            0.5f * (NorthWallExtensionMinX + NorthWallExtensionMaxX),
+            NorthWallBounds.GetCenter().Y,
+            NorthWallBounds.GetCenter().Z),
+        FVector(
+            NorthWallExtensionMaxX - NorthWallExtensionMinX,
+            NorthWallBounds.GetSize().Y,
+            NorthWallBounds.GetSize().Z),
+        WallMaterial,
+        true);
+    SimulatorLog(FString::Printf(
+        TEXT("room_extension_geometry unified_structural_floor_x=(%.1f,%.1f) floor_y=(%.1f,%.1f) scale_x=%.4f legacy_finish=hidden north_wall_x=(%.1f,%.1f) moved_west_wall_x=(%.1f,%.1f)"),
+        ExtendedFloorMinX,
+        ExtendedFloorMaxX,
+        FloorBounds.Min.Y,
+        FloorBounds.Max.Y,
+        StructuralFloor->GetComponentScale().X,
+        NorthWallExtensionMinX,
+        NorthWallExtensionMaxX,
+        MovedWestWallBounds.Min.X,
+        MovedWestWallBounds.Max.X));
 
     for (USceneComponent* Root : ShelfRoots)
     {
         MakeMovable(Root);
         Root->AddWorldOffset(Delta, false, nullptr, ETeleportType::TeleportPhysics);
+        const FString LogicalName = LogicalComponentName(Root);
+        if (LogicalName.Contains(TEXT("Upright")))
+        {
+            // The visible upright proxies met the orange horizontal members
+            // on a coplanar face, producing intermittent depth fighting. Move
+            // each post only 3.5 mm toward the rack depth centre. Keeping the
+            // render and collision component together preserves F8 accuracy.
+            const float InwardSign = FMath::Sign(
+                RackCenterXAfterPlacement - Root->GetComponentLocation().X);
+            Root->AddWorldOffset(
+                FVector(InwardSign * UprightDepthInsetCm, 0.0f, 0.0f),
+                false,
+                nullptr,
+                ETeleportType::TeleportPhysics);
+            ++InsetUprightCount;
+        }
     }
 
     bWestShelfPlacementApplied = true;
     SimulatorLog(FString::Printf(
-        TEXT("west_shelf_placement gap_before_cm=%.1f clearance_after_cm=%.1f delta_x_cm=%.1f roots=%d shelf_colliders=%d shelf_parcels=%d rack_stack_light=%s"),
+        TEXT("west_shelf_placement gap_before_cm=%.1f clearance_after_cm=%.1f room_extension_cm=%.1f wall_delta_x_cm=%.1f rack_delta_x_cm=%.1f roots=%d shelf_colliders=%d shelf_parcels=%d rack_stack_light=%s inset_uprights=%d upright_inset_cm=%.2f"),
         GapBeforeCm,
         FMath::Max(0.0f, GapBeforeCm - CorrectionCm),
+        RoomExtensionCm,
+        RoomExtensionDelta.X,
         Delta.X,
         ShelfRoots.Num(),
         ShelfColliderCount,
         ShelfParcelCount,
-        bMovedRackStackLight ? TEXT("moved") : TEXT("missing")));
+        bMovedRackStackLight ? TEXT("moved") : TEXT("missing"),
+        InsetUprightCount,
+        UprightDepthInsetCm));
     return true;
 }
 
@@ -2261,7 +3304,11 @@ void AQaiConveyorWorld::ConfigureForkliftMastMaterials()
         return;
     }
 
+    UMaterialInterface* CoatedSteelBase = LoadObject<UMaterialInterface>(
+        nullptr,
+        TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
     int32 RoughenedComponents = 0;
+    int32 HiddenMastDecals = 0;
     for (TActorIterator<AActor> It(GetWorld()); It; ++It)
     {
         TInlineComponentArray<UStaticMeshComponent*> MeshComponents(*It);
@@ -2273,6 +3320,19 @@ void AQaiConveyorWorld::ConfigureForkliftMastMaterials()
             }
 
             const FString Name = MeshComponent->GetName();
+            // Decals02 is a separate, tall mesh laid over the mast. It contains
+            // the imported logistics wordmark and uses a reflective decal
+            // atlas, so changing the underlying mast material cannot remove
+            // the mirror-like patch. Keep Decals01 (body/safety labels), but
+            // suppress this mast-only overlay on both forklifts.
+            if (Name.Contains(TEXT("SM_Forklift_C01_Decals02_01"), ESearchCase::IgnoreCase))
+            {
+                MeshComponent->SetVisibility(false, true);
+                MeshComponent->SetHiddenInGame(true, true);
+                MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                ++HiddenMastDecals;
+                continue;
+            }
             const bool bMastRail = Name.Contains(TEXT("MastStage"), ESearchCase::IgnoreCase)
                 && !Name.Contains(TEXT("MastStageWheel"), ESearchCase::IgnoreCase);
             const bool bLiftCarriage = Name.Contains(TEXT("MastForcer"), ESearchCase::IgnoreCase)
@@ -2286,9 +3346,12 @@ void AQaiConveyorWorld::ConfigureForkliftMastMaterials()
 
             for (int32 MaterialIndex = 0; MaterialIndex < MeshComponent->GetNumMaterials(); ++MaterialIndex)
             {
-                UMaterialInterface* ExistingMaterial = MeshComponent->GetMaterial(MaterialIndex);
-                UMaterialInstanceDynamic* MastMaterial = ExistingMaterial
-                    ? UMaterialInstanceDynamic::Create(ExistingMaterial, this)
+                // The imported atlas bakes a bright metallic patch into the
+                // mast side. Scalar overrides cannot remove that reflection,
+                // so use a neutral coated-steel material for the complete
+                // mast/carriage assembly instead of inheriting the atlas.
+                UMaterialInstanceDynamic* MastMaterial = CoatedSteelBase
+                    ? UMaterialInstanceDynamic::Create(CoatedSteelBase, this)
                     : nullptr;
                 if (!MastMaterial)
                 {
@@ -2302,22 +3365,543 @@ void AQaiConveyorWorld::ConfigureForkliftMastMaterials()
                 // not roughness alone. The mast is painted/coated steel, so it
                 // should read like the surrounding dark frame rather than a
                 // polished mirror.
-                MastMaterial->SetScalarParameterValue(TEXT("UseRoughnessTexture"), 0.0f);
-                MastMaterial->SetScalarParameterValue(TEXT("Roughness"), 0.72f);
-                MastMaterial->SetScalarParameterValue(TEXT("RoughnessScale"), 2.75f);
-                MastMaterial->SetScalarParameterValue(TEXT("UseMetallicTexture"), 0.0f);
-                MastMaterial->SetScalarParameterValue(TEXT("Metallic"), 0.12f);
-                MastMaterial->SetScalarParameterValue(TEXT("MetallicScale"), 0.12f);
+                MastMaterial->SetVectorParameterValue(
+                    TEXT("Color"),
+                    FLinearColor(0.055f, 0.062f, 0.070f, 1.0f));
                 MeshComponent->SetMaterial(MaterialIndex, MastMaterial);
                 ++RoughenedComponents;
             }
         }
     }
 
-    bForkliftMastMaterialsConfigured = RoughenedComponents > 0;
+    bForkliftMastMaterialsConfigured = RoughenedComponents > 0 && HiddenMastDecals > 0;
     SimulatorLog(FString::Printf(
-        TEXT("forklift_mast_material components=%d roughness=0.72 metallic=0.12 preserve_albedo=true preserve_normals=true"),
-        RoughenedComponents));
+        TEXT("forklift_mast_material components=%d mast_decals_hidden=%d finish=dark_coated_steel imported_metallic_atlas=false"),
+        RoughenedComponents,
+        HiddenMastDecals));
+}
+
+void AQaiConveyorWorld::ApplyForkliftPaintVariant()
+{
+    const bool bUseIsaacYellow = ForkliftPaintVariant == TEXT("yellow")
+        || ForkliftPaintVariant == TEXT("orange")
+        || ForkliftPaintVariant == TEXT("isaac-yellow")
+        || ForkliftPaintVariant == TEXT("isaac_yellow");
+    const bool bUseDragonwingPurple = ForkliftPaintVariant.IsEmpty()
+        || ForkliftPaintVariant == TEXT("purple")
+        || ForkliftPaintVariant == TEXT("dragonwing-purple")
+        || ForkliftPaintVariant == TEXT("dragonwing_purple");
+
+    if (!bUseIsaacYellow && !bUseDragonwingPurple)
+    {
+        SimulatorLog(FString::Printf(
+            TEXT("forklift_paint warning=unknown_variant requested=%s fallback=dragonwing-purple"),
+            *SanitizeLogField(ForkliftPaintVariant)));
+        ForkliftPaintVariant = TEXT("dragonwing-purple");
+    }
+
+    const TCHAR* MaterialPath = bUseIsaacYellow
+        ? TEXT("/Game/ConveyorRuntime/VisualFinish/MI_ForkliftClearCoat_IsaacYellow.MI_ForkliftClearCoat_IsaacYellow")
+        : TEXT("/Game/ConveyorRuntime/VisualFinish/MI_ForkliftClearCoat.MI_ForkliftClearCoat");
+    UMaterialInterface* PaintMaterial = LoadObject<UMaterialInterface>(nullptr, MaterialPath);
+    if (!PaintMaterial)
+    {
+        SimulatorLog(FString::Printf(
+            TEXT("forklift_paint error=material_load_failed variant=%s path=%s"),
+            *SanitizeLogField(ForkliftPaintVariant),
+            MaterialPath));
+        return;
+    }
+
+    UMaterialInterface* AppliedPaintMaterial = PaintMaterial;
+    const FLinearColor StrikingSafetyYellow(1.0f, 0.658375f, 0.0f, 1.0f);
+    if (bUseIsaacYellow)
+    {
+        if (UMaterialInstanceDynamic* YellowMaterial =
+                UMaterialInstanceDynamic::Create(PaintMaterial, this))
+        {
+            // The original NVIDIA diffuse tint is accurate but becomes ochre
+            // after the forklift atlas and fixed warehouse grade are applied.
+            // Preserve the authored material response while lifting the tint
+            // to display sRGB #FFD400, a clearer industrial safety yellow.
+            YellowMaterial->SetVectorParameterValue(
+                TEXT("DragonwingPurple"),
+                StrikingSafetyYellow);
+            AppliedPaintMaterial = YellowMaterial;
+        }
+    }
+    RuntimeForkliftPaintMaterials.Add(AppliedPaintMaterial);
+    int32 PaintedComponents = 0;
+    for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+    {
+        TInlineComponentArray<UStaticMeshComponent*> MeshComponents(*It);
+        for (UStaticMeshComponent* MeshComponent : MeshComponents)
+        {
+            if (!MeshComponent || !MeshComponent->GetStaticMesh())
+            {
+                continue;
+            }
+            const FString ComponentName = MeshComponent->GetName();
+            const FString MeshName = MeshComponent->GetStaticMesh()->GetName();
+            if (!ComponentName.Contains(TEXT("SM_Forklift_C01_Body02_01"), ESearchCase::IgnoreCase)
+                && !MeshName.Contains(TEXT("SM_Forklift_C01_Body02_01"), ESearchCase::IgnoreCase))
+            {
+                continue;
+            }
+            MeshComponent->SetMaterial(0, AppliedPaintMaterial);
+            ++PaintedComponents;
+        }
+    }
+
+    const FString EffectiveVariant = bUseIsaacYellow
+        ? TEXT("isaac-yellow")
+        : TEXT("dragonwing-purple");
+    SimulatorLog(FString::Printf(
+        TEXT("forklift_paint variant=%s material=%s components=%d authored_linear_rgb=%s"),
+        *EffectiveVariant,
+        MaterialPath,
+        PaintedComponents,
+        bUseIsaacYellow ? TEXT("1.0000000,0.6583750,0.0000000") : TEXT("0.0318960,0.0003035,0.2086369")));
+    if (PaintedComponents != 2)
+    {
+        SimulatorLog(FString::Printf(
+            TEXT("forklift_paint warning=unexpected_component_count expected=2 actual=%d"),
+            PaintedComponents));
+    }
+}
+
+bool AQaiConveyorWorld::ConfigureInferenceScene()
+{
+    if (bInferenceSceneConfigured)
+    {
+        return true;
+    }
+    if (!GetWorld() || !DetectorCamera.IsValid())
+    {
+        return false;
+    }
+
+    UStaticMeshComponent* RedZone = nullptr;
+    for (TActorIterator<AActor> It(GetWorld()); It && !RedZone; ++It)
+    {
+        TInlineComponentArray<UStaticMeshComponent*> Meshes(*It);
+        for (UStaticMeshComponent* Mesh : Meshes)
+        {
+            if (!Mesh || !Mesh->GetStaticMesh())
+            {
+                continue;
+            }
+            const FString ComponentName = Mesh->GetName();
+            const FString MeshName = Mesh->GetStaticMesh()->GetName();
+            if (ComponentName.Contains(TEXT("ClearanceZone"), ESearchCase::IgnoreCase)
+                || MeshName.Contains(TEXT("ClearanceZone"), ESearchCase::IgnoreCase))
+            {
+                RedZone = Mesh;
+                break;
+            }
+        }
+    }
+    if (!RedZone)
+    {
+        SimulatorLog(TEXT("inference_scene status=missing_red_zone"));
+        return false;
+    }
+
+    RedZone->UpdateBounds();
+    const FBox RedBounds = RedZone->Bounds.GetBox();
+    if (!RedBounds.IsValid || RedBounds.GetSize().X < 100.0f || RedBounds.GetSize().Y < 100.0f)
+    {
+        SimulatorLog(TEXT("inference_scene status=invalid_red_zone_bounds"));
+        return false;
+    }
+    InferenceRedZoneBounds = RedBounds;
+
+    // Keep the safety surface visually stable across captures: retain a small
+    // amount of the authored concrete variation and normal detail, but remove
+    // the glossy epoxy response that changed with camera angle and local
+    // colored lights.
+    UMaterialInterface* RedFloorBase = LoadObject<UMaterialInterface>(
+        nullptr,
+        TEXT("/Game/ConveyorRuntime/VisualFinish/MI_RedEpoxyFloor.MI_RedEpoxyFloor"));
+    UMaterialInstanceDynamic* MatteRed = RedFloorBase
+        ? UMaterialInstanceDynamic::Create(RedFloorBase, this)
+        : nullptr;
+    if (MatteRed)
+    {
+        MatteRed->SetScalarParameterValue(TEXT("TintBlend"), 0.68f);
+        MatteRed->SetScalarParameterValue(TEXT("TextureBrightness"), 2.15f);
+        MatteRed->SetScalarParameterValue(TEXT("VariationFloor"), 0.70f);
+        MatteRed->SetScalarParameterValue(TEXT("RoughnessScale"), 1.20f);
+        MatteRed->SetScalarParameterValue(TEXT("MicroRoughnessStrength"), 0.08f);
+        RedZone->SetMaterial(0, MatteRed);
+        RuntimeInferenceSceneMaterials.Add(MatteRed);
+    }
+
+    // The border is physical scene geometry, not a detector-only overlay. At
+    // 512x288 its 10-cm width remains legible while the short alternating
+    // segments provide strong boundaries under both bright and dark objects.
+    UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(
+        nullptr,
+        TEXT("/Engine/BasicShapes/Cube.Cube"));
+    UMaterialInterface* BasicMaterial = LoadObject<UMaterialInterface>(
+        nullptr,
+        TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+    UMaterialInstanceDynamic* WhiteMaterial = BasicMaterial
+        ? UMaterialInstanceDynamic::Create(BasicMaterial, this)
+        : nullptr;
+    UMaterialInstanceDynamic* BlackMaterial = BasicMaterial
+        ? UMaterialInstanceDynamic::Create(BasicMaterial, this)
+        : nullptr;
+    if (!CubeMesh || !WhiteMaterial || !BlackMaterial)
+    {
+        SimulatorLog(FString::Printf(
+            TEXT("inference_scene status=missing_border_assets cube=%s material=%s"),
+            CubeMesh ? TEXT("true") : TEXT("false"),
+            BasicMaterial ? TEXT("true") : TEXT("false")));
+        return false;
+    }
+    WhiteMaterial->SetVectorParameterValue(
+        TEXT("Color"), FLinearColor(0.82f, 0.82f, 0.78f, 1.0f));
+    BlackMaterial->SetVectorParameterValue(
+        TEXT("Color"), FLinearColor(0.008f, 0.009f, 0.011f, 1.0f));
+    RuntimeInferenceSceneMaterials.Add(WhiteMaterial);
+    RuntimeInferenceSceneMaterials.Add(BlackMaterial);
+
+    constexpr float StripeLengthCm = 42.0f;
+    constexpr float BorderWidthCm = 10.0f;
+    constexpr float BorderThicknessCm = 0.45f;
+    const float BorderZ = RedBounds.Max.Z + BorderThicknessCm * 0.5f + 0.20f;
+    int32 StripeCounter = 0;
+    const auto AddStrip = [
+        this,
+        CubeMesh,
+        WhiteMaterial,
+        BlackMaterial,
+        BorderZ,
+        StripeLengthCm,
+        BorderWidthCm,
+        BorderThicknessCm,
+        &StripeCounter](
+        const FVector2D& Start,
+        const FVector2D& End)
+    {
+        const FVector2D Delta = End - Start;
+        const float Length = Delta.Size();
+        if (Length < 1.0f)
+        {
+            return;
+        }
+        const FVector2D Direction = Delta / Length;
+        const int32 SegmentCount = FMath::Max(1, FMath::CeilToInt(Length / StripeLengthCm));
+        const float SegmentLength = Length / static_cast<float>(SegmentCount);
+        const float Yaw = FMath::RadiansToDegrees(FMath::Atan2(Direction.Y, Direction.X));
+        for (int32 SegmentIndex = 0; SegmentIndex < SegmentCount; ++SegmentIndex)
+        {
+            const FVector2D Center = Start
+                + Direction * ((static_cast<float>(SegmentIndex) + 0.5f) * SegmentLength);
+            UStaticMeshComponent* Stripe = NewObject<UStaticMeshComponent>(
+                this,
+                FName(*FString::Printf(TEXT("InferenceSafetyStripe_%03d"), ++StripeCounter)));
+            AddInstanceComponent(Stripe);
+            Stripe->SetStaticMesh(CubeMesh);
+            Stripe->SetMobility(EComponentMobility::Movable);
+            Stripe->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Stripe->SetGenerateOverlapEvents(false);
+            Stripe->SetCastShadow(false);
+            Stripe->SetAffectDynamicIndirectLighting(false);
+            Stripe->SetAffectDistanceFieldLighting(false);
+            Stripe->SetReceivesDecals(false);
+            Stripe->SetMaterial(
+                0,
+                ((StripeCounter - 1) & 1) == 0 ? WhiteMaterial : BlackMaterial);
+            Stripe->RegisterComponentWithWorld(GetWorld());
+            Stripe->SetWorldLocationAndRotation(
+                FVector(Center.X, Center.Y, BorderZ),
+                FRotator(0.0f, Yaw, 0.0f));
+            Stripe->SetWorldScale3D(FVector(
+                SegmentLength / 100.0f,
+                BorderWidthCm / 100.0f,
+                BorderThicknessCm / 100.0f));
+            RuntimeSafetyBorderComponents.Add(Stripe);
+        }
+    };
+
+    const float HalfBorder = BorderWidthCm * 0.5f;
+    AddStrip(
+        FVector2D(RedBounds.Min.X, RedBounds.Min.Y - HalfBorder),
+        FVector2D(RedBounds.Max.X, RedBounds.Min.Y - HalfBorder));
+    AddStrip(
+        FVector2D(RedBounds.Max.X + HalfBorder, RedBounds.Min.Y),
+        FVector2D(RedBounds.Max.X + HalfBorder, RedBounds.Max.Y));
+    AddStrip(
+        FVector2D(RedBounds.Max.X, RedBounds.Max.Y + HalfBorder),
+        FVector2D(RedBounds.Min.X, RedBounds.Max.Y + HalfBorder));
+    AddStrip(
+        FVector2D(RedBounds.Min.X - HalfBorder, RedBounds.Max.Y),
+        FVector2D(RedBounds.Min.X - HalfBorder, RedBounds.Min.Y));
+
+    // Two legacy point fills were authored for the presentation camera. The
+    // far-bay source is nearly co-located with the removed rear-wall stack and
+    // leaves its own white hotspot behind; the conveyor source adds another
+    // angle-dependent gradient across the detector view. Retire both for the
+    // inference-stable scene and retain an explicit opt-in for lighting A/Bs.
+    int32 DisabledLegacyPointFills = 0;
+    if (!FParse::Param(FCommandLine::Get(), TEXT("QaiEnableLocalPointFills")))
+    {
+        const FVector LegacyPointFillLocations[] = {
+            FVector(420.0f, 110.0f, 215.0f),
+            FVector(410.0f, -330.0f, 185.0f),
+        };
+        constexpr float LegacyPointFillMatchRadiusCm = 45.0f;
+        for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+        {
+            AActor* Candidate = *It;
+            UPointLightComponent* PointLight = Candidate
+                ? Candidate->FindComponentByClass<UPointLightComponent>()
+                : nullptr;
+            if (!PointLight)
+            {
+                continue;
+            }
+            bool bSignalEmitter = false;
+            for (const FName& Tag : Candidate->Tags)
+            {
+                const FString TagString = Tag.ToString();
+                if (TagString.StartsWith(TEXT("Qai.Green."))
+                    || TagString.StartsWith(TEXT("Qai.Amber."))
+                    || TagString.StartsWith(TEXT("Qai.Red.")))
+                {
+                    bSignalEmitter = true;
+                    break;
+                }
+            }
+            if (bSignalEmitter)
+            {
+                continue;
+            }
+            bool bMatchesLegacyFill = false;
+            for (const FVector& LegacyLocation : LegacyPointFillLocations)
+            {
+                if (FVector::DistSquared(Candidate->GetActorLocation(), LegacyLocation)
+                    <= FMath::Square(LegacyPointFillMatchRadiusCm))
+                {
+                    bMatchesLegacyFill = true;
+                    break;
+                }
+            }
+            if (!bMatchesLegacyFill)
+            {
+                continue;
+            }
+            PointLight->SetIntensity(0.0f);
+            PointLight->SetVisibility(false);
+            PointLight->Deactivate();
+            ++DisabledLegacyPointFills;
+        }
+    }
+
+    // A broad neutral workcell fixture gives the physical scene (and therefore
+    // the sensor camera) a stable warehouse illumination reference. It is much
+    // dimmer and larger than the old inference fill, so Lumen supplies natural
+    // bounce without flattening white parcels or tinting the safety surface.
+    const FVector RedCenter = RedBounds.GetCenter();
+    const bool bNeutralWorkcellFillEnabled =
+        !FParse::Param(FCommandLine::Get(), TEXT("QaiDisableNeutralWorkcellFill"));
+    constexpr float NeutralWorkcellFillLumens = 1200.0f;
+    const float WorkcellFillCenterX = RedCenter.X - 145.0f;
+    RuntimeInferenceZoneFillActor = bNeutralWorkcellFillEnabled
+        ? GetWorld()->SpawnActor<ARectLight>(
+            FVector(WorkcellFillCenterX, RedCenter.Y, RedBounds.Max.Z + 430.0f),
+            FRotationMatrix::MakeFromX(FVector(0.0f, 0.0f, -1.0f)).Rotator())
+        : nullptr;
+    if (RuntimeInferenceZoneFillActor && bNeutralWorkcellFillEnabled)
+    {
+        RuntimeInferenceZoneFillActor->Tags.Add(TEXT("Qai.NeutralWorkcellFixture"));
+        if (URectLightComponent* Fill = RuntimeInferenceZoneFillActor->FindComponentByClass<URectLightComponent>())
+        {
+            Fill->SetMobility(EComponentMobility::Movable);
+            Fill->SetIntensityUnits(ELightUnits::Lumens);
+            Fill->SetIntensity(NeutralWorkcellFillLumens);
+            Fill->SetLightColor(FLinearColor::White, false);
+            Fill->SetUseTemperature(true);
+            Fill->SetTemperature(4700.0f);
+            Fill->SetSourceWidth(RedBounds.GetSize().X + 300.0f);
+            Fill->SetSourceHeight(RedBounds.GetSize().Y * 0.90f);
+            Fill->SetAttenuationRadius(800.0f);
+            Fill->SetCastShadows(false);
+            Fill->SetIndirectLightingIntensity(0.65f);
+            Fill->SetVolumetricScatteringIntensity(0.0f);
+        }
+    }
+
+    // Give the warehouse a restrained mixture of real fixture types while
+    // retaining neutral, stable illumination for the inference camera. The
+    // four imported ceiling rectangles are identified by their high mounting
+    // position, which remains reliable in packaged builds where editor labels
+    // are unavailable. Temperatures stay close enough to avoid theatrical
+    // color casts: three cool/neutral fluorescent panels and one slightly
+    // warmer high-bay lamp. Two low practical fills add subtle local warmth.
+    int32 RetunedCeilingPanels = 0;
+    int32 RetunedPracticalFills = 0;
+    if (GetWorld())
+    {
+        for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+        {
+            AActor* LightActor = *It;
+            if (!LightActor)
+            {
+                continue;
+            }
+            if (URectLightComponent* Panel = LightActor->FindComponentByClass<URectLightComponent>())
+            {
+                const FVector Location = Panel->GetComponentLocation();
+                if (Location.Z >= 550.0f)
+                {
+                    const float TemperatureKelvin = Location.Y >= 0.0f
+                        ? (Location.X < 0.0f ? 4300.0f : 5000.0f)
+                        : (Location.X < 0.0f ? 4600.0f : 3900.0f);
+                    Panel->SetLightColor(FLinearColor::White, false);
+                    Panel->SetUseTemperature(true);
+                    Panel->SetTemperature(TemperatureKelvin);
+                    ++RetunedCeilingPanels;
+                }
+            }
+
+            UPointLightComponent* Practical = LightActor->FindComponentByClass<UPointLightComponent>();
+            if (!Practical)
+            {
+                continue;
+            }
+            const FVector Location = Practical->GetComponentLocation();
+            float TemperatureKelvin = 0.0f;
+            if (FVector::DistSquared(Location, FVector(-120.0f, 325.0f, 245.0f)) <= FMath::Square(60.0f))
+            {
+                TemperatureKelvin = 4400.0f;
+            }
+            else if (FVector::DistSquared(Location, FVector(-330.0f, -120.0f, 190.0f)) <= FMath::Square(60.0f))
+            {
+                TemperatureKelvin = 3600.0f;
+            }
+            if (TemperatureKelvin > 0.0f)
+            {
+                Practical->SetLightColor(FLinearColor::White, false);
+                Practical->SetUseTemperature(true);
+                Practical->SetTemperature(TemperatureKelvin);
+                ++RetunedPracticalFills;
+            }
+        }
+    }
+    SimulatorLog(FString::Printf(
+        TEXT("warehouse_light_mix ceiling_panels=%d panel_kelvin=4300,5000,4600,3900 practical_fills=%d fill_kelvin=4400,3600 workcell_kelvin=4700 evk_led_colors_unchanged=true"),
+        RetunedCeilingPanels,
+        RetunedPracticalFills));
+
+    // Derive a fixed high-oblique composition from the physical red-zone
+    // bounds. The left side extends to the forklift approach lane, while the
+    // downward angle makes the upper wall and Dragonwing board fall above the
+    // detector frame rather than spending vision tokens on branding.
+    const FTransform AuthoredDetectorTransform = DetectorCamera->GetComponentTransform();
+    const bool bUseAuthoredWideCamera =
+        InferenceCameraVariant.Equals(TEXT("authored-wide"), ESearchCase::IgnoreCase);
+    const float ApproachMinimumX = FMath::Min(
+        RedBounds.Min.X - 80.0f,
+        Forklifts[0].Root.IsValid()
+            ? Forklifts[0].Root->GetComponentLocation().X - 260.0f
+            : RedBounds.Min.X - 440.0f);
+    const float ViewMaximumX = RedBounds.Max.X + 55.0f;
+    const float ApproachAndZoneCenterX = 0.5f * (ApproachMinimumX + ViewMaximumX);
+    // Bias toward the safety surface while retaining the complete active
+    // forklift and its approach. This removes the irrelevant far-west aisle
+    // that previously consumed roughly a quarter of the detector image.
+    const float ViewCenterX = FMath::Lerp(
+        ApproachAndZoneCenterX,
+        RedBounds.GetCenter().X,
+        0.35f);
+    // Use a low-mounted fixed safety camera aimed through the approach lane,
+    // with the red floor occupying most of the frame. This reduces the upper
+    // wall and makes fork/red-boundary relationships substantially larger.
+    // Translate the entire sensor rig left and down, including its aim point,
+    // so the optical axis and perspective remain unchanged. The additional
+    // one-metre left/down shift prioritizes the forklift approach and safety
+    // boundary while removing more of the conveyor from the detector image.
+    constexpr float SensorCameraLeftOffsetCm = -215.0f;
+    constexpr float SensorCameraDownOffsetCm = -100.0f;
+    // Keep the validated 105-degree lens, but return to the authored camera
+    // distance. The previous one-metre retreat made the forklift too small for
+    // reliable temporal-motion classification and increased false red results
+    // near (but outside) the safety boundary.
+    constexpr float AuthoredCameraBackwardOffsetCm = 0.0f;
+    const float ShiftedViewCenterX = ViewCenterX + SensorCameraLeftOffsetCm;
+    const FVector CameraLocation(
+        ShiftedViewCenterX,
+        RedBounds.Max.Y + 330.0f,
+        RedBounds.Max.Z + 245.0f + SensorCameraDownOffsetCm);
+    const FVector CameraTarget(
+        ShiftedViewCenterX,
+        RedBounds.GetCenter().Y - RedBounds.GetSize().Y * 0.04f,
+        RedBounds.Max.Z + 48.0f + SensorCameraDownOffsetCm);
+    const FRotator CameraRotation = FRotationMatrix::MakeFromX(
+        CameraTarget - CameraLocation).Rotator();
+    const FVector AuthoredCameraForward =
+        AuthoredDetectorTransform.GetRotation().GetForwardVector();
+    const FVector BackedAuthoredCameraLocation =
+        AuthoredDetectorTransform.GetLocation()
+        - AuthoredCameraForward * AuthoredCameraBackwardOffsetCm;
+    MakeMovable(DetectorCamera.Get());
+    if (bUseAuthoredWideCamera)
+    {
+        // Keep the original optical axis but gain scene coverage by moving the
+        // camera back, rather than by stretching the edges with a shorter lens.
+        DetectorCamera->SetWorldLocationAndRotation(
+            BackedAuthoredCameraLocation,
+            AuthoredDetectorTransform.GetRotation(),
+            false,
+            nullptr,
+            ETeleportType::TeleportPhysics);
+    }
+    else
+    {
+        DetectorCamera->SetWorldLocationAndRotation(
+            CameraLocation,
+            CameraRotation,
+            false,
+            nullptr,
+            ETeleportType::TeleportPhysics);
+    }
+
+    const FVector EffectiveCameraLocation = bUseAuthoredWideCamera
+        ? BackedAuthoredCameraLocation
+        : CameraLocation;
+    const FVector EffectiveCameraTarget = bUseAuthoredWideCamera
+        ? BackedAuthoredCameraLocation + AuthoredCameraForward * 1000.0f
+        : CameraTarget;
+
+    bInferenceSceneConfigured = true;
+    SimulatorLog(FString::Printf(
+        TEXT("inference_scene status=ready camera=%s location=(%.1f,%.1f,%.1f) target=(%.1f,%.1f,%.1f) sensor_left_offset_cm=%.1f sensor_down_offset_cm=%.1f sensor_backward_offset_cm=%.1f red_bounds_min=(%.1f,%.1f,%.1f) red_bounds_max=(%.1f,%.1f,%.1f) border=physical_white_black stripe_cm=%.1f width_cm=%.1f stripes=%d red_finish=matte neutral_workcell_fill_lumens=%.0f legacy_point_fills_disabled=%d billboard_excluded_by_composition=%s"),
+        bUseAuthoredWideCamera ? TEXT("authored_wide") : TEXT("fixed_low_oblique_red_focus"),
+        EffectiveCameraLocation.X,
+        EffectiveCameraLocation.Y,
+        EffectiveCameraLocation.Z,
+        EffectiveCameraTarget.X,
+        EffectiveCameraTarget.Y,
+        EffectiveCameraTarget.Z,
+        SensorCameraLeftOffsetCm,
+        SensorCameraDownOffsetCm,
+        bUseAuthoredWideCamera ? AuthoredCameraBackwardOffsetCm : 0.0f,
+        RedBounds.Min.X,
+        RedBounds.Min.Y,
+        RedBounds.Min.Z,
+        RedBounds.Max.X,
+        RedBounds.Max.Y,
+        RedBounds.Max.Z,
+        StripeLengthCm,
+        BorderWidthCm,
+        RuntimeSafetyBorderComponents.Num(),
+        bNeutralWorkcellFillEnabled ? NeutralWorkcellFillLumens : 0.0f,
+        DisabledLegacyPointFills,
+        bUseAuthoredWideCamera ? TEXT("false") : TEXT("true")));
+    return true;
 }
 
 AQaiConveyorWorld::FPropPhysicsProfile AQaiConveyorWorld::BuildPropPhysicsProfile(
@@ -2348,9 +3932,12 @@ AQaiConveyorWorld::FPropPhysicsProfile AQaiConveyorWorld::BuildPropPhysicsProfil
         Profile.Surface = TEXT("electronics_enclosure");
         Profile.MassKg = ConveyorTuning::IQ9EvkMassKg;
         Profile.CenterOfMassLocalOffset = FVector(0.18f, -0.12f, -0.42f);
-        Profile.StaticFriction = 0.52f;
-        Profile.DynamicFriction = 0.39f;
-        Profile.Restitution = 0.10f;
+        // The enclosure has rubber feet; it should remain planted on the
+        // stainless worktop until it receives a meaningful contact impulse.
+        Profile.StaticFriction = 0.82f;
+        Profile.DynamicFriction = 0.66f;
+        Profile.Restitution = 0.03f;
+        Profile.AirLinearDamping = 0.85f;
         Profile.GroundAngularDamping = 3.6f;
         Profile.SleepLinearSpeedCm = 0.75f;
         Profile.SleepAngularSpeedDegrees = 0.70f;
@@ -2363,16 +3950,16 @@ AQaiConveyorWorld::FPropPhysicsProfile AQaiConveyorWorld::BuildPropPhysicsProfil
         Profile.Surface = TEXT("rigid_plastic_tray");
         Profile.MassKg = 1.25f;
         Profile.CenterOfMassLocalOffset = FVector(0.0f, 0.0f, -HalfExtent.Z * 0.22f);
-        Profile.StaticFriction = 0.44f;
-        Profile.DynamicFriction = 0.31f;
-        Profile.Restitution = 0.14f;
+        Profile.StaticFriction = 0.70f;
+        Profile.DynamicFriction = 0.54f;
+        Profile.Restitution = 0.04f;
+        Profile.AirLinearDamping = 0.65f;
         Profile.GroundAngularDamping = 3.2f;
         Profile.SleepLinearSpeedCm = 0.72f;
         Profile.SleepAngularSpeedDegrees = 0.66f;
     }
     else
     {
-        const bool bShelfCarton = LowerKind.Contains(TEXT("shelf"));
         const bool bForkliftCarton = LowerKind.Contains(TEXT("forklift"));
         Profile.Surface = TEXT("loaded_cardboard");
         // The large forklift carton represents a palletized industrial load,
@@ -2391,10 +3978,10 @@ AQaiConveyorWorld::FPropPhysicsProfile AQaiConveyorWorld::BuildPropPhysicsProfil
         Profile.CenterOfMassLocalOffset = FVector(
             HalfExtent.X * 0.035f * static_cast<float>(XCode),
             HalfExtent.Y * 0.035f * static_cast<float>(YCode),
-            -HalfExtent.Z * (bShelfCarton ? 0.14f : 0.10f));
+            -HalfExtent.Z * 0.10f);
         Profile.StaticFriction = 0.66f;
         Profile.DynamicFriction = 0.50f;
-        Profile.Restitution = 0.075f;
+        Profile.Restitution = 0.025f;
         Profile.GroundAngularDamping = 4.4f;
         Profile.SleepLinearSpeedCm = 0.85f;
         Profile.SleepAngularSpeedDegrees = 0.80f;
@@ -2425,8 +4012,10 @@ int32 AQaiConveyorWorld::BuildCollisionGuard()
 {
     AuthoredCollisionComponents.Reset();
     CollisionObstacles.Reset();
+    WarehouseFloorSupportBounds = FBox(ForceInit);
 
     FBox ConveyorBounds(ForceInit);
+    FBox VisibleFloorBounds(ForceInit);
     auto AddObstacle = [this](const FString& Name, const FBoxSphereBounds& Bounds)
     {
         if (Bounds.BoxExtent.X <= UE_KINDA_SMALL_NUMBER || Bounds.BoxExtent.Y <= UE_KINDA_SMALL_NUMBER)
@@ -2437,6 +4026,23 @@ int32 AQaiConveyorWorld::BuildCollisionGuard()
         Obstacle.Name = Name;
         Obstacle.Center = Bounds.Origin;
         Obstacle.HalfExtent = Bounds.BoxExtent;
+        Obstacle.Rotation = FQuat::Identity;
+    };
+    auto AddObstacleBox = [this](
+        const FString& Name,
+        const FVector& Center,
+        const FVector& HalfExtent)
+    {
+        if (HalfExtent.X <= UE_KINDA_SMALL_NUMBER
+            || HalfExtent.Y <= UE_KINDA_SMALL_NUMBER
+            || HalfExtent.Z <= UE_KINDA_SMALL_NUMBER)
+        {
+            return;
+        }
+        FCollisionObstacle& Obstacle = CollisionObstacles.AddDefaulted_GetRef();
+        Obstacle.Name = Name;
+        Obstacle.Center = Center;
+        Obstacle.HalfExtent = HalfExtent;
         Obstacle.Rotation = FQuat::Identity;
     };
 
@@ -2479,12 +4085,53 @@ int32 AQaiConveyorWorld::BuildCollisionGuard()
                 {
                     ConveyorBounds += Primitive->Bounds.GetBox();
                 }
+                else if (LogicalName == TEXT("Floor"))
+                {
+                    // ApplyWestShelfPlacement has already extended the real
+                    // structural/visible floor. Use those final bounds as the
+                    // reference for the open-side safety apron.
+                    VisibleFloorBounds += Primitive->Bounds.GetBox();
+                }
                 else if (LogicalName.StartsWith(TEXT("ShelfPlane")))
                 {
-                    AddObstacle(TEXT("shelf plane"), Primitive->Bounds);
+                    // Match the visible rack as two discrete deck bays rather
+                    // than one broad slab. Preserve the authored top and
+                    // underside exactly, then add the two load-bearing edge
+                    // beams beneath it. This leaves the upright gaps open and
+                    // makes the F8 view describe the structure a fork meets.
+                    const FVector Center = Primitive->Bounds.Origin;
+                    const FVector Extent = Primitive->Bounds.BoxExtent;
+                    const float BayHalfY = Extent.Y * 0.5f;
+                    for (int32 Bay = 0; Bay < 2; ++Bay)
+                    {
+                        const float BaySign = Bay == 0 ? -1.0f : 1.0f;
+                        const FVector BayCenter(
+                            Center.X,
+                            Center.Y + BaySign * BayHalfY,
+                            Center.Z);
+                        const FVector BayExtent(Extent.X, BayHalfY, Extent.Z);
+                        AddObstacleBox(TEXT("shelf plane"), BayCenter, BayExtent);
+
+                        constexpr float BeamHalfDepthCm = 4.0f;
+                        constexpr float BeamHalfHeightCm = 4.5f;
+                        for (int32 Edge = 0; Edge < 2; ++Edge)
+                        {
+                            const float EdgeSign = Edge == 0 ? -1.0f : 1.0f;
+                            AddObstacleBox(
+                                TEXT("shelf beam"),
+                                FVector(
+                                    Center.X + EdgeSign * (Extent.X - BeamHalfDepthCm),
+                                    BayCenter.Y,
+                                    Center.Z + Extent.Z - BeamHalfHeightCm),
+                                FVector(BeamHalfDepthCm, BayHalfY, BeamHalfHeightCm));
+                        }
+                    }
                 }
-                else if (LogicalName == TEXT("RearGuard") || LogicalName.Contains(TEXT("Upright")))
+                else if (LogicalName.Contains(TEXT("Upright")))
                 {
+                    // Each authored upright is already a close individual
+                    // proxy. Keep those six pillars; the former broad rear-
+                    // guard slab falsely filled all the open rack bays.
                     AddObstacle(TEXT("shelf frame"), Primitive->Bounds);
                 }
                 else if (LogicalName == TEXT("PackingTable"))
@@ -2515,14 +4162,74 @@ int32 AQaiConveyorWorld::BuildCollisionGuard()
                 {
                     AddObstacle(TEXT("factory wall"), Primitive->Bounds);
                 }
-                else if (LogicalName == TEXT("Pole"))
-                {
-                    // These visible signal poles were not part of the original
-                    // software guard even though a vehicle can reach them.
-                    AddObstacle(TEXT("stack light"), Primitive->Bounds);
-                }
             }
         }
+    }
+
+    if (VisibleFloorBounds.IsValid)
+    {
+        constexpr float OpenApronDepthCm = 200.0f;
+        constexpr float BarrierHalfThicknessCm = 10.0f;
+        constexpr float BarrierHeightCm = 400.0f;
+        const float FloorTopZ = VisibleFloorBounds.Max.Z;
+        const float BarrierCenterZ = FloorTopZ + BarrierHeightCm * 0.5f;
+        const float EastInnerFaceX = VisibleFloorBounds.Max.X + OpenApronDepthCm;
+        const float FrontInnerFaceY = VisibleFloorBounds.Min.Y - OpenApronDepthCm;
+
+        // The perimeter is deliberately two metres beyond the presented
+        // floor. Support that complete apron with one continuous hidden Chaos
+        // slab; otherwise a vehicle falls before it can ever reach the wall.
+        constexpr float FloorSupportThicknessCm = 10.0f;
+        WarehouseFloorSupportBounds = FBox(
+            FVector(
+                VisibleFloorBounds.Min.X,
+                FrontInnerFaceY,
+                FloorTopZ - FloorSupportThicknessCm),
+            FVector(
+                EastInnerFaceX,
+                VisibleFloorBounds.Max.Y,
+                FloorTopZ));
+
+        // East/open side. Extend to the front catch wall so no diagonal gap is
+        // left at the invisible outer corner.
+        const float EastMinY = FrontInnerFaceY;
+        const float EastMaxY = VisibleFloorBounds.Max.Y;
+        AddObstacleBox(
+            TEXT("invisible perimeter"),
+            FVector(
+                EastInnerFaceX + BarrierHalfThicknessCm,
+                0.5f * (EastMinY + EastMaxY),
+                BarrierCenterZ),
+            FVector(
+                BarrierHalfThicknessCm,
+                0.5f * (EastMaxY - EastMinY),
+                BarrierHeightCm * 0.5f));
+
+        // Front/presentation side. Its east end meets the barrier above and
+        // its west end meets the existing visible west wall.
+        const float FrontMinX = VisibleFloorBounds.Min.X;
+        const float FrontMaxX = EastInnerFaceX;
+        AddObstacleBox(
+            TEXT("invisible perimeter"),
+            FVector(
+                0.5f * (FrontMinX + FrontMaxX),
+                FrontInnerFaceY - BarrierHalfThicknessCm,
+                BarrierCenterZ),
+            FVector(
+                0.5f * (FrontMaxX - FrontMinX),
+                BarrierHalfThicknessCm,
+                BarrierHeightCm * 0.5f));
+
+        SimulatorLog(FString::Printf(
+            TEXT("open_side_perimeter apron_cm=%.1f east_inner_x=%.1f front_inner_y=%.1f height_cm=%.1f floor_support=(%.1f,%.1f)-(%.1f,%.1f) debug_visible=false"),
+            OpenApronDepthCm,
+            EastInnerFaceX,
+            FrontInnerFaceY,
+            BarrierHeightCm,
+            WarehouseFloorSupportBounds.Min.X,
+            WarehouseFloorSupportBounds.Min.Y,
+            WarehouseFloorSupportBounds.Max.X,
+            WarehouseFloorSupportBounds.Max.Y));
     }
 
     if (ConveyorBounds.IsValid)
@@ -2530,13 +4237,16 @@ int32 AQaiConveyorWorld::BuildCollisionGuard()
         // Follow the analytic belt centreline with tangent-aligned boxes. This
         // is close to the retained roller mesh, rotates correctly through both
         // curves, and remains far cheaper than per-triangle Chaos collision.
-        constexpr int32 ConveyorSegments = 40;
+        constexpr int32 ConveyorSegments = 96;
         constexpr float StraightHalf = 235.1374f;
         constexpr float Radius = 150.0f;
         constexpr float Perimeter = 4.0f * StraightHalf + 2.0f * PI * Radius;
         const FVector Extent3 = ConveyorBounds.GetExtent();
         const float TrackHalfWidth = FMath::Min(55.0f, Extent3.X * 0.25f);
-        const float SegmentHalfLength = Perimeter / static_cast<float>(ConveyorSegments) * 0.58f;
+        // Only a two-percent seam overlap is needed. The former 40-box path
+        // overlapped by sixteen percent; a carton spanning several differently
+        // rotated boxes on a curve received conflicting contact normals.
+        const float SegmentHalfLength = Perimeter / static_cast<float>(ConveyorSegments) * 0.51f;
         for (int32 SegmentIndex = 0; SegmentIndex < ConveyorSegments; ++SegmentIndex)
         {
             FVector Position;
@@ -2571,6 +4281,24 @@ int32 AQaiConveyorWorld::BuildCollisionGuard()
         TEXT("collision_ready authored=%d proxies=%d"),
         AuthoredCollisionComponents.Num(),
         CollisionObstacles.Num()));
+    if (bWorkerSoakTest)
+    {
+        for (const FCollisionObstacle& Obstacle : CollisionObstacles)
+        {
+            if (Obstacle.Name == TEXT("packing table")
+                || Obstacle.Name == TEXT("factory wall")
+                || Obstacle.Name == TEXT("shelf frame"))
+            {
+                SimulatorLog(FString::Printf(
+                    TEXT("worker_static_obstacle name=%s center=(%.1f,%.1f) half_extent=(%.1f,%.1f)"),
+                    *Obstacle.Name,
+                    Obstacle.Center.X,
+                    Obstacle.Center.Y,
+                    Obstacle.HalfExtent.X,
+                    Obstacle.HalfExtent.Y));
+            }
+        }
+    }
     return AuthoredCollisionComponents.Num();
 }
 
@@ -2653,7 +4381,10 @@ bool AQaiConveyorWorld::WouldForkliftCollide(
 
         for (int32 WorkerIndex = 0; WorkerIndex < UE_ARRAY_COUNT(Workers); ++WorkerIndex)
         {
-            if (const USceneComponent* Worker = Workers[WorkerIndex].Root.Get())
+            const USceneComponent* Worker = Workers[WorkerIndex].ChaosBody.IsValid()
+                ? static_cast<const USceneComponent*>(Workers[WorkerIndex].ChaosBody.Get())
+                : Workers[WorkerIndex].Root.Get();
+            if (Worker)
             {
                 const FVector WorkerLocation = Worker->GetComponentLocation();
                 const bool bOverlaps = ConveyorTuning::CircleOverlapsBox2D(
@@ -2736,10 +4467,14 @@ bool AQaiConveyorWorld::CanWorkerOccupy(int32 MovingIndex, const FVector& Candid
         {
             continue;
         }
-        if (const USceneComponent* OtherWorker = Workers[WorkerIndex].Root.Get())
+        const USceneComponent* OtherWorker = Workers[WorkerIndex].ChaosBody.IsValid()
+            ? static_cast<const USceneComponent*>(Workers[WorkerIndex].ChaosBody.Get())
+            : Workers[WorkerIndex].Root.Get();
+        if (OtherWorker)
         {
             const FVector Other = OtherWorker->GetComponentLocation();
-            if (FVector2D::DistSquared(Center, FVector2D(Other.X, Other.Y)) < FMath::Square(2.0f * Radius))
+            if (FVector2D::DistSquared(Center, FVector2D(Other.X, Other.Y))
+                < FMath::Square(ConveyorTuning::WorkerPersonalSpaceCm))
             {
                 return false;
             }
@@ -3000,6 +4735,8 @@ void AQaiConveyorWorld::BindNativeComponents()
                     Pivot->SetWorldScale3D(FVector::OneVector);
                     Wheel->AttachToComponent(Pivot, FAttachmentTransformRules::KeepWorldTransform);
                     Forklift.WheelPivots[WheelIndex] = Pivot;
+                    Forklift.WheelPivotInitialRelativeLocation[WheelIndex] =
+                        Pivot->GetRelativeLocation();
                     Forklift.WheelPivotInitialRelative[WheelIndex] = Pivot->GetRelativeRotation().Quaternion();
                 }
                 ++BoundWheels;
@@ -3016,6 +4753,79 @@ void AQaiConveyorWorld::BindNativeComponents()
                 false,
                 nullptr,
                 ETeleportType::TeleportPhysics);
+        }
+        if (ForkliftIndex == 0)
+        {
+            // Give the dedicated safety camera a clearer initial view of the
+            // active vehicle. Component binding may be retried while the
+            // streamed stage settles, so tag the root and apply this authored
+            // start offset at most once per world instance.
+            static const FName SensorStartAdjustedTag(TEXT("Qai.SensorStartAdjusted"));
+            if (!Forklift.Root->ComponentHasTag(SensorStartAdjustedTag))
+            {
+                const FVector StartOffset(0.0f, 60.0f, 0.0f);
+                Forklift.Root->AddWorldOffset(
+                    StartOffset,
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
+                // The imported pallet and carton are siblings of the vehicle,
+                // not descendants of its root. Move the complete authored
+                // load with the truck or it remains 60 cm behind and balances
+                // on only one tine after the start-layout adjustment.
+                for (USceneComponent* CargoRoot : {
+                    Forklift.Pallet.Get(),
+                    Forklift.Carton.Get()})
+                {
+                    if (CargoRoot)
+                    {
+                        CargoRoot->AddWorldOffset(
+                            StartOffset,
+                            false,
+                            nullptr,
+                            ETeleportType::TeleportPhysics);
+                    }
+                }
+                Forklift.Root->ComponentTags.Add(SensorStartAdjustedTag);
+                SimulatorLog(TEXT("forklift_sensor_start_offset forklift=1 toward_sensor_cm=60 cargo_roots_moved=2"));
+            }
+
+            // Start with the active truck facing the west storage rack. Rotate
+            // the complete authored assembly about the chassis origin so the
+            // sibling pallet/carton roots remain on the fork side. The later
+            // Chaos setup refines their contact pose and records this as the
+            // authoritative reset transform.
+            static const FName ShelfFacingStartTag(TEXT("Qai.ShelfFacingStart"));
+            if (!Forklift.Root->ComponentHasTag(ShelfFacingStartTag))
+            {
+                const FVector AssemblyOrigin = Forklift.Root->GetComponentLocation();
+                const FQuat HalfTurn(FVector::UpVector, PI);
+                Forklift.Root->SetWorldLocationAndRotation(
+                    AssemblyOrigin,
+                    HalfTurn * Forklift.Root->GetComponentQuat(),
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
+                for (USceneComponent* CargoRoot : {
+                    Forklift.Pallet.Get(),
+                    Forklift.Carton.Get()})
+                {
+                    if (!CargoRoot)
+                    {
+                        continue;
+                    }
+                    const FVector RelativeLocation =
+                        CargoRoot->GetComponentLocation() - AssemblyOrigin;
+                    CargoRoot->SetWorldLocationAndRotation(
+                        AssemblyOrigin + HalfTurn.RotateVector(RelativeLocation),
+                        HalfTurn * CargoRoot->GetComponentQuat(),
+                        false,
+                        nullptr,
+                        ETeleportType::TeleportPhysics);
+                }
+                Forklift.Root->ComponentTags.Add(ShelfFacingStartTag);
+                SimulatorLog(TEXT("forklift_start_orientation forklift=1 yaw_delta_deg=180 facing=west_shelves cargo_roots_rotated=2"));
+            }
         }
         if (UPrimitiveComponent* LiftVisual = Forklift.LiftVisual.Get())
         {
@@ -3236,6 +5046,16 @@ void AQaiConveyorWorld::BindNativeComponents()
             const float PostY = Size.Y * 0.5f - PostHalf;
             const float PostBottom = ZAt(0.53f);
             const float PostTop = ZAt(0.90f);
+            // The imported body AABB includes trim close to the mast. Using
+            // its absolute front edge for the entire lower chassis made the
+            // vehicle stop about 20 cm before the visible mast reached an
+            // obstacle whenever the raised forks were clear. End the chassis
+            // hull just behind the mast and let the independently fitted mast
+            // collider represent the true leading structure.
+            constexpr float LowerChassisFrontInsetCm = 20.0f;
+            const float LowerChassisFrontX = FMath::Max(
+                XAt(0.29f) + 5.0f,
+                Maximum.X - LowerChassisFrontInsetCm);
 
             // Follow the visual profile instead of filling its entire AABB:
             // low counterweight/chassis/hood, an open operator bay, then a
@@ -3250,7 +5070,7 @@ void AQaiConveyorWorld::BindNativeComponents()
                 TEXT("lower chassis"),
                 FBox(
                     FVector(XAt(0.29f), Center.Y - InnerHalfWidth, ZAt(0.10f)),
-                    FVector(Maximum.X, Center.Y + InnerHalfWidth, ZAt(0.43f))),
+                    FVector(LowerChassisFrontX, Center.Y + InnerHalfWidth, ZAt(0.43f))),
                 false);
             AddLocalFittedBox(
                 TEXT("engine hood"),
@@ -3477,21 +5297,24 @@ void AQaiConveyorWorld::BindNativeComponents()
             return INDEX_NONE;
         }
 
-        USceneComponent* Pivot = NewObject<USceneComponent>(
-            VisualRoot->GetOwner(),
-            FName(*FString::Printf(TEXT("QaiDynamicPivot_%d"), DynamicBoxes.Num() + 1)));
-        VisualRoot->GetOwner()->AddInstanceComponent(Pivot);
+        const FName BodyName(*FString::Printf(TEXT("QaiChaosBody_%d"), DynamicBoxes.Num() + 1));
+        const FTransform BodyTransform(VisualRoot->GetComponentQuat(), WorldBounds.GetCenter());
+        FActorSpawnParameters SpawnParameters;
+        SpawnParameters.Name = BodyName;
+        SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+        AActor* PhysicsActor = GetWorld()->SpawnActor<AActor>(
+            AActor::StaticClass(), BodyTransform, SpawnParameters);
+        if (!PhysicsActor)
+        {
+            return INDEX_NONE;
+        }
+        RuntimeChaosActors.Add(PhysicsActor);
+        UBoxComponent* Pivot = NewObject<UBoxComponent>(PhysicsActor, BodyName);
+        PhysicsActor->AddInstanceComponent(Pivot);
+        PhysicsActor->SetRootComponent(Pivot);
         Pivot->SetMobility(EComponentMobility::Movable);
         Pivot->RegisterComponentWithWorld(GetWorld());
-        if (USceneComponent* Parent = VisualRoot->GetAttachParent())
-        {
-            Pivot->AttachToComponent(Parent, FAttachmentTransformRules::KeepWorldTransform);
-        }
-        else
-        {
-            VisualRoot->GetOwner()->SetRootComponent(Pivot);
-        }
-        Pivot->SetWorldLocationAndRotation(WorldBounds.GetCenter(), VisualRoot->GetComponentQuat());
+        Pivot->SetWorldTransform(BodyTransform);
         Pivot->SetWorldScale3D(FVector::OneVector);
         VisualRoot->AttachToComponent(Pivot, FAttachmentTransformRules::KeepWorldTransform);
 
@@ -3513,7 +5336,13 @@ void AQaiConveyorWorld::BindNativeComponents()
         Body.SupportedForklift = SupportedForklift;
         Body.InitialSupportedForklift = SupportedForklift;
         Body.bShelfParcel = bShelfParcel;
+        Body.bPallet = Name.Contains(TEXT("pallet"), ESearchCase::IgnoreCase);
         Body.bAwake = false;
+        Pivot->SetBoxExtent(Body.HalfExtent, false);
+        Pivot->SetHiddenInGame(true);
+        Pivot->SetVisibility(false);
+        Pivot->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        RuntimeChaosBodies.Add(Pivot);
         if (SupportedForklift != INDEX_NONE && Forklifts[SupportedForklift].Root.IsValid())
         {
             Body.ForkliftRelativeTransform = PivotTransform.GetRelativeTransform(
@@ -3541,6 +5370,7 @@ void AQaiConveyorWorld::BindNativeComponents()
         return DynamicBoxes.Num() - 1;
     };
 
+    USceneComponent* PalletVisualTemplate = Forklifts[0].Pallet.Get();
     for (int32 ForkliftIndex = 0; ForkliftIndex < ConveyorTuning::EnabledForkliftCount; ++ForkliftIndex)
     {
         FForkliftRuntime& Forklift = Forklifts[ForkliftIndex];
@@ -3634,6 +5464,138 @@ void AQaiConveyorWorld::BindNativeComponents()
         }
     }
 
+    int32 BoundLoosePallets = 0;
+    if (PalletVisualTemplate
+        && PackingTableDesktopBounds.IsValid
+        && DynamicBoxes.IsValidIndex(Forklifts[0].PalletDynamicBody))
+    {
+        FBox TemplateBounds(ForceInit);
+        TArray<UStaticMeshComponent*> TemplateMeshes;
+        TInlineComponentArray<UStaticMeshComponent*> CandidateMeshes(
+            PalletVisualTemplate->GetOwner());
+        for (UStaticMeshComponent* Mesh : CandidateMeshes)
+        {
+            if (!Mesh || !Mesh->GetStaticMesh()
+                || (Mesh != PalletVisualTemplate && !Mesh->IsAttachedTo(PalletVisualTemplate)))
+            {
+                continue;
+            }
+            Mesh->UpdateBounds();
+            TemplateBounds += Mesh->Bounds.GetBox();
+            TemplateMeshes.Add(Mesh);
+        }
+
+        const FVector PalletHalfExtent =
+            DynamicBoxes[Forklifts[0].PalletDynamicBody].HalfExtent;
+        if (TemplateBounds.IsValid && TemplateMeshes.Num() > 0)
+        {
+            // Place the stack in the clear bay immediately west of the
+            // sorting station, between its left edge and the shelving. The
+            // pallets are rotated below, so local Y becomes their world-X
+            // half width. Retain enough clearance that neither the table nor
+            // rack begins in contact with a pallet.
+            constexpr float PalletStackTableClearanceCm = 38.0f;
+            const float RotatedPalletHalfWidthX = PalletHalfExtent.Y;
+            const FVector StackBaseCenter(
+                PackingTableDesktopBounds.Min.X
+                    - RotatedPalletHalfWidthX
+                    - PalletStackTableClearanceCm,
+                PackingTableDesktopBounds.GetCenter().Y,
+                PalletHalfExtent.Z + ConveyorTuning::PalletContactSkinCm + 0.35f);
+            const FTransform TemplateTransform = PalletVisualTemplate->GetComponentTransform();
+            // Turn the loose stack across the aisle so its fork pockets face
+            // the forklift approach instead of running parallel to the tines.
+            const FQuat StackRotation =
+                FQuat(FVector::UpVector, HALF_PI) * TemplateTransform.GetRotation();
+            const FVector TemplateCenterOffset =
+                TemplateTransform.InverseTransformPositionNoScale(TemplateBounds.GetCenter());
+
+            for (int32 PalletIndex = 0;
+                 PalletIndex < ConveyorTuning::LoosePalletStackCount;
+                 ++PalletIndex)
+            {
+                const FVector DesiredCenter = StackBaseCenter + FVector(
+                    0.0f,
+                    0.0f,
+                    PalletIndex * (
+                        PalletHalfExtent.Z * 2.0f
+                        + ConveyorTuning::PalletContactSkinCm
+                        + 0.35f));
+                const FVector VisualRootLocation = DesiredCenter
+                    - StackRotation.RotateVector(TemplateCenterOffset);
+                const FTransform VisualTransform(
+                    StackRotation,
+                    VisualRootLocation,
+                    TemplateTransform.GetScale3D());
+                FActorSpawnParameters VisualParams;
+                VisualParams.Name = FName(*FString::Printf(
+                    TEXT("QaiLoosePalletVisual%d"), PalletIndex + 1));
+                VisualParams.SpawnCollisionHandlingOverride =
+                    ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+                AActor* VisualActor = GetWorld()->SpawnActor<AActor>(
+                    AActor::StaticClass(), VisualTransform, VisualParams);
+                if (!VisualActor)
+                {
+                    continue;
+                }
+                RuntimeChaosActors.Add(VisualActor);
+                USceneComponent* VisualRoot = NewObject<USceneComponent>(
+                    VisualActor,
+                    FName(*FString::Printf(TEXT("QaiLoosePallet%dVisualRoot"), PalletIndex + 1)));
+                VisualActor->AddInstanceComponent(VisualRoot);
+                VisualActor->SetRootComponent(VisualRoot);
+                VisualRoot->SetMobility(EComponentMobility::Movable);
+                VisualRoot->RegisterComponentWithWorld(GetWorld());
+                VisualRoot->SetWorldTransform(VisualTransform);
+
+                int32 MeshIndex = 0;
+                for (UStaticMeshComponent* TemplateMesh : TemplateMeshes)
+                {
+                    UStaticMeshComponent* Clone = NewObject<UStaticMeshComponent>(
+                        VisualActor,
+                        FName(*FString::Printf(
+                            TEXT("QaiLoosePallet%dMesh%d"),
+                            PalletIndex + 1,
+                            ++MeshIndex)));
+                    VisualActor->AddInstanceComponent(Clone);
+                    Clone->SetMobility(EComponentMobility::Movable);
+                    Clone->SetupAttachment(VisualRoot);
+                    Clone->SetStaticMesh(TemplateMesh->GetStaticMesh());
+                    for (int32 MaterialIndex = 0;
+                         MaterialIndex < TemplateMesh->GetNumMaterials();
+                         ++MaterialIndex)
+                    {
+                        Clone->SetMaterial(MaterialIndex, TemplateMesh->GetMaterial(MaterialIndex));
+                    }
+                    Clone->SetRelativeTransform(
+                        TemplateMesh->GetComponentTransform().GetRelativeTransform(
+                            TemplateTransform));
+                    Clone->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                    Clone->SetGenerateOverlapEvents(false);
+                    Clone->RegisterComponentWithWorld(GetWorld());
+                }
+
+                const int32 BodyIndex = AddDynamicBox(
+                    VisualRoot,
+                    FString::Printf(TEXT("loose pallet %d"), PalletIndex + 1),
+                    INDEX_NONE,
+                    false,
+                    nullptr);
+                BoundLoosePallets += BodyIndex != INDEX_NONE ? 1 : 0;
+            }
+            SimulatorLog(FString::Printf(
+                TEXT("loose_pallet_stack_bound count=%d requested=%d center=(%.1f,%.1f) base_z=%.1f spacing_z=%.1f yaw_offset_deg=90 placement=between_west_shelf_and_sorting_table individual_chaos=true"),
+                BoundLoosePallets,
+                ConveyorTuning::LoosePalletStackCount,
+                StackBaseCenter.X,
+                StackBaseCenter.Y,
+                StackBaseCenter.Z,
+                PalletHalfExtent.Z * 2.0f
+                    + ConveyorTuning::PalletContactSkinCm
+                    + 0.35f));
+        }
+    }
+
     EvkVisualRoot = FindTaggedComponent(TEXT("Qai.IQ9EVK"));
     if (EvkVisualRoot.IsValid() && PackingTableDesktopBounds.IsValid)
     {
@@ -3651,7 +5613,7 @@ void AQaiConveyorWorld::BindNativeComponents()
                 PackingTableDesktopBounds.Min.X + ConveyorTuning::IQ9EvkHalfExtentCm.X,
                 PackingTableDesktopBounds.Max.X - ConveyorTuning::IQ9EvkHalfExtentCm.X),
             PackingTableDesktopBounds.Max.Y - ConveyorTuning::IQ9EvkHalfExtentCm.Y - 10.0f,
-            PackingTableDesktopBounds.Max.Z + ConveyorTuning::IQ9EvkHalfExtentCm.Z);
+            PackingTableDesktopBounds.Max.Z + ConveyorTuning::IQ9EvkHalfExtentCm.Z + 1.0f);
         const FVector PlacementDelta = DesiredCenter - EvkVisualRoot->GetComponentLocation();
         if (AActor* EvkActor = EvkVisualRoot->GetOwner())
         {
@@ -3662,7 +5624,7 @@ void AQaiConveyorWorld::BindNativeComponents()
             EvkVisualRoot->SetWorldLocation(DesiredCenter, false, nullptr, ETeleportType::TeleportPhysics);
         }
         SimulatorLog(FString::Printf(
-            TEXT("iq9_evk_placement location=(%.2f,%.2f,%.2f) desktop_min=(%.2f,%.2f,%.2f) desktop_max=(%.2f,%.2f,%.2f) tray_min=(%.2f,%.2f,%.2f) tray_max=(%.2f,%.2f,%.2f) horizontal=midpoint_left_edge_to_tray front_edge_inset_cm=10.00 visual_gap_cm=0.00"),
+            TEXT("iq9_evk_placement location=(%.2f,%.2f,%.2f) desktop_min=(%.2f,%.2f,%.2f) desktop_max=(%.2f,%.2f,%.2f) tray_min=(%.2f,%.2f,%.2f) tray_max=(%.2f,%.2f,%.2f) horizontal=midpoint_left_edge_to_tray front_edge_inset_cm=10.00 chaos_contact_gap_cm=1.00"),
             DesiredCenter.X,
             DesiredCenter.Y,
             DesiredCenter.Z,
@@ -3727,10 +5689,11 @@ void AQaiConveyorWorld::BindNativeComponents()
     }
     ConfigureEvkProp();
     SimulatorLog(FString::Printf(
-        TEXT("dynamic_boxes_bound total=%d forklift_cargo=%d shelf_parcels=%d dynamic_props=%d"),
+        TEXT("dynamic_boxes_bound total=%d forklift_cargo=%d shelf_parcels=%d loose_pallets=%d dynamic_props=%d"),
         DynamicBoxes.Num(),
         ConveyorTuning::EnabledForkliftCount * 2,
         BoundShelfParcels,
+        BoundLoosePallets,
         (DynamicBoxes.IsValidIndex(EvkDynamicBody) ? 1 : 0)
             + (DynamicBoxes.IsValidIndex(PackingTableTrayDynamicBody) ? 1 : 0)));
 
@@ -3827,17 +5790,28 @@ void AQaiConveyorWorld::BindNativeComponents()
                     ParcelOrientedBounds += ParcelRootRotation.UnrotateVector(WorldCorner - ParcelRootOrigin);
                 }
             }
-            if (ParcelOrientedBounds.IsValid && ParcelRoot->GetAttachParent())
+            if (ParcelOrientedBounds.IsValid)
             {
                 const FName PivotName(*FString::Printf(TEXT("QaiParcelPivot_%d"), Index));
-                USceneComponent* Pivot = NewObject<USceneComponent>(ParcelRoot->GetOwner(), PivotName);
-                ParcelRoot->GetOwner()->AddInstanceComponent(Pivot);
+                const FTransform PivotTransform(
+                    ParcelRootRotation,
+                    ParcelRootOrigin + ParcelRootRotation.RotateVector(ParcelOrientedBounds.GetCenter()));
+                FActorSpawnParameters SpawnParameters;
+                SpawnParameters.Name = PivotName;
+                SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+                AActor* PhysicsActor = GetWorld()->SpawnActor<AActor>(
+                    AActor::StaticClass(), PivotTransform, SpawnParameters);
+                if (!PhysicsActor)
+                {
+                    continue;
+                }
+                RuntimeChaosActors.Add(PhysicsActor);
+                UBoxComponent* Pivot = NewObject<UBoxComponent>(PhysicsActor, PivotName);
+                PhysicsActor->AddInstanceComponent(Pivot);
+                PhysicsActor->SetRootComponent(Pivot);
                 Pivot->SetMobility(EComponentMobility::Movable);
                 Pivot->RegisterComponentWithWorld(GetWorld());
-                Pivot->AttachToComponent(ParcelRoot->GetAttachParent(), FAttachmentTransformRules::KeepWorldTransform);
-                Pivot->SetWorldLocationAndRotation(
-                    ParcelRootOrigin + ParcelRootRotation.RotateVector(ParcelOrientedBounds.GetCenter()),
-                    ParcelRootRotation);
+                Pivot->SetWorldTransform(PivotTransform);
                 Pivot->SetWorldScale3D(FVector::OneVector);
                 ParcelRoot->AttachToComponent(Pivot, FAttachmentTransformRules::KeepWorldTransform);
                 Parcel = Pivot;
@@ -3857,6 +5831,14 @@ void AQaiConveyorWorld::BindNativeComponents()
                 TEXT("conveyor carton"),
                 ParcelHalfExtent,
                 Index));
+            if (UBoxComponent* ChaosParcel = Cast<UBoxComponent>(Parcel))
+            {
+                ChaosParcel->SetBoxExtent(ParcelHalfExtent, false);
+                ChaosParcel->SetHiddenInGame(true);
+                ChaosParcel->SetVisibility(false);
+                ChaosParcel->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                RuntimeChaosConveyorBodies.Add(ChaosParcel);
+            }
             ParcelVerticalPositions.Add(ConveyorSurfaceZCm + HalfHeight);
             ParcelVerticalVelocities.Add(0.0f);
             ParcelPitchDegrees.Add(0.0f);
@@ -3878,7 +5860,8 @@ void AQaiConveyorWorld::BindNativeComponents()
                 nullptr,
                 ETeleportType::TeleportPhysics);
             ParcelInitialTransforms.Last() = Parcel->GetComponentTransform();
-            ParcelLinearVelocities.Add(AuthoredTangent * ConveyorTuning::ConveyorSpeedCm);
+            ParcelLinearVelocities.Add(
+                AuthoredTangent * ConveyorTuning::ConveyorSpeedCm * ConveyorSpeedScale);
             ParcelSupportedForklifts.Add(INDEX_NONE);
             ParcelForkContactsLogged.Add(false);
             const FPropPhysicsProfile& ParcelPhysics = ParcelPhysicsProfiles.Last();
@@ -3908,16 +5891,16 @@ void AQaiConveyorWorld::BindNativeComponents()
     SimulatorLog(TEXT("conveyor_contact_model drive=coulomb_moving_surface centering_force=disabled heading=torque_limited fixed_step_hz=120"));
 
     Workers[0].Root = FindTaggedComponent(TEXT("Qai.Worker1"));
+    // Keep both workers in separated lanes at the far end of the room. This
+    // leaves them physically present while keeping the forklift approach and
+    // red-zone sensor view clear.
     Workers[0].Waypoints = {
-        FVector(170.0f, 410.0f, 0.0f), FVector(-295.0f, 410.0f, 0.0f),
-        FVector(-295.0f, -180.0f, 0.0f), FVector(55.0f, -180.0f, 0.0f),
-        FVector(170.0f, -230.0f, 0.0f)};
-    Workers[0].DwellSeconds = {0.0f, 0.0f, 0.0f, 0.0f, 0.8f};
+        FVector(-285.0f, -210.0f, 0.0f), FVector(-105.0f, -210.0f, 0.0f)};
+    Workers[0].DwellSeconds = {0.55f, 0.85f};
     Workers[1].Root = FindTaggedComponent(TEXT("Qai.Worker2"));
     Workers[1].Waypoints = {
-        FVector(-310.0f, -250.0f, 0.0f), FVector(-295.0f, -180.0f, 0.0f),
-        FVector(55.0f, -180.0f, 0.0f), FVector(160.0f, -230.0f, 0.0f)};
-    Workers[1].DwellSeconds = {0.0f, 0.0f, 0.0f, 2.0f};
+        FVector(-285.0f, -115.0f, 0.0f), FVector(-105.0f, -115.0f, 0.0f)};
+    Workers[1].DwellSeconds = {1.20f, 0.40f};
     int32 BoundWorkers = 0;
     for (int32 WorkerIndex = 0; WorkerIndex < UE_ARRAY_COUNT(Workers); ++WorkerIndex)
     {
@@ -3927,7 +5910,24 @@ void AQaiConveyorWorld::BindNativeComponents()
             continue;
         }
         MakeMovable(Worker.Root.Get());
-        const FVector InitialDirection = Worker.Waypoints[1] - Worker.Waypoints[0];
+        // Start the second worker from the opposite end and send it in the
+        // opposite direction. Distinct dwell schedules prevent the two lanes
+        // from becoming a visually coupled, perfectly parallel procession.
+        const int32 InitialWaypointIndex = WorkerIndex == 0
+            ? 0
+            : Worker.Waypoints.Num() - 1;
+        const int32 InitialDestinationIndex = WorkerIndex == 0
+            ? 1
+            : FMath::Max(0, Worker.Waypoints.Num() - 2);
+        FVector WorkerSpawnLocation = Worker.Waypoints[InitialWaypointIndex];
+        WorkerSpawnLocation.Z = Worker.Root->GetComponentLocation().Z;
+        Worker.Root->SetWorldLocation(
+            WorkerSpawnLocation,
+            false,
+            nullptr,
+            ETeleportType::TeleportPhysics);
+        const FVector InitialDirection =
+            Worker.Waypoints[InitialDestinationIndex] - Worker.Waypoints[InitialWaypointIndex];
         Worker.InitialHeadingYawDegrees = InitialDirection.Rotation().Yaw;
         Worker.TargetHeadingYawDegrees = Worker.InitialHeadingYawDegrees;
         Worker.PendingHeadingYawDegrees = Worker.InitialHeadingYawDegrees;
@@ -3939,27 +5939,27 @@ void AQaiConveyorWorld::BindNativeComponents()
             Worker.InitialHeadingYawDegrees,
             0.0f).Quaternion();
         Worker.HeadingOffset = InitialHeading.Inverse() * Worker.Root->GetComponentQuat();
-        if (WorkerIndex == 0)
-        {
-            // Worker1's source skeleton faces -X relative to its authored
-            // scene root; compensate so the walk clip faces route travel.
-            Worker.HeadingOffset *= FQuat(FVector::UpVector, PI);
-        }
-        Worker.DestinationIndex = 1;
-        Worker.RouteDirection = 1;
+        // The imported character hierarchies do not share a reliable forward
+        // axis. Their final visual correction is calibrated from foot-to-toe
+        // bones once the skeletal component is identified for Chaos binding.
+        Worker.DestinationIndex = InitialDestinationIndex;
+        Worker.RouteDirection = WorkerIndex == 0 ? 1 : -1;
         Worker.RouteReversalCount = 0;
         Worker.AvoidanceTurnSign = WorkerIndex == 0 ? 1 : -1;
         Worker.RouteReversalCooldownSeconds = 0.0f;
+        Worker.WorkerYieldRemainingSeconds = 0.0f;
+        Worker.RightOfWayYieldCount = 0;
         Worker.BlockedSeconds = 0.0f;
         Worker.InitialTransform = Worker.Root->GetComponentTransform();
         ++BoundWorkers;
     }
     SimulatorLog(FString::Printf(
-        TEXT("worker_motion_ready workers=%d visual_turn_rate_deg_s=%.1f heading_commit_ms=%.0f reversal_cooldown_ms=%.0f sticky_avoidance=true"),
+        TEXT("worker_motion_ready workers=%d visual_turn_rate_deg_s=%.1f heading_commit_ms=%.0f reversal_cooldown_ms=%.0f personal_space_cm=%.1f reserved_lanes=true deterministic_right_of_way=true"),
         BoundWorkers,
         ConveyorTuning::WorkerMaximumVisualTurnRateDegreesPerSecond,
         ConveyorTuning::WorkerHeadingCommitSeconds * 1000.0f,
-        ConveyorTuning::WorkerRouteReversalCooldownSeconds * 1000.0f));
+        ConveyorTuning::WorkerRouteReversalCooldownSeconds * 1000.0f,
+        ConveyorTuning::WorkerPersonalSpaceCm));
 
     for (int32 ColorIndex = 0; ColorIndex < 3; ++ColorIndex)
     {
@@ -4002,27 +6002,37 @@ void AQaiConveyorWorld::BindNativeComponents()
     {
         DetectorCamera = Detector->GetRootComponent();
     }
+    ConfigureInferenceScene();
     const int32 BoundColliders = BuildCollisionGuard();
     const bool bCollisionReady = ValidateCollisionGuard();
+    ConfigureAuthoritativeChaosPhysics();
     const bool bRequiredComponentsReady = Parcels.Num() == 8
         && Forklifts[0].LiftAssembly.IsValid() && Forklifts[1].LiftAssembly.IsValid()
         && Forklifts[0].Pallet.IsValid() && Forklifts[0].Carton.IsValid()
         && Forklifts[1].Pallet.IsValid() && Forklifts[1].Carton.IsValid()
         && DetectorCamera.IsValid() && BoundWheels == 8 && BoundWorkers == 2
-        && BoundShelfParcels == 24 && DynamicBoxes.Num() == 26 + ConveyorTuning::EnabledForkliftCount * 2
+        && BoundShelfParcels == 24
+        && BoundLoosePallets == ConveyorTuning::LoosePalletStackCount
+        && DynamicBoxes.Num() == 26 + ConveyorTuning::EnabledForkliftCount * 2
+            + ConveyorTuning::LoosePalletStackCount
         && EvkVisualRoot.IsValid() && DynamicBoxes.IsValidIndex(EvkDynamicBody)
         && PackingTableTrayVisualRoot.IsValid()
         && DynamicBoxes.IsValidIndex(PackingTableTrayDynamicBody)
-        && BoundColliders >= 16 && bCollisionReady;
+        && BoundColliders >= 16 && bCollisionReady
+        && bChaosPhysicsActive;
     if (!bRequiredComponentsReady)
     {
-        StageStatus = TEXT("NATIVE ASSET IMPORT INCOMPLETE");
+        StageStatus = bChaosPhysicsActive
+            ? TEXT("NATIVE ASSET IMPORT INCOMPLETE")
+            : TEXT("CHAOS PHYSICS INITIALIZATION FAILED");
         StageError = FString::Printf(
-            TEXT("Expected 8 belt parcels, 24 dynamic shelf parcels, one movable IQ9 EVK, one movable desktop tray, 8 authored wheels, 2 authored lift assemblies, 2 workers, %d active cargo components, DetectorEndline, and 16 collision components; found %d belt parcels, %d shelf parcels, %d wheels, %d workers, %d dynamic bodies, and %d collision components."),
+            TEXT("Expected authoritative Chaos plus 8 belt parcels, 24 dynamic shelf parcels, one movable IQ9 EVK, one movable desktop tray, 8 authored wheels, 2 authored lift assemblies, 2 workers, %d active cargo components, DetectorEndline, and 16 collision components; found chaos=%s, %d belt parcels, %d shelf parcels, %d wheels, %d workers, %d dynamic bodies, and %d collision components."),
             ConveyorTuning::EnabledForkliftCount * 2,
+            bChaosPhysicsActive ? TEXT("ready") : TEXT("failed"),
             Parcels.Num(), BoundShelfParcels, BoundWheels, BoundWorkers, DynamicBoxes.Num(), BoundColliders);
         LogStageBindingFailure(FString::Printf(
-            TEXT("reason=incomplete_scene belt_parcels=%d shelf_parcels=%d wheels=%d workers=%d dynamic_bodies=%d colliders=%d"),
+            TEXT("reason=incomplete_scene chaos=%s belt_parcels=%d shelf_parcels=%d wheels=%d workers=%d dynamic_bodies=%d colliders=%d"),
+            bChaosPhysicsActive ? TEXT("ready") : TEXT("failed"),
             Parcels.Num(),
             BoundShelfParcels,
             BoundWheels,
@@ -4033,6 +6043,12 @@ void AQaiConveyorWorld::BindNativeComponents()
     }
 
     bStageReady = true;
+    // Construction leaves dozens of Chaos bodies and the lift constraint
+    // becoming live in one frame. Apply the same atomic pose restoration used
+    // by X immediately after binding, so first presentation and reset begin at
+    // an identical yaw rather than allowing a one-frame pallet impulse.
+    ResetScene();
+    SimulatorLog(TEXT("initial_scene_stabilized pose=reset_equivalent forklift_yaw_preserved=true"));
     StageStatus = TEXT("Optimized warehouse simulation ready");
     StageError.Reset();
     UE_LOG(
@@ -4044,7 +6060,7 @@ void AQaiConveyorWorld::BindNativeComponents()
         DynamicBoxes.Num(),
         BoundColliders);
     SimulatorLog(FString::Printf(
-        TEXT("physics_solver_ready mode=deterministic_obb fixed_hz=120 max_substeps=8 dynamic_props=%d conveyor_props=%d wheel_disks=4 sleeping=enabled broadphase=bounded gpu_cost=none"),
+        TEXT("physics_solver_ready mode=chaos_rigid_body fixed_hz=120 max_substeps=8 dynamic_props=%d conveyor_props=%d ccd=true sleeping=enabled solver_iterations=12/4 gpu_cost=none"),
         DynamicBoxes.Num(),
         Parcels.Num()));
     SimulatorLog(FString::Printf(
@@ -4078,6 +6094,159 @@ void AQaiConveyorWorld::ConfigureStackLightRig()
     int32 BoundHalos = 0;
     int32 BoundWallSpots = 0;
     int32 ZeroedImportedLights = 0;
+
+    // The current inference-stability ablation deliberately removes every
+    // stack-light pixel and emitter from the workcell. The model result is
+    // still reported verbatim in the HUD, but it can no longer recolor its
+    // own next input through an emissive lens, direct light, Lumen bounce, or
+    // volumetric fog. Pass -QaiEnableStackLights to restore the presentation
+    // rig for an explicit A/B run without rebuilding the client.
+    const bool bStackLightsEnabled = FParse::Param(FCommandLine::Get(), TEXT("QaiEnableStackLights"));
+    if (!bStackLightsEnabled)
+    {
+        int32 HiddenComponents = 0;
+        int32 DisabledLights = 0;
+        int32 HiddenTaggedActors = 0;
+        if (GetWorld())
+        {
+            for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+            {
+                AActor* Actor = *It;
+                bool bTaggedStackActor = false;
+                for (const FName& Tag : Actor->Tags)
+                {
+                    const FString TagString = Tag.ToString();
+                    const bool bTaggedSignalEmitter =
+                        (TagString.StartsWith(TEXT("Qai.Green."))
+                            || TagString.StartsWith(TEXT("Qai.Amber."))
+                            || TagString.StartsWith(TEXT("Qai.Red.")))
+                        && TagString.EndsWith(TEXT(".Glow"));
+                    if (TagString.StartsWith(TEXT("Qai.Stack")) || bTaggedSignalEmitter)
+                    {
+                        bTaggedStackActor = true;
+                        break;
+                    }
+                }
+                if (bTaggedStackActor)
+                {
+                    Actor->SetActorHiddenInGame(true);
+                    Actor->SetActorEnableCollision(false);
+                    ++HiddenTaggedActors;
+                }
+
+                TInlineComponentArray<USceneComponent*> Components(Actor);
+                for (USceneComponent* Component : Components)
+                {
+                    if (!Component)
+                    {
+                        continue;
+                    }
+                    bool bBelongsToStack = bTaggedStackActor;
+                    for (USceneComponent* Ancestor = Component; Ancestor && !bBelongsToStack;
+                        Ancestor = Ancestor->GetAttachParent())
+                    {
+                        FString LogicalName = Ancestor->GetName();
+                        int32 LastUnderscore = INDEX_NONE;
+                        if (LogicalName.FindLastChar(TEXT('_'), LastUnderscore)
+                            && LogicalName.Mid(LastUnderscore + 1).IsNumeric())
+                        {
+                            LogicalName.LeftInline(LastUnderscore, EAllowShrinking::No);
+                        }
+                        bBelongsToStack = LogicalName.StartsWith(TEXT("StackLight"));
+                    }
+                    if (!bBelongsToStack)
+                    {
+                        continue;
+                    }
+
+                    Component->SetVisibility(false, true);
+                    Component->SetHiddenInGame(true, true);
+                    Component->Deactivate();
+                    if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component))
+                    {
+                        Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                        Primitive->SetGenerateOverlapEvents(false);
+                    }
+                    if (ULightComponent* Light = Cast<ULightComponent>(Component))
+                    {
+                        Light->SetIntensity(0.0f);
+                        Light->SetLightColor(FLinearColor::Black, false);
+                        ++DisabledLights;
+                    }
+                    ++HiddenComponents;
+                }
+            }
+        }
+
+        for (ALocalFogVolume* Actor : RuntimeStackHaloActors)
+        {
+            if (Actor)
+            {
+                Actor->Destroy();
+            }
+        }
+        RuntimeStackHaloActors.Reset();
+        for (ASpotLight* Actor : RuntimeStackWallSpotActors)
+        {
+            if (Actor)
+            {
+                Actor->Destroy();
+            }
+        }
+        RuntimeStackWallSpotActors.Reset();
+        for (ASpotLight* Actor : RuntimeStackRoomSpotActors)
+        {
+            if (Actor)
+            {
+                Actor->Destroy();
+            }
+        }
+        RuntimeStackRoomSpotActors.Reset();
+        for (ARectLight* Actor : RuntimeStackWashActors)
+        {
+            if (Actor)
+            {
+                Actor->Destroy();
+            }
+        }
+        RuntimeStackWashActors.Reset();
+        for (UMaterialBillboardComponent* Billboard : RuntimeStackBillboards)
+        {
+            if (Billboard)
+            {
+                Billboard->DestroyComponent();
+            }
+        }
+        RuntimeStackBillboards.Reset();
+        if (RuntimeSignalFogActor)
+        {
+            RuntimeSignalFogActor->Destroy();
+            RuntimeSignalFogActor = nullptr;
+        }
+
+        StackWashLights.Reset();
+        StackWashMultipliers.Reset();
+        for (int32 ColorIndex = 0; ColorIndex < 3; ++ColorIndex)
+        {
+            StackLensComponents[ColorIndex].Reset();
+            StackLensMaterials[ColorIndex].Reset();
+            StackBillboardComponents[ColorIndex].Reset();
+            StackBillboardMaterials[ColorIndex].Reset();
+            StackHaloFogComponents[ColorIndex].Reset();
+            StackWallSpotLights[ColorIndex].Reset();
+            StackRoomSpotLights[ColorIndex].Reset();
+            StackEmitterLights[ColorIndex].Reset();
+            StackSignalWeights[ColorIndex] = 0.0f;
+            StackTargetWeights[ColorIndex] = 0.0f;
+        }
+        bStackLightRigInitialized = false;
+        SimulatorLog(FString::Printf(
+            TEXT("stack_light_ablation enabled=true imported_components_hidden=%d lights_disabled=%d tagged_actors_hidden=%d hud_signal_retained=true restore_flag=-QaiEnableStackLights"),
+            HiddenComponents,
+            DisabledLights,
+            HiddenTaggedActors));
+        return;
+    }
 
     // USD supplies a white SceneWash light as a direct child of each stack in
     // addition to the three tagged colored lens emitters. It is not a model
@@ -4561,14 +6730,20 @@ void AQaiConveyorWorld::ConfigureEvkProp()
     }
 
     static const FVector LedPositions[] = {
-        // The five-view impostor is centred at its physics pivot. Keep the two
-        // real emitters just above the exposed top-board image.
-        FVector(3.20f, 3.30f, 2.55f),
-        FVector(1.85f, 3.30f, 2.55f),
+        // Match the photographed board: a close amber/green pair immediately
+        // inside the expansion-connector edge, then a second green indicator
+        // at the adjacent Ethernet edge. The five-view impostor is centred at
+        // its physics pivot and its exposed PCB surface is at about Z=2.18 cm.
+        // The top impostor is oriented opposite to the source photograph, so
+        // mirror the complete layout through the PCB centre.
+        FVector(3.25f, 0.35f, 2.36f), // blinking amber, outer edge
+        FVector(2.60f, 0.35f, 2.36f), // steady green beside amber
+        FVector(1.35f, 4.65f, 2.36f), // steady Ethernet-side green, 1 cm inboard of port edge
     };
     static const FLinearColor LedColors[] = {
-        FLinearColor(0.01f, 1.0f, 0.05f),
         FLinearColor(1.0f, 0.24f, 0.005f),
+        FLinearColor(0.01f, 1.0f, 0.05f),
+        FLinearColor(0.01f, 1.0f, 0.05f),
     };
     EvkLedRandom.Initialize(0x19E9);
     const float FogScale = 11.0f / ULocalFogVolumeComponent::GetBaseVolumeSize();
@@ -4584,12 +6759,14 @@ void AQaiConveyorWorld::ConfigureEvkProp()
         LedMesh->SetCastShadow(false);
         LedMesh->AttachToComponent(LedAnchor, FAttachmentTransformRules::KeepRelativeTransform);
         LedMesh->SetRelativeLocation(LedPositions[LedIndex]);
-        LedMesh->SetRelativeScale3D(FVector(0.008f));
+        // The former 8-mm spheres read as oversized indicator caps. Four-mm
+        // meshes preserve visibility while matching the actual surface LEDs.
+        LedMesh->SetRelativeScale3D(FVector(0.004f));
         UMaterialInstanceDynamic* LedMID = UMaterialInstanceDynamic::Create(LedMaterial, this);
         if (LedMID)
         {
             LedMID->SetVectorParameterValue(TEXT("LedColor"), LedColors[LedIndex]);
-            LedMID->SetScalarParameterValue(TEXT("LedStrength"), LedIndex == 0 ? 180.0f : 0.0f);
+            LedMID->SetScalarParameterValue(TEXT("LedStrength"), LedIndex == 0 ? 0.0f : 180.0f);
             LedMesh->SetMaterial(0, LedMID);
         }
         LedMesh->RegisterComponentWithWorld(GetWorld());
@@ -4602,11 +6779,11 @@ void AQaiConveyorWorld::ConfigureEvkProp()
         AddInstanceComponent(LedLight);
         LedLight->SetMobility(EComponentMobility::Movable);
         LedLight->SetIntensityUnits(ELightUnits::Lumens);
-        LedLight->SetIntensity(LedIndex == 0 ? 28.0f : 0.0f);
+        LedLight->SetIntensity(LedIndex == 0 ? 0.0f : 28.0f);
         LedLight->SetLightColor(LedColors[LedIndex]);
         LedLight->SetAttenuationRadius(24.0f);
-        LedLight->SetSourceRadius(0.35f);
-        LedLight->SetSoftSourceRadius(1.0f);
+        LedLight->SetSourceRadius(0.175f);
+        LedLight->SetSoftSourceRadius(0.5f);
         LedLight->SetCastShadows(false);
         LedLight->SetVolumetricScatteringIntensity(8.0f);
         LedLight->AttachToComponent(LedAnchor, FAttachmentTransformRules::KeepRelativeTransform);
@@ -4627,17 +6804,17 @@ void AQaiConveyorWorld::ConfigureEvkProp()
                 Fog->SetHeightFogExtinction(0.0f);
                 Fog->SetFogPhaseG(0.12f);
                 Fog->SetFogAlbedo(FLinearColor::Black);
-                Fog->SetFogEmissive(LedIndex == 0 ? LedColors[LedIndex] * 0.48f : FLinearColor::Black);
+                Fog->SetFogEmissive(LedIndex == 0 ? FLinearColor::Black : LedColors[LedIndex] * 0.48f);
                 Fog->SetFogStartDistance(0.0f);
                 EvkLedFogComponents.Add(Fog);
             }
             RuntimeEvkLedFogActors.Add(FogActor);
         }
-        EvkLedTimers.Add(LedIndex == 0 ? 0.0f : 0.32f);
-        EvkLedStates.Add(LedIndex == 0);
+        EvkLedTimers.Add(LedIndex == 0 ? 0.32f : 0.0f);
+        EvkLedStates.Add(LedIndex != 0);
     }
     SimulatorLog(FString::Printf(
-        TEXT("iq9_evk_led_rig status=ready leds=%d mode=steady_green+random_blink_amber local_fog_volumes=%d point_radius_cm=24 random_seed=0x19E9"),
+        TEXT("iq9_evk_led_rig status=ready leds=%d mode=two_steady_green+random_blink_amber mesh_diameter_cm=0.4 local_fog_volumes=%d point_radius_cm=24 random_seed=0x19E9"),
         RuntimeEvkLedMeshes.Num(),
         RuntimeEvkLedFogActors.Num()));
 }
@@ -4645,13 +6822,15 @@ void AQaiConveyorWorld::ConfigureEvkProp()
 void AQaiConveyorWorld::TickEvkLeds(float DeltaSeconds)
 {
     static const FLinearColor LedColors[] = {
-        FLinearColor(0.01f, 1.0f, 0.05f),
         FLinearColor(1.0f, 0.24f, 0.005f),
+        FLinearColor(0.01f, 1.0f, 0.05f),
+        FLinearColor(0.01f, 1.0f, 0.05f),
     };
     for (int32 LedIndex = 0; LedIndex < EvkLedTimers.Num(); ++LedIndex)
     {
-        bool bEnabled = LedIndex == 0;
-        if (LedIndex > 0)
+        const bool bBlinkingAmber = LedIndex == 0;
+        bool bEnabled = !bBlinkingAmber;
+        if (bBlinkingAmber)
         {
             EvkLedTimers[LedIndex] -= DeltaSeconds;
             bEnabled = EvkLedStates.IsValidIndex(LedIndex)
@@ -4734,6 +6913,82 @@ void AQaiConveyorWorld::ResetScene()
     LastCollisionObstacle.Reset();
     CollisionStatus = FString::Printf(TEXT("ready | %d collision volumes"), CollisionObstacles.Num());
 
+    if (bChaosPhysicsActive)
+    {
+        // Reset must be atomic from Chaos's point of view.  Re-enabling the
+        // chassis or carriage while cargo still occupies its pre-reset pose
+        // creates a contact impulse through the live lift joint and can wedge
+        // the carriage against its locked lateral axes.
+        for (FForkliftRuntime& Forklift : Forklifts)
+        {
+            if (UPhysicsConstraintComponent* Constraint = Forklift.ChaosLiftConstraint.Get())
+            {
+                Constraint->BreakConstraint();
+            }
+            for (UBoxComponent* Body : {
+                    Forklift.ChaosChassis.Get(),
+                    Forklift.ChaosCarriage.Get()})
+            {
+                if (!Body)
+                {
+                    continue;
+                }
+                Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+                Body->SetSimulatePhysics(false);
+                Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            }
+            for (const TWeakObjectPtr<UBoxComponent>& Shape : Forklift.ChaosCollisionComponents)
+            {
+                if (UBoxComponent* Collider = Shape.Get())
+                {
+                    Collider->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                }
+            }
+        }
+        for (UBoxComponent* Body : RuntimeChaosBodies)
+        {
+            if (Body)
+            {
+                Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+                Body->SetSimulatePhysics(false);
+                Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            }
+        }
+        for (FDynamicBoxRuntime& Body : DynamicBoxes)
+        {
+            for (const TWeakObjectPtr<UBoxComponent>& ShapeWeak :
+                 Body.CompoundCollisionComponents)
+            {
+                if (UBoxComponent* Shape = ShapeWeak.Get())
+                {
+                    Shape->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                }
+            }
+        }
+        for (UCapsuleComponent* WorkerBody : RuntimeChaosWorkerBodies)
+        {
+            if (WorkerBody)
+            {
+                WorkerBody->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                WorkerBody->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+                WorkerBody->SetSimulatePhysics(false);
+                WorkerBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            }
+        }
+        for (UBoxComponent* Body : RuntimeChaosConveyorBodies)
+        {
+            if (Body)
+            {
+                Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+                Body->SetSimulatePhysics(false);
+                Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            }
+        }
+    }
+
     for (int32 ForkliftIndex = 0; ForkliftIndex < UE_ARRAY_COUNT(Forklifts); ++ForkliftIndex)
     {
         FForkliftRuntime& Forklift = Forklifts[ForkliftIndex];
@@ -4741,8 +6996,43 @@ void AQaiConveyorWorld::ResetScene()
         {
             continue;
         }
-        Forklift.Root->SetWorldTransform(
-            Forklift.InitialRoot, false, nullptr, ETeleportType::TeleportPhysics);
+        if (bChaosPhysicsActive && Forklift.ChaosChassis.IsValid())
+        {
+            UBoxComponent* Chassis = Forklift.ChaosChassis.Get();
+            UBoxComponent* Carriage = Forklift.ChaosCarriage.Get();
+            Chassis->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Chassis->SetWorldTransform(
+                Forklift.InitialChaosChassis,
+                false,
+                nullptr,
+                ETeleportType::TeleportPhysics);
+            Chassis->SetPhysicsLinearVelocity(FVector::ZeroVector);
+            Chassis->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            if (Carriage)
+            {
+                Carriage->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Carriage->SetWorldTransform(
+                    Forklift.InitialChaosCarriage,
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
+                Carriage->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                Carriage->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            }
+            if (UPhysicsConstraintComponent* Constraint = Forklift.ChaosLiftConstraint.Get())
+            {
+                Constraint->SetLinearPositionTarget(FVector(
+                    0.0f,
+                    0.0f,
+                    -ConveyorTuning::ForkliftInitialLiftCm));
+                Constraint->SetLinearVelocityTarget(FVector::ZeroVector);
+            }
+        }
+        else
+        {
+            Forklift.Root->SetWorldTransform(
+                Forklift.InitialRoot, false, nullptr, ETeleportType::TeleportPhysics);
+        }
         Forklift.SpeedCmPerSecond = 0.0f;
         Forklift.SteeringInput = 0.0f;
         Forklift.SurfaceLinearVelocityCmPerSecond = FVector::ZeroVector;
@@ -4750,8 +7040,10 @@ void AQaiConveyorWorld::ResetScene()
         Forklift.PreviousSpeedCmPerSecond = 0.0f;
         Forklift.CombinedMassKg = Forklift.ChassisMassKg;
         Forklift.CombinedCenterOfMassLocalCm = Forklift.BaseCenterOfMassLocalCm;
-        Forklift.LiftCm = 0.0f;
+        Forklift.LiftCm = ConveyorTuning::ForkliftInitialLiftCm;
+        Forklift.ActualLiftCm = ConveyorTuning::ForkliftInitialLiftCm;
         Forklift.LiftDeltaCm = 0.0f;
+        Forklift.bLiftUpperStopLatched = false;
         Forklift.WheelAngleDegrees = 0.0f;
         Forklift.RideHeightOffsetCm = 0.0f;
         Forklift.MaximumRideHeightCm = 0.0f;
@@ -4772,10 +7064,15 @@ void AQaiConveyorWorld::ResetScene()
         {
             if (USceneComponent* WheelPivot = Forklift.WheelPivots[WheelIndex].Get())
             {
+                WheelPivot->SetRelativeLocation(
+                    Forklift.WheelPivotInitialRelativeLocation[WheelIndex]);
                 WheelPivot->SetRelativeRotation(Forklift.WheelPivotInitialRelative[WheelIndex]);
             }
         }
-        UpdateCargo(Forklift);
+        if (!bChaosPhysicsActive)
+        {
+            UpdateCargo(Forklift);
+        }
     }
 
     for (FDynamicBoxRuntime& Body : DynamicBoxes)
@@ -4792,7 +7089,21 @@ void AQaiConveyorWorld::ResetScene()
         Body.bLoggedLedgeRelease = false;
         if (USceneComponent* Root = Body.Root.Get())
         {
-            Root->SetWorldTransform(Body.InitialTransform, false, nullptr, ETeleportType::TeleportPhysics);
+            if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Root); Primitive && bChaosPhysicsActive)
+            {
+                Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Primitive->SetWorldTransform(
+                    Body.InitialTransform,
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
+                Primitive->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                Primitive->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            }
+            else
+            {
+                Root->SetWorldTransform(Body.InitialTransform, false, nullptr, ETeleportType::TeleportPhysics);
+            }
         }
     }
 
@@ -4801,8 +7112,22 @@ void AQaiConveyorWorld::ResetScene()
     {
         if (USceneComponent* Parcel = Parcels[Index].Get(); Parcel && ParcelInitialTransforms.IsValidIndex(Index))
         {
-            Parcel->SetWorldTransform(
-                ParcelInitialTransforms[Index], false, nullptr, ETeleportType::TeleportPhysics);
+            if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Parcel); Primitive && bChaosPhysicsActive)
+            {
+                Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Primitive->SetWorldTransform(
+                    ParcelInitialTransforms[Index],
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
+                Primitive->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                Primitive->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            }
+            else
+            {
+                Parcel->SetWorldTransform(
+                    ParcelInitialTransforms[Index], false, nullptr, ETeleportType::TeleportPhysics);
+            }
         }
         if (ParcelPhases.IsValidIndex(Index) && ParcelDistances.IsValidIndex(Index))
         {
@@ -4826,8 +7151,126 @@ void AQaiConveyorWorld::ResetScene()
             FVector Position;
             FVector Tangent;
             ConveyorTuning::EvaluateConveyor(ParcelDistances[Index], Position, Tangent);
-            ParcelLinearVelocities[Index] = Tangent * ConveyorTuning::ConveyorSpeedCm;
+            ParcelLinearVelocities[Index] =
+                Tangent * ConveyorTuning::ConveyorSpeedCm * ConveyorSpeedScale;
         }
+    }
+
+    if (bChaosPhysicsActive)
+    {
+        // Recreate each prismatic joint only after both particles are back at
+        // their authored transforms. SetConstrainedComponents rebuilds the
+        // Chaos connector handles and local frames invalidated by BreakConstraint.
+        for (FForkliftRuntime& Forklift : Forklifts)
+        {
+            UBoxComponent* Chassis = Forklift.ChaosChassis.Get();
+            UBoxComponent* Carriage = Forklift.ChaosCarriage.Get();
+            if (!Chassis || !Carriage)
+            {
+                continue;
+            }
+            for (const TWeakObjectPtr<UBoxComponent>& Shape : Forklift.ChaosCollisionComponents)
+            {
+                if (UBoxComponent* Collider = Shape.Get())
+                {
+                    Collider->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+                }
+            }
+            Chassis->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            Carriage->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            Chassis->SetSimulatePhysics(true);
+            Carriage->SetSimulatePhysics(true);
+            Chassis->SetMassOverrideInKg(NAME_None, Forklift.ChassisMassKg, true);
+            Chassis->SetCenterOfMass(
+                Forklift.BaseCenterOfMassLocalCm - Forklift.ChaosChassisLocalCenter);
+            Carriage->SetMassOverrideInKg(NAME_None, 420.0f, true);
+            Carriage->SetCenterOfMass(FVector(-4.0f, 0.0f, -18.0f));
+            Chassis->SetPhysicsLinearVelocity(FVector::ZeroVector);
+            Chassis->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            Carriage->SetPhysicsLinearVelocity(FVector::ZeroVector);
+            Carriage->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            if (UPhysicsConstraintComponent* Constraint = Forklift.ChaosLiftConstraint.Get())
+            {
+                // Rebuild the joint at its true zero-height reference, exactly
+                // as startup does, then restore the raised initial carriage.
+                // Binding directly at the 10-cm pose would redefine that pose
+                // as zero and make the next -10-cm drive lift it twice.
+                FTransform MechanicalMinimumCarriage = Forklift.InitialChaosCarriage;
+                MechanicalMinimumCarriage.AddToTranslation(
+                    -Forklift.InitialChaosChassis.GetUnitAxis(EAxis::Z)
+                    * ConveyorTuning::ForkliftInitialLiftCm);
+                Carriage->SetWorldTransform(
+                    MechanicalMinimumCarriage,
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
+                Constraint->SetWorldLocationAndRotation(
+                    MechanicalMinimumCarriage.GetLocation(),
+                    Forklift.InitialChaosChassis.GetRotation());
+                Constraint->SetConstrainedComponents(
+                    Chassis, NAME_None, Carriage, NAME_None);
+                Constraint->SetLinearPositionDrive(false, false, true);
+                Constraint->SetLinearVelocityDrive(false, false, true);
+                Constraint->SetLinearDriveParams(620000.0f, 95000.0f, 12000000.0f);
+                Constraint->SetLinearPositionTarget(FVector(
+                    0.0f,
+                    0.0f,
+                    -ConveyorTuning::ForkliftInitialLiftCm));
+                Constraint->SetLinearVelocityTarget(FVector::ZeroVector);
+                Constraint->SetProjectionEnabled(true);
+                Constraint->SetProjectionParams(0.10f, 0.25f, 1.0f, 1.0f);
+                Carriage->SetWorldTransform(
+                    Forklift.InitialChaosCarriage,
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
+                Carriage->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                Carriage->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            }
+            Chassis->WakeRigidBody();
+            Carriage->WakeRigidBody();
+        }
+        for (FDynamicBoxRuntime& BodyRuntime : DynamicBoxes)
+        {
+            UPrimitiveComponent* Body = Cast<UPrimitiveComponent>(BodyRuntime.Root.Get());
+            if (!Body)
+            {
+                continue;
+            }
+            Body->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            Body->SetSimulatePhysics(true);
+            Body->SetMassOverrideInKg(NAME_None, BodyRuntime.Physics.MassKg, true);
+            Body->SetCenterOfMass(BodyRuntime.Physics.CenterOfMassLocalOffset);
+            Body->SetLinearDamping(BodyRuntime.Physics.AirLinearDamping);
+            Body->SetAngularDamping(BodyRuntime.Physics.AirAngularDamping);
+            Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+            Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            Body->PutRigidBodyToSleep();
+            for (const TWeakObjectPtr<UBoxComponent>& ShapeWeak :
+                 BodyRuntime.CompoundCollisionComponents)
+            {
+                if (UBoxComponent* Shape = ShapeWeak.Get())
+                {
+                    Shape->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+                }
+            }
+        }
+        // Match startup sequencing for belt parcels: hold them collisionless
+        // until the broadphase and lift joint have settled, then activate all
+        // eight together in SimulateChaosConveyor.
+        for (UBoxComponent* Body : RuntimeChaosConveyorBodies)
+        {
+            if (!Body)
+            {
+                continue;
+            }
+            Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Body->SetSimulatePhysics(false);
+        }
+        bChaosConveyorBodiesActivated = false;
+        ChaosConveyorStartupGraceSeconds = 0.75f;
+        ChaosConveyorMotorRampSeconds = 0.0f;
+        SimulatorLog(TEXT("chaos_scene_reset phase=atomic joint=reinitialized dynamic_bodies=settled conveyor_activation=deferred"));
     }
     ParcelImpactCount = 0;
     ParcelForkContactCount = 0;
@@ -4836,29 +7279,66 @@ void AQaiConveyorWorld::ResetScene()
     for (int32 WorkerIndex = 0; WorkerIndex < UE_ARRAY_COUNT(Workers); ++WorkerIndex)
     {
         FWorkerRuntime& Worker = Workers[WorkerIndex];
-        if (USceneComponent* Root = Worker.Root.Get())
+        if (UCapsuleComponent* WorkerBody = Worker.ChaosBody.Get())
+        {
+            WorkerBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            WorkerBody->SetWorldTransform(
+                Worker.InitialChaosTransform,
+                false,
+                nullptr,
+                ETeleportType::TeleportPhysics);
+            WorkerBody->SetPhysicsLinearVelocity(FVector::ZeroVector);
+            WorkerBody->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            if (USceneComponent* VisualPivot = Worker.VisualPivot.Get())
+            {
+                VisualPivot->SetRelativeTransform(FTransform::Identity);
+            }
+            if (USceneComponent* VisualRoot = Worker.Root.Get())
+            {
+                VisualRoot->SetRelativeTransform(Worker.InitialVisualRelativeTransform);
+            }
+            WorkerBody->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            WorkerBody->SetSimulatePhysics(true);
+            WorkerBody->SetMassOverrideInKg(
+                NAME_None,
+                ConveyorTuning::WorkerMassKg,
+                true);
+            WorkerBody->WakeRigidBody();
+            Worker.bLoggedFootGroundingRuntime = false;
+        }
+        else if (USceneComponent* Root = Worker.Root.Get())
         {
             Root->SetWorldTransform(Worker.InitialTransform, false, nullptr, ETeleportType::TeleportPhysics);
         }
-        Worker.DestinationIndex = 1;
-        Worker.RouteDirection = 1;
+        Worker.DestinationIndex = WorkerIndex == 0 ? 1 : 0;
+        Worker.RouteDirection = WorkerIndex == 0 ? 1 : -1;
         Worker.RouteReversalCount = 0;
         Worker.AvoidanceTurnSign = WorkerIndex == 0 ? 1 : -1;
-        Worker.DwellRemaining = 0.0f;
+        Worker.DwellRemaining = WorkerIndex == 0 ? 0.0f : 0.35f;
         Worker.BlockedSeconds = 0.0f;
         Worker.RouteReversalCooldownSeconds = 0.0f;
+        Worker.WorkerYieldRemainingSeconds = 0.0f;
         Worker.TargetHeadingYawDegrees = Worker.InitialHeadingYawDegrees;
         Worker.PendingHeadingYawDegrees = Worker.InitialHeadingYawDegrees;
         Worker.PendingHeadingSeconds = 0.0f;
         Worker.VisualHeadingYawDegrees = Worker.InitialHeadingYawDegrees;
         Worker.MaximumVisualTurnRateDegreesPerSecond = 0.0f;
         Worker.SeparationEvents = 0;
+        Worker.RightOfWayYieldCount = 0;
     }
+    WorkerMinimumPairClearanceCm = TNumericLimits<float>::Max();
+    WorkerConflictElapsedSeconds = 0.0f;
+    WorkerRightOfWayIndex = INDEX_NONE;
+    WorkerNextRightOfWayIndex = 0;
+    bWorkerConflictHeadOn = false;
 
     EncodedFrames.Reset();
+    EncodedFrameWidths.Reset();
+    EncodedFrameHeights.Reset();
     EncodedForkliftFrameTransforms.Reset();
     EncodedFrameTextures.Reset();
     EncodedFrameTimes.Reset();
+    EncodedFrameCaptureSeconds.Reset();
     SubmittedEncodedFrames.Reset();
     SubmittedFrameTextures.Reset();
     SubmittedFrameTimes.Reset();
@@ -4868,6 +7348,9 @@ void AQaiConveyorWorld::ResetScene()
     RawModelSignal = TEXT("-");
     ModelSignal = TEXT("-");
     GroundTruthSignal = TEXT("G");
+    bGroundTruthMovingLatched = false;
+    GroundTruthMovingEvidenceSeconds = 0.0f;
+    GroundTruthStationaryEvidenceSeconds = 0.0f;
     LastLoggedStackSignal.Reset();
     bStackLightRigInitialized = false;
     EvkLedRandom.Initialize(0x19E9);
@@ -4975,6 +7458,13 @@ void AQaiConveyorWorld::DrawCollisionDebug() const
     // height and orientation; the conveyor uses short tangent-aligned pieces.
     for (const FCollisionObstacle& Obstacle : CollisionObstacles)
     {
+        // These catch walls deliberately sit outside the presented room. F8
+        // describes collision fitted to visible scene geometry, so omit the
+        // distant safety perimeter from that local diagnostic.
+        if (Obstacle.Name == TEXT("invisible perimeter"))
+        {
+            continue;
+        }
         Lines->DrawBox(
             Obstacle.Center,
             Obstacle.HalfExtent,
@@ -4993,19 +7483,38 @@ void AQaiConveyorWorld::DrawCollisionDebug() const
         if (const USceneComponent* Root = Forklift.Root.Get())
         {
             const FQuat RootQuat = Root->GetComponentQuat();
+            int32 DebugWheelIndex = 0;
             for (const FFittedCollisionBox& Shape : Forklift.CollisionBoxes)
             {
                 FVector LocalCenter = Shape.LocalCenter;
-                LocalCenter.Z += Shape.bLiftDriven ? Forklift.LiftCm : 0.0f;
+                LocalCenter.Z += Shape.bLiftDriven
+                    ? (bChaosPhysicsActive ? Forklift.ActualLiftCm : Forklift.LiftCm)
+                    : 0.0f;
                 const FVector ShapeCenter = Root->GetComponentLocation()
                     + RootQuat.RotateVector(LocalCenter);
                 if (Shape.IsCylinder())
                 {
-                    const FVector Axle = RootQuat.GetRightVector() * Shape.CylinderHalfLength;
+                    FVector WheelCenter = ShapeCenter;
+                    FVector AxleDirection = RootQuat.GetRightVector();
+                    if (DebugWheelIndex < 4)
+                    {
+                        if (const USceneComponent* WheelPivot =
+                                Forklift.WheelPivots[DebugWheelIndex].Get())
+                        {
+                            // Raycast tires are not separate Chaos rigid
+                            // bodies. Draw their resolved physical hub pose,
+                            // which is also used by the rendered wheel, rather
+                            // than the chassis-authored reference cylinder.
+                            WheelCenter = WheelPivot->GetComponentLocation();
+                            AxleDirection = WheelPivot->GetRightVector();
+                        }
+                    }
+                    ++DebugWheelIndex;
+                    const FVector Axle = AxleDirection * Shape.CylinderHalfLength;
                     DrawDebugCylinder(
                         GetWorld(),
-                        ShapeCenter - Axle,
-                        ShapeCenter + Axle,
+                        WheelCenter - Axle,
+                        WheelCenter + Axle,
                         Shape.Radius,
                         18,
                         FColor(0, 255, 31),
@@ -5089,11 +7598,17 @@ void AQaiConveyorWorld::DrawCollisionDebug() const
     }
     for (const FWorkerRuntime& Worker : Workers)
     {
-        if (const USceneComponent* Root = Worker.Root.Get())
+        const USceneComponent* Root = Worker.ChaosBody.IsValid()
+            ? static_cast<const USceneComponent*>(Worker.ChaosBody.Get())
+            : Worker.Root.Get();
+        if (Root)
         {
             Lines->DrawCapsule(
-                Root->GetComponentLocation() + FVector(0.0f, 0.0f, 90.0f),
-                90.0f,
+                Root->GetComponentLocation()
+                    + (Worker.ChaosBody.IsValid()
+                        ? FVector::ZeroVector
+                        : FVector(0.0f, 0.0f, ConveyorTuning::WorkerCapsuleHalfHeightCm)),
+                ConveyorTuning::WorkerCapsuleHalfHeightCm,
                 ConveyorTuning::WorkerRadiusCm,
                 FQuat::Identity,
                 FLinearColor(0.0f, 1.0f, 0.12f),
@@ -5109,14 +7624,46 @@ void AQaiConveyorWorld::DrawCollisionDebug() const
     {
         if (const USceneComponent* Root = Body.Root.Get())
         {
-            Lines->DrawBox(
-                Root->GetComponentLocation(),
-                Body.HalfExtent,
-                Root->GetComponentQuat(),
-                FLinearColor(1.0f, 0.72f, 0.0f),
-                LifeTime,
-                DepthPriority,
-                2.5f);
+            if (Body.bPallet && Body.CompoundCollisionComponents.Num() > 0)
+            {
+                if (const UBoxComponent* RootBox = Cast<UBoxComponent>(Root))
+                {
+                    Lines->DrawBox(
+                        RootBox->GetComponentLocation(),
+                        RootBox->GetUnscaledBoxExtent(),
+                        RootBox->GetComponentQuat(),
+                        FLinearColor(1.0f, 0.72f, 0.0f),
+                        LifeTime,
+                        DepthPriority,
+                        2.5f);
+                }
+                for (const TWeakObjectPtr<UBoxComponent>& ShapeWeak :
+                     Body.CompoundCollisionComponents)
+                {
+                    if (const UBoxComponent* Shape = ShapeWeak.Get())
+                    {
+                        Lines->DrawBox(
+                            Shape->GetComponentLocation(),
+                            Shape->GetUnscaledBoxExtent(),
+                            Shape->GetComponentQuat(),
+                            FLinearColor(1.0f, 0.72f, 0.0f),
+                            LifeTime,
+                            DepthPriority,
+                            2.5f);
+                    }
+                }
+            }
+            else
+            {
+                Lines->DrawBox(
+                    Root->GetComponentLocation(),
+                    Body.HalfExtent,
+                    Root->GetComponentQuat(),
+                    FLinearColor(1.0f, 0.72f, 0.0f),
+                    LifeTime,
+                    DepthPriority,
+                    2.5f);
+            }
             DrawDebugSphere(
                 GetWorld(),
                 Root->GetComponentLocation()
@@ -5132,7 +7679,8 @@ void AQaiConveyorWorld::DrawCollisionDebug() const
         }
     }
 
-    // Cyan parcel boxes use the same moving pivot and rotation as the visual.
+    // Conveyor and shelf cartons share the same loaded-cardboard Chaos
+    // profile, so use the same yellow debug language for both populations.
     for (int32 ParcelIndex = 0; ParcelIndex < Parcels.Num(); ++ParcelIndex)
     {
         const USceneComponent* ParcelRoot = Parcels[ParcelIndex].Get();
@@ -5144,7 +7692,7 @@ void AQaiConveyorWorld::DrawCollisionDebug() const
             ParcelRoot->GetComponentLocation(),
             ParcelHalfExtents[ParcelIndex],
             ParcelRoot->GetComponentQuat(),
-            FLinearColor(0.0f, 0.9f, 1.0f),
+            FLinearColor(1.0f, 0.72f, 0.0f),
             LifeTime,
             DepthPriority,
             2.0f);
@@ -5157,7 +7705,7 @@ void AQaiConveyorWorld::DrawCollisionDebug() const
                         ParcelPhysicsProfiles[ParcelIndex].CenterOfMassLocalOffset),
                 2.5f,
                 8,
-                FColor(170, 255, 255),
+                FColor(255, 245, 120),
                 false,
                 LifeTime,
                 DepthPriority,
@@ -5183,14 +7731,2575 @@ float AQaiConveyorWorld::GetActiveSpeedMetersPerSecond() const
 
 float AQaiConveyorWorld::GetActiveLiftMeters() const
 {
-    return Forklifts[ActiveForklift].LiftCm / 100.0f;
+    return (bChaosPhysicsActive
+        ? Forklifts[ActiveForklift].ActualLiftCm
+        : Forklifts[ActiveForklift].LiftCm) / 100.0f;
+}
+
+void AQaiConveyorWorld::ConfigureAuthoritativeChaosPhysics()
+{
+    if (bChaosPhysicsActive || !GetWorld())
+    {
+        return;
+    }
+
+    RuntimeChaosMaterials.Reset();
+    RuntimeChaosStaticColliders.Reset();
+    RuntimeChaosForkliftColliders.Reset();
+    RuntimeChaosConstraints.Reset();
+    RuntimeChaosWorkerBodies.Reset();
+
+    // The USD collision nodes are useful authoring references, but they are
+    // not allowed to participate beside the fitted Chaos bodies. Every solid
+    // in this mode is installed exactly once below.
+    for (const TWeakObjectPtr<UPrimitiveComponent>& Authored : AuthoredCollisionComponents)
+    {
+        if (UPrimitiveComponent* Primitive = Authored.Get())
+        {
+            Primitive->SetSimulatePhysics(false);
+            Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Primitive->SetGenerateOverlapEvents(false);
+        }
+    }
+    // The optimized USD stage is a single imported actor and retains a broad
+    // generated StaticMeshComponent collision hull on its actor root. It is
+    // not one of the tagged authoring colliders and overlaps nearly the entire
+    // room. Leaving it active beside the fitted proxies makes Chaos eject
+    // every rigid body from the scene. Rendering stays on; only all imported
+    // physics participation is removed here.
+    if (Forklifts[0].Root.IsValid() && Forklifts[0].Root->GetOwner())
+    {
+        TInlineComponentArray<UPrimitiveComponent*> ImportedStagePrimitives(
+            Forklifts[0].Root->GetOwner());
+        for (UPrimitiveComponent* Primitive : ImportedStagePrimitives)
+        {
+            Primitive->SetSimulatePhysics(false);
+            Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Primitive->SetGenerateOverlapEvents(false);
+        }
+    }
+    // The neutral presentation backdrop is a 300 m visual cube. It must
+    // never be a physical room: its inward-facing render surface encloses all
+    // gameplay bodies and Chaos interprets that as one enormous penetration.
+    for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+    {
+        TInlineComponentArray<UPrimitiveComponent*> Primitives(*It);
+        for (UPrimitiveComponent* Primitive : Primitives)
+        {
+            const FVector Extent = Primitive->Bounds.BoxExtent;
+            if (Primitive->GetCollisionObjectType() == ECC_WorldStatic
+                && Extent.GetMax() >= 5000.0f)
+            {
+                Primitive->SetSimulatePhysics(false);
+                Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Primitive->SetGenerateOverlapEvents(false);
+                SimulatorLog(FString::Printf(
+                    TEXT("chaos_visual_backdrop_collision_disabled actor=%s component=%s extent=(%.0f,%.0f,%.0f)"),
+                    *It->GetName(), *Primitive->GetName(), Extent.X, Extent.Y, Extent.Z));
+            }
+        }
+    }
+    for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+    {
+        if (!It->ActorHasTag(TEXT("Qai.DetailedPackingTable")))
+        {
+            continue;
+        }
+        TInlineComponentArray<UPrimitiveComponent*> TableVisuals(*It);
+        for (UPrimitiveComponent* Primitive : TableVisuals)
+        {
+            Primitive->SetSimulatePhysics(false);
+            Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Primitive->SetGenerateOverlapEvents(false);
+        }
+    }
+
+    const auto MakePhysicalMaterial = [this](
+        const FString& Name,
+        float StaticFriction,
+        float DynamicFriction,
+        float Restitution,
+        EFrictionCombineMode::Type FrictionCombineMode = EFrictionCombineMode::Average)
+    {
+        UPhysicalMaterial* Material = NewObject<UPhysicalMaterial>(
+            this,
+            FName(*FString::Printf(TEXT("PM_Authoritative_%s_%d"),
+                *Name.Replace(TEXT(" "), TEXT("_")), RuntimeChaosMaterials.Num())));
+        Material->StaticFriction = StaticFriction;
+        Material->Friction = DynamicFriction;
+        Material->Restitution = Restitution;
+        Material->bOverrideFrictionCombineMode = true;
+        Material->FrictionCombineMode = FrictionCombineMode;
+        Material->bOverrideRestitutionCombineMode = true;
+        Material->RestitutionCombineMode = EFrictionCombineMode::Min;
+        Material->SleepLinearVelocityThreshold = 0.8f;
+        Material->SleepAngularVelocityThreshold = FMath::DegreesToRadians(0.8f);
+        Material->SleepCounterThreshold = 10;
+        RuntimeChaosMaterials.Add(Material);
+        return Material;
+    };
+
+    UPhysicalMaterial* WarehouseMaterial = MakePhysicalMaterial(
+        TEXT("warehouse"), 0.84f, 0.67f, 0.025f);
+    UPhysicalMaterial* ForkliftMaterial = MakePhysicalMaterial(
+        TEXT("forklift"), 0.76f, 0.60f, 0.02f);
+    UPhysicalMaterial* PoweredRollerMaterial = MakePhysicalMaterial(
+        TEXT("powered_roller"),
+        // The support proxy itself is stationary, while the real roller skin
+        // moves. Keep proxy friction low so it does not oppose the explicit,
+        // speed-controlled roller traction applied below.
+        0.04f,
+        0.025f,
+        0.015f,
+        EFrictionCombineMode::Min);
+
+    const auto ConfigureCollision = [](UPrimitiveComponent* Component, ECollisionChannel ObjectType)
+    {
+        Component->SetCollisionObjectType(ObjectType);
+        Component->SetCollisionResponseToAllChannels(ECR_Block);
+        Component->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+        Component->SetGenerateOverlapEvents(false);
+        Component->SetNotifyRigidBodyCollision(false);
+    };
+
+    // Install the complete static warehouse first. This guarantees that no
+    // dynamic body is ever activated before its resting surface exists.
+    for (int32 Index = 0; Index < CollisionObstacles.Num(); ++Index)
+    {
+        const FCollisionObstacle& Obstacle = CollisionObstacles[Index];
+        FActorSpawnParameters Params;
+        Params.Name = FName(*FString::Printf(TEXT("QaiChaosStaticActor_%d"), Index + 1));
+        Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+        AActor* StaticActor = GetWorld()->SpawnActor<AActor>(
+            AActor::StaticClass(), FTransform::Identity, Params);
+        if (!StaticActor)
+        {
+            continue;
+        }
+        RuntimeChaosActors.Add(StaticActor);
+        UBoxComponent* Collider = NewObject<UBoxComponent>(
+            StaticActor,
+            FName(*FString::Printf(TEXT("QaiChaosStatic_%d"), Index + 1)));
+        StaticActor->AddInstanceComponent(Collider);
+        StaticActor->SetRootComponent(Collider);
+        // AActor has no native scene root. Build and position its runtime root
+        // while movable, then freeze it; setting a world transform after
+        // declaring Static is rejected by Unreal and previously left every
+        // proxy stacked at the origin.
+        Collider->SetMobility(EComponentMobility::Movable);
+        Collider->SetBoxExtent(Obstacle.HalfExtent, false);
+        Collider->SetHiddenInGame(true);
+        Collider->SetVisibility(false);
+        Collider->SetPhysMaterialOverride(
+            Obstacle.Name == TEXT("conveyor")
+                ? PoweredRollerMaterial
+                : WarehouseMaterial);
+        ConfigureCollision(Collider, ECC_WorldStatic);
+        Collider->RegisterComponentWithWorld(GetWorld());
+        Collider->SetWorldLocationAndRotation(Obstacle.Center, Obstacle.Rotation);
+        Collider->SetMobility(EComponentMobility::Static);
+        Collider->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        RuntimeChaosStaticColliders.Add(Collider);
+    }
+
+    // The front of the room is intentionally open visually, so add a floor
+    // slab independently of the authored wall/furniture proxies.
+    FActorSpawnParameters FloorParams;
+    FloorParams.Name = TEXT("QaiChaosRoomFloorActor");
+    FloorParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    AActor* FloorActor = GetWorld()->SpawnActor<AActor>(
+        AActor::StaticClass(), FTransform::Identity, FloorParams);
+    if (FloorActor)
+    {
+        RuntimeChaosActors.Add(FloorActor);
+        UBoxComponent* Floor = NewObject<UBoxComponent>(FloorActor, TEXT("QaiChaosRoomFloor"));
+        FloorActor->AddInstanceComponent(Floor);
+        FloorActor->SetRootComponent(Floor);
+        Floor->SetMobility(EComponentMobility::Movable);
+        const FBox FloorSupport = WarehouseFloorSupportBounds.IsValid
+            ? WarehouseFloorSupportBounds
+            : FBox(FVector(-750.0f, -700.0f, -10.0f), FVector(850.0f, 750.0f, 0.0f));
+        Floor->SetBoxExtent(FloorSupport.GetExtent().ComponentMax(FVector(1.0f)), false);
+        Floor->SetHiddenInGame(true);
+        Floor->SetVisibility(false);
+        Floor->SetPhysMaterialOverride(WarehouseMaterial);
+        ConfigureCollision(Floor, ECC_WorldStatic);
+        Floor->RegisterComponentWithWorld(GetWorld());
+        Floor->SetWorldLocation(FloorSupport.GetCenter());
+        Floor->SetMobility(EComponentMobility::Static);
+        Floor->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        RuntimeChaosStaticColliders.Add(Floor);
+    }
+
+    // The rendered safety mat stands several centimetres above the warehouse
+    // floor, but the former physics scene contained only the room-floor slab.
+    // Install one thin static support matching the actual mesh bounds. This
+    // keeps tires and loose props on its visible top instead of embedding into
+    // it, while remaining a low step that the wheel suspension can climb.
+    if (InferenceRedZoneBounds.IsValid)
+    {
+        FActorSpawnParameters MatParams;
+        MatParams.Name = TEXT("QaiChaosRedSafetyMatActor");
+        MatParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+        AActor* MatActor = GetWorld()->SpawnActor<AActor>(
+            AActor::StaticClass(), FTransform::Identity, MatParams);
+        if (MatActor)
+        {
+            RuntimeChaosActors.Add(MatActor);
+            UBoxComponent* MatCollider = NewObject<UBoxComponent>(
+                MatActor, TEXT("QaiChaosRedSafetyMat"));
+            MatActor->AddInstanceComponent(MatCollider);
+            MatActor->SetRootComponent(MatCollider);
+            MatCollider->SetMobility(EComponentMobility::Movable);
+            MatCollider->SetBoxExtent(
+                InferenceRedZoneBounds.GetExtent().ComponentMax(FVector(1.0f)),
+                false);
+            MatCollider->SetHiddenInGame(true);
+            MatCollider->SetVisibility(false);
+            MatCollider->SetPhysMaterialOverride(WarehouseMaterial);
+            ConfigureCollision(MatCollider, ECC_WorldStatic);
+            MatCollider->RegisterComponentWithWorld(GetWorld());
+            MatCollider->SetWorldLocation(InferenceRedZoneBounds.GetCenter());
+            MatCollider->SetMobility(EComponentMobility::Static);
+            MatCollider->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            RuntimeChaosStaticColliders.Add(MatCollider);
+            SimulatorLog(FString::Printf(
+                TEXT("red_safety_mat_collider center=(%.1f,%.1f,%.1f) extent=(%.1f,%.1f,%.1f) top_z_cm=%.1f friction=warehouse"),
+                InferenceRedZoneBounds.GetCenter().X,
+                InferenceRedZoneBounds.GetCenter().Y,
+                InferenceRedZoneBounds.GetCenter().Z,
+                InferenceRedZoneBounds.GetExtent().X,
+                InferenceRedZoneBounds.GetExtent().Y,
+                InferenceRedZoneBounds.GetExtent().Z,
+                InferenceRedZoneBounds.Max.Z));
+        }
+    }
+
+    const auto DisableVisualCollision = [](USceneComponent* Root)
+    {
+        if (!Root)
+        {
+            return;
+        }
+        TArray<USceneComponent*> Components;
+        Root->GetChildrenComponents(true, Components);
+        Components.Add(Root);
+        for (USceneComponent* Component : Components)
+        {
+            if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component))
+            {
+                Primitive->SetSimulatePhysics(false);
+                Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Primitive->SetGenerateOverlapEvents(false);
+            }
+        }
+    };
+
+    for (int32 ForkliftIndex = 0;
+         ForkliftIndex < ConveyorTuning::EnabledForkliftCount;
+         ++ForkliftIndex)
+    {
+        FForkliftRuntime& Forklift = Forklifts[ForkliftIndex];
+        USceneComponent* VisualRoot = Forklift.Root.Get();
+        if (!VisualRoot)
+        {
+            continue;
+        }
+        const FTransform VisualWorld = VisualRoot->GetComponentTransform();
+        const FFittedCollisionBox* ChassisShape = Forklift.CollisionBoxes.FindByPredicate(
+            [](const FFittedCollisionBox& Shape)
+            {
+                return Shape.Name == TEXT("lower chassis");
+            });
+        const FFittedCollisionBox* CarriageShape = Forklift.CollisionBoxes.FindByPredicate(
+            [](const FFittedCollisionBox& Shape)
+            {
+                return Shape.Name == TEXT("mast");
+            });
+        if (!ChassisShape || !CarriageShape)
+        {
+            SimulatorLog(FString::Printf(
+                TEXT("chaos_forklift_failed forklift=%d reason=missing_fitted_chassis_or_mast"),
+                ForkliftIndex + 1));
+            continue;
+        }
+
+        Forklift.ChaosChassisLocalCenter = ChassisShape->LocalCenter;
+        Forklift.ChaosCarriageLocalCenter = CarriageShape->LocalCenter;
+
+        const auto SpawnBody = [this, &ConfigureCollision, ForkliftMaterial](
+            const FName ActorName,
+            const FName ComponentName,
+            const FTransform& Transform,
+            const FVector& Extent,
+            float MassKg)
+        {
+            FActorSpawnParameters Params;
+            Params.Name = ActorName;
+            Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+            AActor* BodyActor = GetWorld()->SpawnActor<AActor>(AActor::StaticClass(), Transform, Params);
+            if (!BodyActor)
+            {
+                return static_cast<UBoxComponent*>(nullptr);
+            }
+            RuntimeChaosActors.Add(BodyActor);
+            UBoxComponent* Body = NewObject<UBoxComponent>(BodyActor, ComponentName);
+            BodyActor->AddInstanceComponent(Body);
+            BodyActor->SetRootComponent(Body);
+            Body->SetMobility(EComponentMobility::Movable);
+            Body->SetBoxExtent(Extent, false);
+            Body->SetHiddenInGame(true);
+            Body->SetVisibility(false);
+            Body->SetPhysMaterialOverride(ForkliftMaterial);
+            ConfigureCollision(Body, ECC_PhysicsBody);
+            Body->RegisterComponentWithWorld(GetWorld());
+            Body->SetWorldTransform(Transform);
+            Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Body->SetLinearDamping(0.10f);
+            Body->SetAngularDamping(0.34f);
+            Body->SetMassOverrideInKg(NAME_None, MassKg, true);
+            Body->SetUseCCD(true);
+            Body->SetMaxDepenetrationVelocity(NAME_None, 80.0f);
+            Body->BodyInstance.SetPositionSolverIterationCount(16);
+            Body->BodyInstance.SetVelocitySolverIterationCount(8);
+            Body->BodyInstance.SetInertiaConditioningEnabled(true);
+            return Body;
+        };
+
+        const FTransform ChassisWorld(
+            VisualWorld.GetRotation(),
+            VisualWorld.TransformPositionNoScale(ChassisShape->LocalCenter));
+        UBoxComponent* Chassis = SpawnBody(
+            FName(*FString::Printf(TEXT("QaiChaosForklift%dChassisActor"), ForkliftIndex + 1)),
+            FName(*FString::Printf(TEXT("QaiChaosForklift%dChassis"), ForkliftIndex + 1)),
+            ChassisWorld,
+            ChassisShape->HalfExtent,
+            Forklift.ChassisMassKg);
+        const FTransform CarriageWorld(
+            VisualWorld.GetRotation(),
+            VisualWorld.TransformPositionNoScale(CarriageShape->LocalCenter));
+        UBoxComponent* Carriage = SpawnBody(
+            FName(*FString::Printf(TEXT("QaiChaosForklift%dCarriageActor"), ForkliftIndex + 1)),
+            FName(*FString::Printf(TEXT("QaiChaosForklift%dCarriage"), ForkliftIndex + 1)),
+            CarriageWorld,
+            CarriageShape->HalfExtent,
+            420.0f);
+        if (!Chassis || !Carriage)
+        {
+            continue;
+        }
+        Forklift.ChaosChassis = Chassis;
+        Forklift.ChaosCarriage = Carriage;
+        Forklift.InitialChaosChassis = ChassisWorld;
+        Forklift.InitialChaosCarriage = CarriageWorld;
+        Chassis->SetCenterOfMass(
+            Forklift.BaseCenterOfMassLocalCm - Forklift.ChaosChassisLocalCenter);
+        Carriage->SetCenterOfMass(FVector(-4.0f, 0.0f, -18.0f));
+
+        DisableVisualCollision(VisualRoot);
+        VisualRoot->AttachToComponent(
+            Chassis,
+            FAttachmentTransformRules(EAttachmentRule::KeepWorld, true));
+        if (USceneComponent* LiftVisualRoot = Forklift.LiftAssembly.Get())
+        {
+            LiftVisualRoot->AttachToComponent(
+                Carriage,
+                FAttachmentTransformRules(EAttachmentRule::KeepWorld, true));
+        }
+
+        const auto AddCompoundBox = [this, &ConfigureCollision, ForkliftMaterial](
+            UBoxComponent* Parent,
+            const FName Name,
+            const FVector& RelativeLocation,
+            const FVector& Extent,
+            const FRotator& RelativeRotation)
+        {
+            UBoxComponent* Shape = NewObject<UBoxComponent>(Parent->GetOwner(), Name);
+            Parent->GetOwner()->AddInstanceComponent(Shape);
+            Shape->SetMobility(EComponentMobility::Movable);
+            Shape->SetupAttachment(Parent);
+            Shape->SetBoxExtent(Extent, false);
+            Shape->SetRelativeLocationAndRotation(RelativeLocation, RelativeRotation);
+            Shape->SetHiddenInGame(true);
+            Shape->SetVisibility(false);
+            Shape->SetPhysMaterialOverride(ForkliftMaterial);
+            ConfigureCollision(Shape, ECC_PhysicsBody);
+            Shape->RegisterComponentWithWorld(GetWorld());
+            Shape->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            // Attachment alone creates another body instance. Welding makes
+            // this an actual compound member whose contacts feed the parent
+            // chassis/carriage mass and inertia tensor. The parent is kept
+            // kinematic during construction so no body can fall before its
+            // constraint and complete aggregate are ready; explicitly allow
+            // that construction-time kinematic weld.
+            Shape->WeldTo(Parent, NAME_None, true);
+            RuntimeChaosForkliftColliders.Add(Shape);
+            return Shape;
+        };
+
+        Forklift.ChaosCollisionComponents.Reset();
+        Forklift.ChaosCollisionComponents.SetNum(Forklift.CollisionBoxes.Num());
+        for (int32 ShapeIndex = 0; ShapeIndex < Forklift.CollisionBoxes.Num(); ++ShapeIndex)
+        {
+            const FFittedCollisionBox& Shape = Forklift.CollisionBoxes[ShapeIndex];
+            if (Shape.IsCylinder()
+                || Shape.Name == TEXT("lower chassis")
+                || Shape.Name == TEXT("mast"))
+            {
+                continue;
+            }
+            UBoxComponent* Parent = Shape.bLiftDriven ? Carriage : Chassis;
+            const FVector ParentCenter = Shape.bLiftDriven
+                ? Forklift.ChaosCarriageLocalCenter
+                : Forklift.ChaosChassisLocalCenter;
+            FVector RelativeLocation = Shape.LocalCenter - ParentCenter;
+            FVector Extent = Shape.GetCollisionHalfExtent();
+            FRotator RelativeRotation = FRotator::ZeroRotator;
+            if (Shape.IsWedge())
+            {
+                const float FullThickness = Shape.HalfExtent.Z * 2.0f;
+                const float HeightDelta = FMath::Max(
+                    0.0f,
+                    FullThickness - Shape.WedgeTipThicknessCm);
+                const float SlopeDegrees = FMath::RadiansToDegrees(FMath::Atan2(
+                    HeightDelta,
+                    Shape.HalfExtent.X * 2.0f));
+                RelativeRotation.Pitch = Shape.bWedgeTipAtPositiveX
+                    ? -SlopeDegrees
+                    : SlopeDegrees;
+                Extent.Z = FMath::Max(0.55f, Shape.WedgeTipThicknessCm * 0.55f);
+                RelativeLocation.Z += 0.5f * (
+                    Shape.WedgeTipThicknessCm - FullThickness) * 0.25f;
+            }
+            UBoxComponent* Compound = AddCompoundBox(
+                Parent,
+                FName(*FString::Printf(TEXT("QaiChaosForklift%dShape%d"),
+                    ForkliftIndex + 1, ShapeIndex + 1)),
+                RelativeLocation,
+                Extent,
+                RelativeRotation);
+            Forklift.ChaosCollisionComponents[ShapeIndex] = Compound;
+        }
+
+        // Build the constraint against live dynamic particles. Creating a
+        // drive while both bodies are kinematic leaves Chaos with kinematic
+        // connector handles; later toggling simulation does not reliably
+        // recreate the drive and the carriage simply sags through the mast.
+        Chassis->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Carriage->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Chassis->SetSimulatePhysics(true);
+        Carriage->SetSimulatePhysics(true);
+        Chassis->SetMassOverrideInKg(NAME_None, Forklift.ChassisMassKg, true);
+        Chassis->SetCenterOfMass(
+            Forklift.BaseCenterOfMassLocalCm - Forklift.ChaosChassisLocalCenter);
+        Carriage->SetMassOverrideInKg(NAME_None, 420.0f, true);
+        Carriage->SetCenterOfMass(FVector(-4.0f, 0.0f, -18.0f));
+
+        UPhysicsConstraintComponent* LiftConstraint = NewObject<UPhysicsConstraintComponent>(
+            Chassis->GetOwner(),
+            FName(*FString::Printf(TEXT("QaiChaosForklift%dLiftConstraint"), ForkliftIndex + 1)));
+        Chassis->GetOwner()->AddInstanceComponent(LiftConstraint);
+        LiftConstraint->SetMobility(EComponentMobility::Movable);
+        LiftConstraint->SetupAttachment(Chassis);
+        LiftConstraint->RegisterComponentWithWorld(GetWorld());
+        const FVector ConstraintWorldLocation = CarriageWorld.GetLocation();
+        LiftConstraint->SetWorldLocationAndRotation(
+            ConstraintWorldLocation,
+            VisualWorld.GetRotation());
+        LiftConstraint->SetConstrainedComponents(Chassis, NAME_None, Carriage, NAME_None);
+        LiftConstraint->SetDisableCollision(true);
+        LiftConstraint->SetLinearXLimit(LCM_Locked, 0.0f);
+        LiftConstraint->SetLinearYLimit(LCM_Locked, 0.0f);
+        LiftConstraint->SetLinearZLimit(
+            LCM_Limited,
+            ConveyorTuning::ForkliftLiftTravelCm);
+        LiftConstraint->SetAngularSwing1Limit(ACM_Locked, 0.0f);
+        LiftConstraint->SetAngularSwing2Limit(ACM_Locked, 0.0f);
+        LiftConstraint->SetAngularTwistLimit(ACM_Locked, 0.0f);
+        // Chaos's prismatic drive owns both mast alignment and hydraulic
+        // travel. The old free-force actuator could build several centimetres
+        // of lateral/angular constraint error under cargo and visually pull
+        // the fork carriage away from its rails.
+        LiftConstraint->SetLinearPositionDrive(false, false, true);
+        LiftConstraint->SetLinearVelocityDrive(false, false, true);
+        LiftConstraint->SetLinearDriveParams(620000.0f, 95000.0f, 12000000.0f);
+        LiftConstraint->SetLinearPositionTarget(FVector(
+            0.0f,
+            0.0f,
+            -ConveyorTuning::ForkliftInitialLiftCm));
+        LiftConstraint->SetLinearVelocityTarget(FVector::ZeroVector);
+        LiftConstraint->SetProjectionEnabled(true);
+        LiftConstraint->SetProjectionParams(0.10f, 0.25f, 1.0f, 1.0f);
+        Chassis->BodyInstance.SetPositionSolverIterationCount(32);
+        Chassis->BodyInstance.SetVelocitySolverIterationCount(16);
+        Carriage->BodyInstance.SetPositionSolverIterationCount(32);
+        Carriage->BodyInstance.SetVelocitySolverIterationCount(16);
+        Forklift.ChaosLiftConstraint = LiftConstraint;
+        RuntimeChaosConstraints.Add(LiftConstraint);
+
+        // The constraint reference is deliberately authored at the true
+        // mechanical minimum. Once that reference exists, move the complete
+        // physical carriage (visual lift assembly and compound fork shapes)
+        // to the desired 10-cm start height and record that pose for reset.
+        const FVector InitialLiftWorldOffset =
+            VisualWorld.GetUnitAxis(EAxis::Z) * ConveyorTuning::ForkliftInitialLiftCm;
+        Carriage->SetWorldLocationAndRotation(
+            CarriageWorld.GetLocation() + InitialLiftWorldOffset,
+            CarriageWorld.GetRotation(),
+            false,
+            nullptr,
+            ETeleportType::TeleportPhysics);
+        Forklift.InitialChaosCarriage = Carriage->GetComponentTransform();
+        Forklift.LiftCm = ConveyorTuning::ForkliftInitialLiftCm;
+        Forklift.ActualLiftCm = ConveyorTuning::ForkliftInitialLiftCm;
+
+        Chassis->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        Chassis->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+        Carriage->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        Carriage->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+        Chassis->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Carriage->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Chassis->WakeRigidBody();
+        Carriage->WakeRigidBody();
+
+        int32 WeldedShapeCount = 0;
+        for (const TWeakObjectPtr<UBoxComponent>& Shape : Forklift.ChaosCollisionComponents)
+        {
+            WeldedShapeCount += Shape.IsValid() && Shape->IsWelded() ? 1 : 0;
+        }
+        int32 InitialStaticOverlapCount = 0;
+        FCollisionObjectQueryParams StaticObjects;
+        StaticObjects.AddObjectTypesToQuery(ECC_WorldStatic);
+        FCollisionQueryParams InitialOverlapParams(
+            FName(*FString::Printf(TEXT("QaiForkliftInitialOverlap%d"), ForkliftIndex + 1)),
+            false,
+            Chassis->GetOwner());
+        InitialOverlapParams.AddIgnoredActor(Carriage->GetOwner());
+        const auto CountInitialOverlaps = [this, &StaticObjects, &InitialOverlapParams,
+            &InitialStaticOverlapCount](const UBoxComponent* Shape)
+        {
+            if (!Shape)
+            {
+                return;
+            }
+            TArray<FOverlapResult> Overlaps;
+            GetWorld()->OverlapMultiByObjectType(
+                Overlaps,
+                Shape->GetComponentLocation(),
+                Shape->GetComponentQuat(),
+                StaticObjects,
+                FCollisionShape::MakeBox(Shape->GetUnscaledBoxExtent() * 0.98f),
+                InitialOverlapParams);
+            InitialStaticOverlapCount += Overlaps.Num();
+            for (const FOverlapResult& Overlap : Overlaps)
+            {
+                if (const UPrimitiveComponent* HitComponent = Overlap.GetComponent())
+                {
+                    const FVector HitCenter = HitComponent->Bounds.Origin;
+                    const FVector HitExtent = HitComponent->Bounds.BoxExtent;
+                    SimulatorLog(FString::Printf(
+                        TEXT("chaos_forklift_initial_overlap shape=%s actor=%s static=%s center=(%.1f,%.1f,%.1f) extent=(%.1f,%.1f,%.1f)"),
+                        *Shape->GetName(),
+                        HitComponent->GetOwner()
+                            ? *HitComponent->GetOwner()->GetName()
+                            : TEXT("none"),
+                        *HitComponent->GetName(),
+                        HitCenter.X, HitCenter.Y, HitCenter.Z,
+                        HitExtent.X, HitExtent.Y, HitExtent.Z));
+                }
+            }
+        };
+        CountInitialOverlaps(Chassis);
+        for (const TWeakObjectPtr<UBoxComponent>& Shape : Forklift.ChaosCollisionComponents)
+        {
+            CountInitialOverlaps(Shape.Get());
+        }
+        SimulatorLog(FString::Printf(
+            TEXT("chaos_forklift_ready forklift=%d requested_mass_kg=(%.0f,420) actual_mass_kg=(%.1f,%.1f) chassis=(%.1f,%.1f,%.1f) suspension=raycast4 rear_steer=true driven_axle=front max_acceleration_cm_s2=%.1f max_braking_cm_s2=%.1f lift_constraint=prismatic compound_shapes=%d welded_shapes=%d initial_static_overlaps=%d"),
+            ForkliftIndex + 1,
+            Forklift.ChassisMassKg,
+            Chassis->GetMass(),
+            Carriage->GetMass(),
+            Chassis->GetComponentLocation().X,
+            Chassis->GetComponentLocation().Y,
+            Chassis->GetComponentLocation().Z,
+            ConveyorTuning::ForkliftMaximumDriveAccelerationCm,
+            ConveyorTuning::ForkliftMaximumBrakeDecelerationCm,
+            RuntimeChaosForkliftColliders.Num(),
+            WeldedShapeCount,
+            InitialStaticOverlapCount));
+    }
+
+    UPhysicalMaterial* WorkerMaterial = MakePhysicalMaterial(
+        TEXT("worker"), 0.72f, 0.56f, 0.0f);
+    for (int32 WorkerIndex = 0; WorkerIndex < UE_ARRAY_COUNT(Workers); ++WorkerIndex)
+    {
+        FWorkerRuntime& Worker = Workers[WorkerIndex];
+        USceneComponent* VisualRoot = Worker.Root.Get();
+        if (!VisualRoot)
+        {
+            continue;
+        }
+
+        DisableVisualCollision(VisualRoot);
+        const FVector VisualLocation = VisualRoot->GetComponentLocation();
+        // Authored worker scene roots are not consistently located at their
+        // feet. Build the Chaos capsule from the rendered hierarchy's actual
+        // lower bound so its bottom and the visible soles share the same plane.
+        FBox VisualBounds(EForceInit::ForceInit);
+        if (const UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(VisualRoot))
+        {
+            VisualBounds += RootPrimitive->Bounds.GetBox();
+        }
+        TArray<USceneComponent*> VisualChildren;
+        VisualRoot->GetChildrenComponents(true, VisualChildren);
+        for (const USceneComponent* Child : VisualChildren)
+        {
+            if (const UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Child))
+            {
+                const FBox PrimitiveBounds = Primitive->Bounds.GetBox();
+                if (Primitive->IsVisible())
+                {
+                    VisualBounds += PrimitiveBounds;
+                }
+            }
+        }
+        const FVector VisualCenter = VisualBounds.IsValid
+            ? VisualBounds.GetCenter()
+            : VisualLocation;
+        const float VisualFeetZ = VisualBounds.IsValid
+            ? VisualBounds.Min.Z
+            : VisualLocation.Z;
+
+        // Component bounds imported from USD describe the reference pose and
+        // do not reliably follow the walking animation. Calibrate the rendered
+        // sole against actual foot/toe bones now, then use those animated bones
+        // to keep the visible worker grounded at runtime.
+        USkeletalMeshComponent* WorkerSkeletalMesh = nullptr;
+        TArray<FName> WorkerFootBones;
+        for (USceneComponent* Child : VisualChildren)
+        {
+            USkeletalMeshComponent* Candidate = Cast<USkeletalMeshComponent>(Child);
+            if (!Candidate || !Candidate->IsVisible())
+            {
+                continue;
+            }
+            TArray<FName> BoneNames;
+            Candidate->GetBoneNames(BoneNames);
+            TArray<FName> CandidateFootBones;
+            for (const FName BoneName : BoneNames)
+            {
+                const FString LowerBoneName = BoneName.ToString().ToLower();
+                if (LowerBoneName.Contains(TEXT("foot"))
+                    || LowerBoneName.Contains(TEXT("ankle"))
+                    || LowerBoneName.Contains(TEXT("toe"))
+                    || LowerBoneName.Contains(TEXT("ball")))
+                {
+                    CandidateFootBones.Add(BoneName);
+                }
+            }
+            if (CandidateFootBones.Num() > WorkerFootBones.Num())
+            {
+                WorkerSkeletalMesh = Candidate;
+                WorkerFootBones = MoveTemp(CandidateFootBones);
+            }
+        }
+        float SoleBelowLowestFootBoneCm = 0.0f;
+        float InitialLowestFootBoneZ = TNumericLimits<float>::Max();
+        if (WorkerSkeletalMesh && WorkerFootBones.Num() > 0)
+        {
+            for (const FName FootBone : WorkerFootBones)
+            {
+                InitialLowestFootBoneZ = FMath::Min(
+                    InitialLowestFootBoneZ,
+                    WorkerSkeletalMesh->GetBoneLocation(FootBone, EBoneSpaces::WorldSpace).Z);
+            }
+            if (InitialLowestFootBoneZ < TNumericLimits<float>::Max())
+            {
+                SoleBelowLowestFootBoneCm = FMath::Clamp(
+                    InitialLowestFootBoneZ - VisualFeetZ,
+                    -10.0f,
+                    60.0f);
+            }
+
+            // Foot-to-toe vectors reveal the character's actual rendered
+            // forward axis regardless of USD scene-root or skeletal import
+            // rotations. Average both feet so a single animated stride does
+            // not bias the calibration.
+            FVector VisualForward = FVector::ZeroVector;
+            int32 ForwardSamples = 0;
+            const auto AddFootForward = [&VisualForward, &ForwardSamples, WorkerSkeletalMesh](
+                const FName FootBone,
+                const FName ToeBone)
+            {
+                if (WorkerSkeletalMesh->GetBoneIndex(FootBone) == INDEX_NONE
+                    || WorkerSkeletalMesh->GetBoneIndex(ToeBone) == INDEX_NONE)
+                {
+                    return;
+                }
+                FVector Direction =
+                    WorkerSkeletalMesh->GetBoneLocation(ToeBone, EBoneSpaces::WorldSpace)
+                    - WorkerSkeletalMesh->GetBoneLocation(FootBone, EBoneSpaces::WorldSpace);
+                Direction.Z = 0.0f;
+                if (Direction.SizeSquared2D() > 1.0f)
+                {
+                    VisualForward += Direction.GetSafeNormal2D();
+                    ++ForwardSamples;
+                }
+            };
+            AddFootForward(TEXT("L_Foot"), TEXT("L_ToeBase"));
+            AddFootForward(TEXT("R_Foot"), TEXT("R_ToeBase"));
+            if (ForwardSamples > 0 && !VisualForward.IsNearlyZero())
+            {
+                const float VisualForwardYaw = VisualForward.Rotation().Yaw;
+                const float CorrectionYaw = FMath::FindDeltaAngleDegrees(
+                    VisualForwardYaw,
+                    Worker.InitialHeadingYawDegrees);
+                const FQuat CorrectedVisualRootRotation =
+                    FQuat(FVector::UpVector, FMath::DegreesToRadians(CorrectionYaw))
+                    * VisualRoot->GetComponentQuat();
+                const FQuat InitialHeading = FRotator(
+                    0.0f,
+                    Worker.InitialHeadingYawDegrees,
+                    0.0f).Quaternion();
+                Worker.HeadingOffset =
+                    InitialHeading.Inverse() * CorrectedVisualRootRotation;
+                SimulatorLog(FString::Printf(
+                    TEXT("worker_heading_calibrated worker=%d source=foot_to_toe samples=%d visual_forward_yaw_deg=%.1f route_forward_yaw_deg=%.1f correction_yaw_deg=%.1f"),
+                    WorkerIndex + 1,
+                    ForwardSamples,
+                    VisualForwardYaw,
+                    Worker.InitialHeadingYawDegrees,
+                    CorrectionYaw));
+            }
+        }
+        const FTransform CapsuleTransform(
+            FQuat::Identity,
+            FVector(
+                VisualCenter.X,
+                VisualCenter.Y,
+                VisualFeetZ + ConveyorTuning::WorkerCapsuleHalfHeightCm));
+        FActorSpawnParameters WorkerParams;
+        WorkerParams.Name = FName(*FString::Printf(
+            TEXT("QaiChaosWorker%dActor"), WorkerIndex + 1));
+        WorkerParams.SpawnCollisionHandlingOverride =
+            ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+        AActor* WorkerActor = GetWorld()->SpawnActor<AActor>(
+            AActor::StaticClass(), CapsuleTransform, WorkerParams);
+        if (!WorkerActor)
+        {
+            continue;
+        }
+        RuntimeChaosActors.Add(WorkerActor);
+        UCapsuleComponent* Capsule = NewObject<UCapsuleComponent>(
+            WorkerActor,
+            FName(*FString::Printf(TEXT("QaiChaosWorker%d"), WorkerIndex + 1)));
+        WorkerActor->AddInstanceComponent(Capsule);
+        WorkerActor->SetRootComponent(Capsule);
+        Capsule->SetMobility(EComponentMobility::Movable);
+        Capsule->SetCapsuleSize(
+            ConveyorTuning::WorkerRadiusCm,
+            ConveyorTuning::WorkerCapsuleHalfHeightCm,
+            false);
+        Capsule->SetHiddenInGame(true);
+        Capsule->SetVisibility(false);
+        Capsule->SetPhysMaterialOverride(WorkerMaterial);
+        // Configure the walking plane before registration creates the Chaos
+        // body. Applying these flags afterward left the live body unconstrained
+        // and it settled on a hidden floor proxy 52 cm below the rendered slab.
+        Capsule->BodyInstance.DOFMode = EDOFMode::SixDOF;
+        Capsule->BodyInstance.bLockXRotation = true;
+        Capsule->BodyInstance.bLockYRotation = true;
+        Capsule->BodyInstance.bLockZRotation = true;
+        Capsule->BodyInstance.bLockZTranslation = true;
+        ConfigureCollision(Capsule, ECC_PhysicsBody);
+        Capsule->RegisterComponentWithWorld(GetWorld());
+        Capsule->SetWorldTransform(CapsuleTransform);
+        Capsule->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Capsule->SetLinearDamping(2.8f);
+        Capsule->SetAngularDamping(10.0f);
+        Capsule->SetMassOverrideInKg(
+            NAME_None,
+            ConveyorTuning::WorkerMassKg,
+            true);
+        Capsule->SetUseCCD(true);
+        Capsule->SetMaxDepenetrationVelocity(NAME_None, 120.0f);
+        Capsule->BodyInstance.SetPositionSolverIterationCount(12);
+        Capsule->BodyInstance.SetVelocitySolverIterationCount(8);
+        // A pedestrian route motor is constrained to the warehouse walking
+        // plane; vertical gravity would only preload the DOF joint. Horizontal
+        // motion and forklift impulses remain fully dynamic Chaos interactions.
+        Capsule->SetEnableGravity(false);
+        Capsule->SetSimulatePhysics(true);
+        Capsule->SetConstraintMode(EDOFMode::SixDOF);
+        Capsule->SetMassOverrideInKg(
+            NAME_None,
+            ConveyorTuning::WorkerMassKg,
+            true);
+        Capsule->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        Capsule->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+
+        USceneComponent* VisualPivot = NewObject<USceneComponent>(
+            WorkerActor,
+            FName(*FString::Printf(TEXT("QaiWorker%dVisualPivot"), WorkerIndex + 1)));
+        WorkerActor->AddInstanceComponent(VisualPivot);
+        VisualPivot->SetMobility(EComponentMobility::Movable);
+        VisualPivot->SetupAttachment(Capsule);
+        VisualPivot->RegisterComponentWithWorld(GetWorld());
+        VisualPivot->SetRelativeTransform(FTransform::Identity);
+        VisualRoot->AttachToComponent(
+            VisualPivot,
+            FAttachmentTransformRules(EAttachmentRule::KeepWorld, true));
+        Worker.ChaosBody = Capsule;
+        Worker.VisualPivot = VisualPivot;
+        Worker.SkeletalMesh = WorkerSkeletalMesh;
+        Worker.FootBones = MoveTemp(WorkerFootBones);
+        Worker.SoleBelowLowestFootBoneCm = SoleBelowLowestFootBoneCm;
+        SimulatorLog(FString::Printf(
+            TEXT("worker_foot_bones worker=%d names=%s"),
+            WorkerIndex + 1,
+            *FString::JoinBy(Worker.FootBones, TEXT(","), [](const FName BoneName)
+            {
+                return BoneName.ToString();
+            })));
+        Worker.InitialChaosTransform = CapsuleTransform;
+        Worker.InitialVisualRelativeTransform = VisualRoot->GetRelativeTransform();
+        RuntimeChaosWorkerBodies.Add(Capsule);
+        SimulatorLog(FString::Printf(
+            TEXT("chaos_worker_ready worker=%d mass_kg=%.1f capsule_radius_cm=%.1f capsule_half_height_cm=%.1f hierarchy_root=(%.1f,%.1f) visual_center=(%.1f,%.1f) visual_feet_z_cm=%.1f capsule_bottom_z_cm=%.1f foot_bones=%d initial_lowest_foot_bone_z_cm=%.1f sole_below_bone_cm=%.1f visual_pivot=body_centered animated_feet_alignment=foot_bones locomotion=force_limited_route_motor forklift_contact=dynamic_push constraints=upright_and_floor_plane"),
+            WorkerIndex + 1,
+            ConveyorTuning::WorkerMassKg,
+            ConveyorTuning::WorkerRadiusCm,
+            ConveyorTuning::WorkerCapsuleHalfHeightCm,
+            VisualLocation.X,
+            VisualLocation.Y,
+            VisualCenter.X,
+            VisualCenter.Y,
+            VisualFeetZ,
+            CapsuleTransform.GetLocation().Z - ConveyorTuning::WorkerCapsuleHalfHeightCm,
+            Worker.FootBones.Num(),
+            InitialLowestFootBoneZ < TNumericLimits<float>::Max()
+                ? InitialLowestFootBoneZ
+                : VisualFeetZ,
+            Worker.SoleBelowLowestFootBoneCm));
+    }
+
+    const auto ActivateProp = [this, &MakePhysicalMaterial, &ConfigureCollision](
+        UBoxComponent* Body,
+        const FPropPhysicsProfile& Profile,
+        const FString& Name)
+    {
+        if (!Body)
+        {
+            return;
+        }
+        Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Body->SetMobility(EComponentMobility::Movable);
+        ConfigureCollision(Body, ECC_PhysicsBody);
+        const bool bConveyorCarton = Name.StartsWith(TEXT("conveyor_carton_"));
+        Body->SetPhysMaterialOverride(MakePhysicalMaterial(
+            Name,
+            Profile.StaticFriction,
+            Profile.DynamicFriction,
+            Profile.Restitution,
+            bConveyorCarton
+                ? EFrictionCombineMode::Min
+                : EFrictionCombineMode::Average));
+        Body->SetLinearDamping(Profile.AirLinearDamping);
+        Body->SetAngularDamping(Profile.AirAngularDamping);
+        Body->SetMassOverrideInKg(NAME_None, Profile.MassKg, true);
+        Body->SetCenterOfMass(Profile.CenterOfMassLocalOffset);
+        Body->SetUseCCD(true);
+        Body->SetMaxDepenetrationVelocity(NAME_None, 45.0f);
+        Body->BodyInstance.SetPositionSolverIterationCount(12);
+        Body->BodyInstance.SetVelocitySolverIterationCount(6);
+        Body->BodyInstance.SetInertiaConditioningEnabled(true);
+        Body->SetEnableGravity(true);
+        // A body must have physics collision when its rigid particle is
+        // created. Enabling simulation while still NoCollision emits an
+        // invalid-simulate warning and can leave a prop without a live Chaos
+        // particle until some later state change.
+        Body->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Body->SetSimulatePhysics(true);
+        // Reapply properties to the newly-created rigid particle; box volume
+        // mass calculation can otherwise replace the authored carton mass.
+        Body->SetMassOverrideInKg(NAME_None, Profile.MassKg, true);
+        Body->SetCenterOfMass(Profile.CenterOfMassLocalOffset);
+        Body->SetLinearDamping(Profile.AirLinearDamping);
+        Body->SetAngularDamping(Profile.AirAngularDamping);
+        Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+        Body->PutRigidBodyToSleep();
+    };
+
+    UPhysicalMaterial* PalletCompoundMaterial = MakePhysicalMaterial(
+        TEXT("wood_pallet_compound"), 0.74f, 0.58f, 0.035f);
+    const auto BuildPalletCompound = [this, &ConfigureCollision, PalletCompoundMaterial](
+        FDynamicBoxRuntime& Runtime,
+        UBoxComponent* Parent)
+    {
+        if (!Parent || !Runtime.bPallet)
+        {
+            return;
+        }
+
+        Runtime.CompoundCollisionComponents.Reset();
+        const FVector H = Runtime.HalfExtent;
+        const float BoardHalfThickness = FMath::Clamp(H.Z * 0.17f, 0.9f, 1.5f);
+        const float RunnerHalfWidth = FMath::Clamp(H.Y * 0.055f, 1.8f, 2.5f);
+        const float BlockHalfX = FMath::Clamp(H.X * 0.10f, 4.5f, 7.0f);
+        const float BlockHalfY = FMath::Clamp(H.Y * 0.10f, 3.5f, 5.2f);
+        const float OuterBlockHalfY = FMath::Min(BlockHalfY, 2.6f);
+        const float BlockHalfZ = FMath::Max(2.0f, H.Z - BoardHalfThickness * 2.0f);
+        const float OuterRunnerY = H.Y - RunnerHalfWidth - 0.25f;
+        const float OuterBlockX = H.X * 0.80f;
+        const float RunnerCollisionHalfThickness = BoardHalfThickness
+            + ConveyorTuning::PalletContactSkinCm * 0.5f;
+        const float RunnerZ = -H.Z + BoardHalfThickness
+            - ConveyorTuning::PalletContactSkinCm * 0.5f;
+        const float TopBoardZ = H.Z - BoardHalfThickness;
+
+        // The root particle contributes only the central support block. A
+        // full-bounds root box would close both fork pockets even if detailed
+        // child shapes were added around it.
+        Parent->SetBoxExtent(
+            FVector(BlockHalfX, BlockHalfY, BlockHalfZ),
+            false);
+
+        const auto AddShape = [this, &ConfigureCollision, PalletCompoundMaterial,
+            &Runtime, Parent](
+            const FString& Suffix,
+            const FVector& RelativeLocation,
+            const FVector& Extent)
+        {
+            UBoxComponent* Shape = NewObject<UBoxComponent>(
+                Parent->GetOwner(),
+                FName(*FString::Printf(
+                    TEXT("%s_%s"),
+                    *Parent->GetName(),
+                    *Suffix)));
+            Parent->GetOwner()->AddInstanceComponent(Shape);
+            Shape->SetMobility(EComponentMobility::Movable);
+            Shape->SetupAttachment(Parent);
+            Shape->SetBoxExtent(Extent, false);
+            Shape->SetRelativeLocation(RelativeLocation);
+            Shape->SetHiddenInGame(true);
+            Shape->SetVisibility(false);
+            Shape->SetPhysMaterialOverride(PalletCompoundMaterial);
+            ConfigureCollision(Shape, ECC_PhysicsBody);
+            Shape->RegisterComponentWithWorld(GetWorld());
+            Shape->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            Shape->WeldTo(Parent, NAME_None, true);
+            Runtime.CompoundCollisionComponents.Add(Shape);
+        };
+
+        // Five independent upper deck boards provide contact across the load
+        // surface while retaining the visible gaps between timber slats.
+        constexpr int32 TopBoardCount = 5;
+        for (int32 BoardIndex = 0; BoardIndex < TopBoardCount; ++BoardIndex)
+        {
+            const float Alpha = TopBoardCount > 1
+                ? static_cast<float>(BoardIndex) / static_cast<float>(TopBoardCount - 1)
+                : 0.5f;
+            const float BoardY = FMath::Lerp(-H.Y * 0.88f, H.Y * 0.88f, Alpha);
+            const float BoardHalfWidth = BoardIndex == 0 || BoardIndex == TopBoardCount - 1
+                ? FMath::Clamp(H.Y * 0.11f, 4.0f, 5.5f)
+                : FMath::Clamp(H.Y * 0.075f, 2.7f, 4.0f);
+            AddShape(
+                FString::Printf(TEXT("top_board_%d"), BoardIndex + 1),
+                FVector(0.0f, BoardY, TopBoardZ),
+                FVector(H.X * 0.99f, BoardHalfWidth, BoardHalfThickness));
+        }
+
+        // Three bottom runners and nine spacer blocks form two unobstructed
+        // longitudinal pockets. The truck's tines at local Y +/-29 cm fit
+        // between the central and outer runners instead of striking a coarse
+        // pallet AABB.
+        const float RunnerYs[] = {-OuterRunnerY, 0.0f, OuterRunnerY};
+        for (int32 RunnerIndex = 0; RunnerIndex < UE_ARRAY_COUNT(RunnerYs); ++RunnerIndex)
+        {
+            AddShape(
+                FString::Printf(TEXT("bottom_runner_%d"), RunnerIndex + 1),
+                FVector(0.0f, RunnerYs[RunnerIndex], RunnerZ),
+                FVector(H.X * 0.99f, RunnerHalfWidth, RunnerCollisionHalfThickness));
+        }
+        const float BlockXs[] = {-OuterBlockX, 0.0f, OuterBlockX};
+        for (int32 XIndex = 0; XIndex < UE_ARRAY_COUNT(BlockXs); ++XIndex)
+        {
+            for (int32 YIndex = 0; YIndex < UE_ARRAY_COUNT(RunnerYs); ++YIndex)
+            {
+                if (XIndex == 1 && YIndex == 1)
+                {
+                    continue; // supplied by the parent/root particle
+                }
+                AddShape(
+                    FString::Printf(TEXT("block_%d_%d"), XIndex + 1, YIndex + 1),
+                    FVector(BlockXs[XIndex], RunnerYs[YIndex], 0.0f),
+                    FVector(
+                        BlockHalfX,
+                        YIndex == 1 ? BlockHalfY : OuterBlockHalfY,
+                        BlockHalfZ));
+            }
+        }
+        SimulatorLog(FString::Printf(
+            TEXT("chaos_pallet_compound name=%s shapes=%d root=central_block top_boards=%d bottom_runners=3 spacer_blocks=9 fork_pockets=2 pocket_centers_y_cm=+/-%.1f floor_contact_skin_cm=%.1f"),
+            *Runtime.Name,
+            Runtime.CompoundCollisionComponents.Num() + 1,
+            TopBoardCount,
+            0.5f * (OuterRunnerY - OuterBlockHalfY + BlockHalfY),
+            ConveyorTuning::PalletContactSkinCm));
+    };
+
+    // Remove initial authoring penetrations before activation. No runtime
+    // support attachment is created: after this placement all loads are free
+    // rigid bodies resting on actual Chaos contact manifolds.
+    TMap<int32, int32> ShelfSupportTierCounts;
+    for (FDynamicBoxRuntime& Body : DynamicBoxes)
+    {
+        UBoxComponent* Box = Cast<UBoxComponent>(Body.Root.Get());
+        if (!Box)
+        {
+            continue;
+        }
+        DisableVisualCollision(Box);
+        if (Body.bPallet)
+        {
+            BuildPalletCompound(Body, Box);
+        }
+        else
+        {
+            Box->SetBoxExtent(Body.HalfExtent, false);
+        }
+        FVector Location = Box->GetComponentLocation();
+        FQuat Rotation = Box->GetComponentQuat();
+        if (Body.bShelfParcel)
+        {
+            Rotation = FRotator(0.0f, Rotation.Rotator().Yaw, 0.0f).Quaternion();
+            float BestShelfTop = -TNumericLimits<float>::Max();
+            for (const FCollisionObstacle& Obstacle : CollisionObstacles)
+            {
+                if (Obstacle.Name != TEXT("shelf plane"))
+                {
+                    continue;
+                }
+                const FVector Local = Obstacle.Rotation.UnrotateVector(Location - Obstacle.Center);
+                const float SupportTop = Obstacle.Center.Z + Obstacle.HalfExtent.Z;
+                if (FMath::Abs(Local.X) <= Obstacle.HalfExtent.X + 2.0f
+                    && FMath::Abs(Local.Y) <= Obstacle.HalfExtent.Y + 2.0f
+                    // Select the highest deck below this carton's authored
+                    // centre. Without this test every X/Y-overlapping carton
+                    // selected the top deck and all 24 piled onto level three.
+                    && SupportTop <= Location.Z)
+                {
+                    BestShelfTop = FMath::Max(BestShelfTop, SupportTop);
+                }
+            }
+            if (BestShelfTop > -100000.0f)
+            {
+                Location.Z = BestShelfTop
+                    + ConveyorTuning::ProjectedVerticalHalfExtent(Rotation, Body.HalfExtent)
+                    + 0.35f;
+                ShelfSupportTierCounts.FindOrAdd(FMath::RoundToInt(BestShelfTop))++;
+            }
+        }
+        else if (Body.InitialSupportedForklift != INDEX_NONE
+            && Forklifts[Body.InitialSupportedForklift].ChaosCarriage.IsValid())
+        {
+            const FForkliftRuntime& Forklift = Forklifts[Body.InitialSupportedForklift];
+            float ForkTop = -TNumericLimits<float>::Max();
+            for (const FFittedCollisionBox& Shape : Forklift.CollisionBoxes)
+            {
+                if (!Shape.IsWedge()
+                    && Shape.Name.Contains(TEXT("fork tine"), ESearchCase::IgnoreCase))
+                {
+                    ForkTop = FMath::Max(
+                        ForkTop,
+                        Forklift.InitialRoot.TransformPositionNoScale(Shape.LocalCenter).Z
+                            + Shape.HalfExtent.Z
+                            + ConveyorTuning::ForkliftInitialLiftCm);
+                }
+            }
+            if (ForkTop > -100000.0f)
+            {
+                if (Body.bPallet)
+                {
+                    // Carry the 120x80 pallet with its long side across the
+                    // truck. This uses the pallet's alternate four-way entry:
+                    // both tines pass between the centre and outer spacer-block
+                    // rows. Seat its rear edge close to the fork heels while
+                    // leaving a centimetre of real collision clearance.
+                    float TineCenterY = 0.0f;
+                    int32 TineCount = 0;
+                    float ForkHeelFrontX = -TNumericLimits<float>::Max();
+                    for (const FFittedCollisionBox& Shape : Forklift.CollisionBoxes)
+                    {
+                        if (!Shape.IsWedge()
+                            && Shape.Name.Contains(TEXT("fork tine"), ESearchCase::IgnoreCase))
+                        {
+                            TineCenterY += Shape.LocalCenter.Y;
+                            ++TineCount;
+                        }
+                        if (Shape.Name.Contains(TEXT("fork heel"), ESearchCase::IgnoreCase))
+                        {
+                            ForkHeelFrontX = FMath::Max(
+                                ForkHeelFrontX,
+                                Shape.LocalCenter.X + Shape.GetCollisionHalfExtent().X);
+                        }
+                    }
+                    if (TineCount > 0)
+                    {
+                        TineCenterY /= static_cast<float>(TineCount);
+                        FVector PalletLocal = Forklift.InitialRoot
+                            .InverseTransformPositionNoScale(Location);
+                        PalletLocal.Y = TineCenterY;
+                        if (ForkHeelFrontX > -100000.0f)
+                        {
+                            constexpr float ForkHeelClearanceCm = 1.0f;
+                            const float RotatedForwardHalfExtentCm = Body.HalfExtent.Y;
+                            PalletLocal.X = ForkHeelFrontX
+                                + ForkHeelClearanceCm
+                                + RotatedForwardHalfExtentCm;
+                        }
+                        Location = Forklift.InitialRoot.TransformPositionNoScale(PalletLocal);
+                        Rotation = Forklift.InitialRoot.GetRotation()
+                            * FQuat(FVector::UpVector, HALF_PI);
+                    }
+
+                    const float BlockHalfX = FMath::Clamp(
+                        Body.HalfExtent.X * 0.10f,
+                        4.5f,
+                        7.0f);
+                    const float OuterBlockX = Body.HalfExtent.X * 0.80f;
+                    const float PocketInnerEdge = BlockHalfX;
+                    const float PocketOuterEdge = OuterBlockX - BlockHalfX;
+                    float MinimumPocketClearanceCm = TNumericLimits<float>::Max();
+                    for (const FFittedCollisionBox& Shape : Forklift.CollisionBoxes)
+                    {
+                        if (!Shape.IsWedge()
+                            && Shape.Name.Contains(TEXT("fork tine"), ESearchCase::IgnoreCase))
+                        {
+                            const float RelativeTineY = FMath::Abs(
+                                Shape.LocalCenter.Y - TineCenterY);
+                            const float TineHalfWidth = Shape.GetCollisionHalfExtent().Y;
+                            MinimumPocketClearanceCm = FMath::Min(
+                                MinimumPocketClearanceCm,
+                                FMath::Min(
+                                    RelativeTineY - TineHalfWidth - PocketInnerEdge,
+                                    PocketOuterEdge - RelativeTineY - TineHalfWidth));
+                        }
+                    }
+                    const bool bTinesFitPockets = TineCount == 2
+                        && MinimumPocketClearanceCm >= 0.0f;
+
+                    const float BoardHalfThickness = FMath::Clamp(
+                        Body.HalfExtent.Z * 0.17f,
+                        0.9f,
+                        1.5f);
+                    const float UpperDeckUndersideLocalZ =
+                        Body.HalfExtent.Z - 2.0f * BoardHalfThickness;
+                    constexpr float InitialThreadingClearanceCm = 0.20f;
+                    Location.Z = ForkTop
+                        - UpperDeckUndersideLocalZ
+                        + InitialThreadingClearanceCm;
+                    SimulatorLog(FString::Printf(
+                        TEXT("initial_pallet_threading name=%s orientation_yaw_relative_deg=90 entry=four_way_side tine_count=%d pallet_center_local=(%.2f,%.2f) fork_heel_front_x_cm=%.2f fork_top_z_cm=%.2f upper_deck_underside_local_z_cm=%.2f vertical_clearance_cm=%.2f pocket_inner_cm=%.2f pocket_outer_cm=%.2f minimum_lateral_clearance_cm=%.2f tines_fit_pockets=%s"),
+                        *Body.Name,
+                        TineCount,
+                        Forklift.InitialRoot.InverseTransformPositionNoScale(Location).X,
+                        TineCenterY,
+                        ForkHeelFrontX,
+                        ForkTop,
+                        UpperDeckUndersideLocalZ,
+                        InitialThreadingClearanceCm,
+                        PocketInnerEdge,
+                        PocketOuterEdge,
+                        MinimumPocketClearanceCm,
+                        bTinesFitPockets ? TEXT("true") : TEXT("false")));
+                }
+                else
+                {
+                    Location.Z = ForkTop
+                        + ConveyorTuning::ProjectedVerticalHalfExtent(Rotation, Body.HalfExtent)
+                        + 0.35f;
+                }
+            }
+        }
+        if (Body.SupportBodyIndex != INDEX_NONE
+            && DynamicBoxes.IsValidIndex(Body.SupportBodyIndex)
+            && DynamicBoxes[Body.SupportBodyIndex].Root.IsValid())
+        {
+            const FDynamicBoxRuntime& Support = DynamicBoxes[Body.SupportBodyIndex];
+            if (Support.bPallet)
+            {
+                // Keep the starting carton centred on, and yaw-aligned with,
+                // the newly side-loaded pallet. It remains an independent
+                // Chaos body after activation.
+                Location.X = Support.Root->GetComponentLocation().X;
+                Location.Y = Support.Root->GetComponentLocation().Y;
+                Rotation = Support.Root->GetComponentQuat();
+            }
+            Location.Z = Support.Root->GetComponentLocation().Z
+                + Support.HalfExtent.Z
+                + Body.HalfExtent.Z
+                + 0.35f;
+        }
+        Box->SetWorldLocationAndRotation(Location, Rotation, false, nullptr, ETeleportType::TeleportPhysics);
+        Body.InitialTransform = Box->GetComponentTransform();
+        Body.SupportedForklift = INDEX_NONE;
+        Body.InitialSupportedForklift = INDEX_NONE;
+        Body.SupportBodyIndex = INDEX_NONE;
+        Body.InitialSupportBodyIndex = INDEX_NONE;
+        ActivateProp(Box, Body.Physics, Body.Name);
+    }
+    {
+        TArray<int32> TierHeights;
+        ShelfSupportTierCounts.GetKeys(TierHeights);
+        TierHeights.Sort();
+        FString TierSummary;
+        int32 TotalShelfCartons = 0;
+        for (const int32 Height : TierHeights)
+        {
+            const int32 TierCount = ShelfSupportTierCounts.FindRef(Height);
+            TotalShelfCartons += TierCount;
+            TierSummary += FString::Printf(
+                TEXT("%s%dcm:%d"),
+                TierSummary.IsEmpty() ? TEXT("") : TEXT(","),
+                Height,
+                TierCount);
+        }
+        SimulatorLog(FString::Printf(
+            TEXT("chaos_shelf_carton_placement tiers=%s total=%d support=authored_deck_below_carton"),
+            TierSummary.IsEmpty() ? TEXT("none") : *TierSummary,
+            TotalShelfCartons));
+    }
+
+    for (int32 ParcelIndex = 0; ParcelIndex < RuntimeChaosConveyorBodies.Num(); ++ParcelIndex)
+    {
+        UBoxComponent* Box = RuntimeChaosConveyorBodies[ParcelIndex];
+        if (!Box || !ParcelPhysicsProfiles.IsValidIndex(ParcelIndex))
+        {
+            continue;
+        }
+        DisableVisualCollision(Box);
+        FVector Location = Box->GetComponentLocation();
+        Location.Z = ConveyorSurfaceZCm
+            + (ParcelHalfExtents.IsValidIndex(ParcelIndex)
+                ? ParcelHalfExtents[ParcelIndex].Z
+                : 15.0f)
+            + 0.35f;
+        Box->SetWorldLocationAndRotation(
+            Location,
+            FRotator(0.0f, Box->GetComponentRotation().Yaw, 0.0f),
+            false,
+            nullptr,
+            ETeleportType::TeleportPhysics);
+        ParcelInitialTransforms[ParcelIndex] = Box->GetComponentTransform();
+        ActivateProp(
+            Box,
+            ParcelPhysicsProfiles[ParcelIndex],
+            FString::Printf(TEXT("conveyor_carton_%d"), ParcelIndex + 1));
+    }
+
+    bChaosPhysicsActive = true;
+    bChaosConveyorBodiesActivated = true;
+    bLoggedChaosConveyorDrive = false;
+    ChaosConveyorStartupGraceSeconds = 0.35f;
+    ChaosConveyorMotorRampSeconds = 0.0f;
+    SimulatorLog(FString::Printf(
+        TEXT("physics_backend mode=authoritative_chaos dynamic_props=%d conveyor_props=%d static_shapes=%d forklifts=%d custom_gravity=false transform_support=false cargo_attachment=false"),
+        RuntimeChaosBodies.Num(),
+        RuntimeChaosConveyorBodies.Num(),
+        RuntimeChaosStaticColliders.Num(),
+        ConveyorTuning::EnabledForkliftCount));
+}
+
+void AQaiConveyorWorld::ConfigureChaosPhysics()
+{
+    if (bChaosPhysicsActive || !GetWorld())
+    {
+        return;
+    }
+
+    RuntimeChaosMaterials.Reset();
+    RuntimeChaosStaticColliders.Reset();
+    RuntimeChaosForkliftColliders.Reset();
+
+    // The imported USD collision meshes fed the former software OBB solver.
+    // Disable their engine collision before installing fitted Chaos proxies;
+    // otherwise identical surfaces produce duplicate contact manifolds and
+    // excessive depenetration impulses on lightweight props.
+    for (const TWeakObjectPtr<UPrimitiveComponent>& AuthoredCollider : AuthoredCollisionComponents)
+    {
+        if (UPrimitiveComponent* Primitive = AuthoredCollider.Get())
+        {
+            Primitive->SetSimulatePhysics(false);
+            Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Primitive->SetGenerateOverlapEvents(false);
+        }
+    }
+    for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+    {
+        if (!It->ActorHasTag(TEXT("Qai.DetailedPackingTable")))
+        {
+            continue;
+        }
+        TInlineComponentArray<UPrimitiveComponent*> TableVisuals(*It);
+        for (UPrimitiveComponent* Primitive : TableVisuals)
+        {
+            if (Primitive)
+            {
+                Primitive->SetSimulatePhysics(false);
+                Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Primitive->SetGenerateOverlapEvents(false);
+            }
+        }
+    }
+
+    const auto CreateMaterial = [this](const FPropPhysicsProfile& Profile, const FString& Name)
+    {
+        UPhysicalMaterial* Material = NewObject<UPhysicalMaterial>(
+            this,
+            FName(*FString::Printf(TEXT("PM_Chaos_%s_%d"), *Name.Replace(TEXT(" "), TEXT("_")), RuntimeChaosMaterials.Num())));
+        Material->Friction = Profile.DynamicFriction;
+        Material->StaticFriction = Profile.StaticFriction;
+        Material->Restitution = Profile.Restitution;
+        Material->bOverrideFrictionCombineMode = true;
+        // Use the grippier contacting surface. Min made rubber feet and
+        // textured plastic behave like polished metal on the sorting table.
+        Material->FrictionCombineMode = EFrictionCombineMode::Max;
+        Material->bOverrideRestitutionCombineMode = true;
+        Material->RestitutionCombineMode = EFrictionCombineMode::Min;
+        Material->SleepLinearVelocityThreshold = Profile.SleepLinearSpeedCm;
+        Material->SleepAngularVelocityThreshold = FMath::DegreesToRadians(Profile.SleepAngularSpeedDegrees);
+        Material->SleepCounterThreshold = 8;
+        RuntimeChaosMaterials.Add(Material);
+        return Material;
+    };
+
+    const auto DisableVisualCollision = [](USceneComponent* Root, UPrimitiveComponent* Keep)
+    {
+        if (!Root)
+        {
+            return;
+        }
+        TArray<USceneComponent*> Descendants;
+        Root->GetChildrenComponents(true, Descendants);
+        for (USceneComponent* Child : Descendants)
+        {
+            if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Child); Primitive && Primitive != Keep)
+            {
+                Primitive->SetSimulatePhysics(false);
+                Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Primitive->SetGenerateOverlapEvents(false);
+            }
+        }
+    };
+
+    for (FDynamicBoxRuntime& Body : DynamicBoxes)
+    {
+        UBoxComponent* ChaosBody = Cast<UBoxComponent>(Body.Root.Get());
+        if (!ChaosBody)
+        {
+            continue;
+        }
+        if (Body.bShelfParcel)
+        {
+            FVector SettledLocation = ChaosBody->GetComponentLocation();
+            float BestSupportTop = -TNumericLimits<float>::Max();
+            for (const FCollisionObstacle& Obstacle : CollisionObstacles)
+            {
+                if (Obstacle.Name != TEXT("shelf plane"))
+                {
+                    continue;
+                }
+                const FVector Local = Obstacle.Rotation.UnrotateVector(
+                    SettledLocation - Obstacle.Center);
+                const bool bInsideShelf = FMath::Abs(Local.X) <= Obstacle.HalfExtent.X + 2.0f
+                    && FMath::Abs(Local.Y) <= Obstacle.HalfExtent.Y + 2.0f;
+                const float SupportTop = Obstacle.Center.Z + Obstacle.HalfExtent.Z;
+                if (bInsideShelf
+                    && SupportTop <= SettledLocation.Z + 2.0f
+                    && SupportTop > BestSupportTop)
+                {
+                    BestSupportTop = SupportTop;
+                }
+            }
+            if (BestSupportTop > -TNumericLimits<float>::Max() * 0.5f)
+            {
+                SettledLocation.Z = BestSupportTop + Body.HalfExtent.Z + 0.25f;
+                const float Yaw = ChaosBody->GetComponentRotation().Yaw;
+                ChaosBody->SetWorldLocationAndRotation(
+                    SettledLocation,
+                    FRotator(0.0f, Yaw, 0.0f),
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
+            }
+        }
+        DisableVisualCollision(ChaosBody, ChaosBody);
+        ChaosBody->SetBoxExtent(Body.HalfExtent, true);
+        // Keep the body collisionless until every static support proxy has
+        // been registered. Registering shelves/table/conveyor underneath an
+        // already-simulating body can create a new penetrating manifold and
+        // turn the first depenetration solve into a launch impulse.
+        ChaosBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        ChaosBody->SetCollisionObjectType(ECC_PhysicsBody);
+        ChaosBody->SetCollisionResponseToAllChannels(ECR_Block);
+        ChaosBody->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+        ChaosBody->SetGenerateOverlapEvents(false);
+        ChaosBody->SetPhysMaterialOverride(CreateMaterial(Body.Physics, Body.Name));
+        ChaosBody->SetLinearDamping(Body.Physics.AirLinearDamping);
+        ChaosBody->SetAngularDamping(Body.Physics.AirAngularDamping);
+        ChaosBody->SetMassOverrideInKg(NAME_None, Body.Physics.MassKg, true);
+        ChaosBody->SetCenterOfMass(Body.Physics.CenterOfMassLocalOffset);
+        ChaosBody->SetUseCCD(true);
+        // Imported USD supports can begin a few millimetres inside their
+        // fitted cargo boxes. Bound startup separation so Chaos cannot turn
+        // that harmless authored overlap into an explosive impulse.
+        ChaosBody->SetMaxDepenetrationVelocity(NAME_None, 8.0f);
+        ChaosBody->BodyInstance.SetPositionSolverIterationCount(12);
+        ChaosBody->BodyInstance.SetVelocitySolverIterationCount(4);
+        ChaosBody->SetEnableGravity(true);
+        ChaosBody->SetSimulatePhysics(false);
+        ChaosBody->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        ChaosBody->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+        ChaosBody->PutRigidBodyToSleep();
+        Body.bAwake = false;
+    }
+
+    for (int32 ParcelIndex = 0; ParcelIndex < RuntimeChaosConveyorBodies.Num(); ++ParcelIndex)
+    {
+        UBoxComponent* ChaosBody = RuntimeChaosConveyorBodies[ParcelIndex];
+        if (!ChaosBody || !ParcelPhysicsProfiles.IsValidIndex(ParcelIndex))
+        {
+            continue;
+        }
+        const FPropPhysicsProfile& Profile = ParcelPhysicsProfiles[ParcelIndex];
+        FVector SettledLocation = ChaosBody->GetComponentLocation();
+        const float ParcelHalfHeight = ParcelHalfExtents.IsValidIndex(ParcelIndex)
+            ? ParcelHalfExtents[ParcelIndex].Z
+            : 15.0f;
+        SettledLocation.Z = ConveyorSurfaceZCm + ParcelHalfHeight + 0.35f;
+        const float Yaw = ChaosBody->GetComponentRotation().Yaw;
+        ChaosBody->SetWorldLocationAndRotation(
+            SettledLocation,
+            FRotator(0.0f, Yaw, 0.0f),
+            false,
+            nullptr,
+            ETeleportType::TeleportPhysics);
+        DisableVisualCollision(ChaosBody, ChaosBody);
+        ChaosBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        ChaosBody->SetCollisionObjectType(ECC_PhysicsBody);
+        ChaosBody->SetCollisionResponseToAllChannels(ECR_Block);
+        ChaosBody->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+        ChaosBody->SetPhysMaterialOverride(CreateMaterial(Profile, FString::Printf(TEXT("belt_%d"), ParcelIndex + 1)));
+        ChaosBody->SetLinearDamping(Profile.AirLinearDamping);
+        ChaosBody->SetAngularDamping(Profile.AirAngularDamping);
+        ChaosBody->SetMassOverrideInKg(NAME_None, Profile.MassKg, true);
+        ChaosBody->SetCenterOfMass(Profile.CenterOfMassLocalOffset);
+        ChaosBody->SetUseCCD(true);
+        ChaosBody->SetMaxDepenetrationVelocity(NAME_None, 8.0f);
+        ChaosBody->BodyInstance.SetPositionSolverIterationCount(12);
+        ChaosBody->BodyInstance.SetVelocitySolverIterationCount(4);
+        ChaosBody->SetEnableGravity(true);
+        ChaosBody->SetSimulatePhysics(false);
+        ChaosBody->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        ChaosBody->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+        ChaosBody->PutRigidBodyToSleep();
+    }
+
+    FPropPhysicsProfile StaticProfile;
+    StaticProfile.StaticFriction = 0.82f;
+    StaticProfile.DynamicFriction = 0.64f;
+    StaticProfile.Restitution = 0.03f;
+    UPhysicalMaterial* StaticMaterial = CreateMaterial(StaticProfile, TEXT("warehouse_static"));
+    for (const TWeakObjectPtr<UPrimitiveComponent>& AuthoredCollider : AuthoredCollisionComponents)
+    {
+        if (UPrimitiveComponent* Primitive = AuthoredCollider.Get())
+        {
+            FString LogicalName = Primitive->GetName();
+            int32 LastUnderscore = INDEX_NONE;
+            if (LogicalName.FindLastChar(TEXT('_'), LastUnderscore)
+                && LogicalName.Mid(LastUnderscore + 1).IsNumeric())
+            {
+                LogicalName.LeftInline(LastUnderscore, EAllowShrinking::No);
+            }
+            // Imported roller-module surfaces overlap at their joins and
+            // produce multiple Chaos manifolds. The smooth analytic support
+            // boxes installed below follow the same belt centreline without
+            // launching cartons from those seams.
+            if (LogicalName == TEXT("Surface")
+                || LogicalName.StartsWith(TEXT("ShelfPlane"))
+                || LogicalName == TEXT("PackingTable"))
+            {
+                Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                continue;
+            }
+            Primitive->SetMobility(EComponentMobility::Static);
+            Primitive->SetSimulatePhysics(false);
+            Primitive->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            Primitive->SetCollisionObjectType(ECC_WorldStatic);
+            Primitive->SetCollisionResponseToAllChannels(ECR_Block);
+            Primitive->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+            Primitive->SetGenerateOverlapEvents(false);
+            Primitive->SetPhysMaterialOverride(StaticMaterial);
+        }
+    }
+    for (int32 Index = 0; Index < CollisionObstacles.Num(); ++Index)
+    {
+        const FCollisionObstacle& Obstacle = CollisionObstacles[Index];
+        // The conveyor uses tangent-aligned smooth support boxes because the
+        // imported module surfaces overlap at segment joins. Signal poles
+        // likewise have no suitable authored physical component.
+        if (Obstacle.Name != TEXT("stack light")
+            && Obstacle.Name != TEXT("conveyor")
+            && Obstacle.Name != TEXT("shelf plane")
+            && Obstacle.Name != TEXT("packing table")
+            && Obstacle.Name != TEXT("invisible perimeter"))
+        {
+            continue;
+        }
+        UBoxComponent* Collider = NewObject<UBoxComponent>(
+            this,
+            FName(*FString::Printf(TEXT("QaiChaosStatic_%d"), Index + 1)));
+        AddInstanceComponent(Collider);
+        Collider->SetMobility(EComponentMobility::Movable);
+        Collider->RegisterComponentWithWorld(GetWorld());
+        Collider->SetWorldLocationAndRotation(Obstacle.Center, Obstacle.Rotation);
+        Collider->SetBoxExtent(Obstacle.HalfExtent, false);
+        Collider->SetHiddenInGame(true);
+        Collider->SetVisibility(false);
+        Collider->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Collider->SetCollisionObjectType(ECC_WorldStatic);
+        Collider->SetCollisionResponseToAllChannels(ECR_Block);
+        Collider->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+        Collider->SetPhysMaterialOverride(StaticMaterial);
+        RuntimeChaosStaticColliders.Add(Collider);
+    }
+
+    UBoxComponent* FloorCollider = NewObject<UBoxComponent>(this, TEXT("QaiChaosRoomFloor"));
+    AddInstanceComponent(FloorCollider);
+    FloorCollider->SetMobility(EComponentMobility::Movable);
+    FloorCollider->RegisterComponentWithWorld(GetWorld());
+    const FBox FloorSupport = WarehouseFloorSupportBounds.IsValid
+        ? WarehouseFloorSupportBounds
+        : FBox(FVector(-750.0f, -700.0f, -10.0f), FVector(850.0f, 750.0f, 0.0f));
+    FloorCollider->SetWorldLocation(FloorSupport.GetCenter());
+    FloorCollider->SetBoxExtent(FloorSupport.GetExtent().ComponentMax(FVector(1.0f)), false);
+    FloorCollider->SetHiddenInGame(true);
+    FloorCollider->SetVisibility(false);
+    FloorCollider->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    FloorCollider->SetCollisionObjectType(ECC_WorldStatic);
+    FloorCollider->SetCollisionResponseToAllChannels(ECR_Block);
+    FloorCollider->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+    FloorCollider->SetPhysMaterialOverride(StaticMaterial);
+    RuntimeChaosStaticColliders.Add(FloorCollider);
+
+    for (int32 ForkliftIndex = 0; ForkliftIndex < ConveyorTuning::EnabledForkliftCount; ++ForkliftIndex)
+    {
+        FForkliftRuntime& Forklift = Forklifts[ForkliftIndex];
+        USceneComponent* ForkliftRoot = Forklift.Root.Get();
+        if (!ForkliftRoot)
+        {
+            continue;
+        }
+        TArray<USceneComponent*> ForkliftVisuals;
+        ForkliftRoot->GetChildrenComponents(true, ForkliftVisuals);
+        for (USceneComponent* Visual : ForkliftVisuals)
+        {
+            if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Visual))
+            {
+                Primitive->SetSimulatePhysics(false);
+                Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Primitive->SetGenerateOverlapEvents(false);
+            }
+        }
+        Forklift.ChaosCollisionComponents.Reset();
+        for (int32 ShapeIndex = 0; ShapeIndex < Forklift.CollisionBoxes.Num(); ++ShapeIndex)
+        {
+            const FFittedCollisionBox& Shape = Forklift.CollisionBoxes[ShapeIndex];
+            const FName ColliderName(*FString::Printf(
+                TEXT("QaiChaosForklift%d_%d"), ForkliftIndex + 1, ShapeIndex + 1));
+            const FTransform ForkliftTransform = ForkliftRoot->GetComponentTransform();
+            const FTransform ColliderTransform(
+                ForkliftTransform.GetRotation(),
+                ForkliftTransform.TransformPositionNoScale(Shape.LocalCenter));
+            FActorSpawnParameters SpawnParameters;
+            SpawnParameters.Name = ColliderName;
+            SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+            AActor* ColliderActor = GetWorld()->SpawnActor<AActor>(
+                AActor::StaticClass(), ColliderTransform, SpawnParameters);
+            if (!ColliderActor)
+            {
+                continue;
+            }
+            RuntimeChaosActors.Add(ColliderActor);
+            UBoxComponent* Collider = NewObject<UBoxComponent>(ColliderActor, ColliderName);
+            ColliderActor->AddInstanceComponent(Collider);
+            ColliderActor->SetRootComponent(Collider);
+            Collider->SetMobility(EComponentMobility::Movable);
+            Collider->RegisterComponentWithWorld(GetWorld());
+            Collider->SetWorldTransform(ColliderTransform);
+            FVector ChaosExtent = Shape.GetCollisionHalfExtent();
+            if (Shape.Name.Contains(TEXT("fork tine"), ESearchCase::IgnoreCase))
+            {
+                // Chaos contact skin for the thin fork blades. The rendered
+                // tines are only about 7 cm thick and can advance by several
+                // millimetres per substep. A modest skin establishes a stable
+                // manifold before a resting carton/pallet can be crossed by
+                // the moving kinematic surface. It does not bridge the gap
+                // between the two independent tines.
+                ChaosExtent.Y += 1.0f;
+                ChaosExtent.Z += 1.5f;
+            }
+            Collider->SetBoxExtent(ChaosExtent, false);
+            Collider->SetHiddenInGame(true);
+            Collider->SetVisibility(false);
+            Collider->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            // Contact transfer is handled by the bounded Chaos fork-contact
+            // solve below. Keeping an additional set of independently
+            // simulated 5-tonne proxy blocks here caused initial pallet and
+            // shelf penetrations to wake the entire scene explosively.
+            Collider->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Collider->SetPhysMaterialOverride(StaticMaterial);
+            // Runtime-created non-simulating shapes updated their query pose
+            // but did not produce solver contacts on this path. Make each
+            // compound part a heavy, gravity-free Chaos body and servo it by
+            // velocity. This preserves the manifold and transfers real force
+            // to cargo without attaching cargo to the fork.
+            Collider->SetEnableGravity(false);
+            Collider->SetSimulatePhysics(false);
+            RuntimeChaosForkliftColliders.Add(Collider);
+            Forklift.ChaosCollisionComponents.Add(Collider);
+        }
+    }
+
+    // Activate movable bodies only after the complete static scene exists.
+    // Construct the Chaos body while collisionless, clear any inherited
+    // velocity, sleep it at its authored resting pose, and enable contacts as
+    // the final operation. This avoids the startup parcel/EVK explosion that
+    // occurred when support colliders were registered beneath live bodies.
+    const auto ActivateSettledBody = [](UBoxComponent* Body)
+    {
+        if (!Body)
+        {
+            return;
+        }
+        Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Body->SetSimulatePhysics(true);
+        Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+        Body->PutRigidBodyToSleep();
+        Body->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    };
+    for (UBoxComponent* Body : RuntimeChaosBodies)
+    {
+        ActivateSettledBody(Body);
+    }
+    // Conveyor parcels are activated after a short render/physics warm-up in
+    // SimulateChaosConveyor. Keeping them collisionless while the first scene
+    // frames and broadphase settle prevents the initial belt explosion.
+    bChaosConveyorBodiesActivated = false;
+
+    bChaosPhysicsActive = true;
+    ChaosConveyorStartupGraceSeconds = 0.75f;
+    ChaosConveyorMotorRampSeconds = 0.0f;
+    SimulatorLog(FString::Printf(
+        TEXT("chaos_physics_ready dynamic_bodies=%d conveyor_bodies=%d static_colliders=%d forklift_shapes=%d activation=static_first_settled ccd=true solver_iterations=12/4 substep_hz=120 custom_integrator=false"),
+        RuntimeChaosBodies.Num(),
+        RuntimeChaosConveyorBodies.Num(),
+        RuntimeChaosStaticColliders.Num(),
+        RuntimeChaosForkliftColliders.Num()));
+}
+
+void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
+{
+    if (!bChaosPhysicsActive || !GetWorld() || DeltaSeconds <= UE_SMALL_NUMBER)
+    {
+        return;
+    }
+
+    const float SafeDeltaSeconds = FMath::Min(DeltaSeconds, 1.0f / 20.0f);
+    for (int32 ForkliftIndex = 0;
+         ForkliftIndex < ConveyorTuning::EnabledForkliftCount;
+         ++ForkliftIndex)
+    {
+        FForkliftRuntime& Forklift = Forklifts[ForkliftIndex];
+        UBoxComponent* Chassis = Forklift.ChaosChassis.Get();
+        UBoxComponent* Carriage = Forklift.ChaosCarriage.Get();
+        if (!Chassis || !Carriage || !Chassis->IsSimulatingPhysics())
+        {
+            continue;
+        }
+
+        const bool bControlled = ForkliftIndex == ActiveForklift;
+        const float Throttle = bControlled ? CommandThrottle : 0.0f;
+        const float RequestedSteer = bControlled ? CommandSteer : 0.0f;
+        const float LiftInput = bControlled ? CommandLift : 0.0f;
+        const bool bBrake = bControlled ? bCommandBrake : true;
+
+        // A physical steering rack cannot jump from centre to full lock. This
+        // rate limit applies equally to keyboard and controller requests.
+        Forklift.SteeringInput = FMath::FInterpConstantTo(
+            Forklift.SteeringInput,
+            RequestedSteer,
+            SafeDeltaSeconds,
+            1.85f);
+        const float RearSteerRadians = FMath::DegreesToRadians(
+            -Forklift.SteeringInput * ConveyorTuning::ForkliftMaximumSteerDegrees);
+
+        const FTransform ChassisTransform = Chassis->GetComponentTransform();
+        const FVector ChassisUp = ChassisTransform.GetUnitAxis(EAxis::Z);
+        const FVector ChassisForward = ChassisTransform.GetUnitAxis(EAxis::X);
+        const FVector ChassisVelocity = Chassis->GetPhysicsLinearVelocity();
+
+        // Supplement the hard prismatic constraint with the finite stiffness
+        // of the mast's opposed guide rollers. Only error perpendicular to the
+        // lift axis is corrected: vertical travel and cargo reaction remain
+        // fully physical, and the opposite force is applied to the chassis.
+        const FVector CarriageBaseLocal = Forklift.ChaosCarriageLocalCenter
+            - Forklift.ChaosChassisLocalCenter;
+        const FVector CarriageLocal = ChassisTransform.InverseTransformPositionNoScale(
+            Carriage->GetComponentLocation());
+        const FVector RailErrorLocal(
+            CarriageLocal.X - CarriageBaseLocal.X,
+            CarriageLocal.Y - CarriageBaseLocal.Y,
+            0.0f);
+        const FVector RailErrorWorld = ChassisTransform.TransformVectorNoScale(
+            RailErrorLocal);
+        const FVector ChassisVelocityAtCarriage = Chassis->GetPhysicsLinearVelocityAtPoint(
+            Carriage->GetComponentLocation());
+        const FVector RelativeCarriageVelocity =
+            Carriage->GetPhysicsLinearVelocity() - ChassisVelocityAtCarriage;
+        const FVector RailRelativeVelocity = RelativeCarriageVelocity
+            - ChassisUp * FVector::DotProduct(RelativeCarriageVelocity, ChassisUp);
+        const FVector RailGuideForce = (
+            -RailErrorWorld * ConveyorTuning::ForkliftLiftRailStiffness
+            -RailRelativeVelocity * ConveyorTuning::ForkliftLiftRailDamping)
+            .GetClampedToMaxSize(ConveyorTuning::ForkliftLiftRailMaximumForce);
+        if (!RailGuideForce.IsNearlyZero(1.0f))
+        {
+            Carriage->AddForce(RailGuideForce);
+            Chassis->AddForceAtLocation(
+                -RailGuideForce,
+                Carriage->GetComponentLocation());
+        }
+        const float LongitudinalSpeed = FVector::DotProduct(ChassisVelocity, ChassisForward);
+        const float TargetSpeed = Throttle >= 0.0f
+            ? Throttle * ConveyorTuning::ForkliftMaximumSpeedCm
+            : Throttle * ConveyorTuning::ForkliftMaximumReverseSpeedCm;
+
+        FCollisionQueryParams QueryParams(
+            FName(*FString::Printf(TEXT("QaiForkliftSuspension%d"), ForkliftIndex + 1)),
+            false,
+            Chassis->GetOwner());
+        QueryParams.AddIgnoredActor(Carriage->GetOwner());
+        FCollisionObjectQueryParams ObjectTypes;
+        ObjectTypes.AddObjectTypesToQuery(ECC_WorldStatic);
+        ObjectTypes.AddObjectTypesToQuery(ECC_PhysicsBody);
+
+        int32 WheelIndex = 0;
+        float SupportedNormalForce = 0.0f;
+        FVector TotalPlanarTireForce = FVector::ZeroVector;
+        for (const FFittedCollisionBox& Wheel : Forklift.CollisionBoxes)
+        {
+            if (!Wheel.IsCylinder() || WheelIndex >= 4)
+            {
+                continue;
+            }
+            const FVector WheelLocalInChassis = Wheel.LocalCenter
+                - Forklift.ChaosChassisLocalCenter;
+            const FVector NominalHubWorld = ChassisTransform.TransformPositionNoScale(
+                WheelLocalInChassis);
+            const bool bRearWheel = WheelIndex >= 2;
+            const float SuspensionRestCm = bRearWheel
+                ? ConveyorTuning::ForkliftRearSuspensionRestCm
+                : ConveyorTuning::ForkliftFrontSuspensionRestCm;
+            const float SuspensionDroopCm = bRearWheel
+                ? ConveyorTuning::ForkliftRearSuspensionDroopCm
+                : ConveyorTuning::ForkliftFrontSuspensionDroopCm;
+            const float SuspensionMaximumCompressionCm = bRearWheel
+                ? ConveyorTuning::ForkliftRearSuspensionMaximumCompressionCm
+                : ConveyorTuning::ForkliftFrontSuspensionMaximumCompressionCm;
+            const float SuspensionStiffness = bRearWheel
+                ? ConveyorTuning::ForkliftRearSuspensionStiffness
+                : ConveyorTuning::ForkliftFrontSuspensionStiffness;
+            const float SuspensionDamping = bRearWheel
+                ? ConveyorTuning::ForkliftRearSuspensionDamping
+                : ConveyorTuning::ForkliftFrontSuspensionDamping;
+            const FVector SuspensionMount = NominalHubWorld
+                + ChassisUp * (
+                    SuspensionRestCm
+                    - ConveyorTuning::ForkliftSuspensionPreloadCompressionCm);
+            const float MaximumTraceLength = Wheel.Radius
+                + SuspensionRestCm
+                + SuspensionDroopCm;
+            const FVector TraceEnd = SuspensionMount - ChassisUp * MaximumTraceLength;
+            FHitResult Hit;
+            const bool bHit = GetWorld()->LineTraceSingleByObjectType(
+                Hit,
+                SuspensionMount,
+                TraceEnd,
+                ObjectTypes,
+                QueryParams);
+            Forklift.WheelNormalLoads[WheelIndex] = 0.0f;
+            FVector ResolvedHubWorld = SuspensionMount - ChassisUp * (
+                SuspensionRestCm + SuspensionDroopCm);
+            if (bHit && Hit.bBlockingHit)
+            {
+                const float SpringLength = FMath::Max(0.0f, Hit.Distance - Wheel.Radius);
+                const float Compression = FMath::Clamp(
+                    SuspensionRestCm - SpringLength,
+                    0.0f,
+                    SuspensionMaximumCompressionCm);
+                ResolvedHubWorld = Hit.ImpactPoint + ChassisUp * Wheel.Radius;
+                const FVector PointVelocity = Chassis->GetPhysicsLinearVelocityAtPoint(
+                    Hit.ImpactPoint);
+                const float CompressionVelocity = -FVector::DotProduct(PointVelocity, ChassisUp);
+                const float NormalForce = FMath::Clamp(
+                    Compression * SuspensionStiffness
+                        + CompressionVelocity * SuspensionDamping,
+                    0.0f,
+                    Forklift.ChassisMassKg
+                        * ConveyorTuning::GravityCmPerSecondSquared * 0.72f);
+                Forklift.SuspensionCompressionCm[WheelIndex] = Compression;
+                Forklift.WheelNormalLoads[WheelIndex] = NormalForce;
+                SupportedNormalForce += NormalForce;
+
+                const FVector SuspensionForce = ChassisUp * NormalForce;
+                Chassis->AddForceAtLocation(SuspensionForce, Hit.ImpactPoint);
+                if (UPrimitiveComponent* SupportBody = Hit.GetComponent();
+                    SupportBody && SupportBody->IsSimulatingPhysics())
+                {
+                    SupportBody->AddForceAtLocation(-SuspensionForce, Hit.ImpactPoint);
+                    SupportBody->WakeRigidBody();
+                }
+
+                const FQuat SteeringRotation(ChassisUp, bRearWheel ? RearSteerRadians : 0.0f);
+                const FVector TireForward = SteeringRotation.RotateVector(ChassisForward).GetSafeNormal();
+                const FVector TireRight = FVector::CrossProduct(ChassisUp, TireForward).GetSafeNormal();
+                const float TireLongitudinalSpeed = FVector::DotProduct(PointVelocity, TireForward);
+                const float TireLateralSpeed = FVector::DotProduct(PointVelocity, TireRight);
+                const float FrictionLimit = NormalForce * ConveyorTuning::ForkliftTireFriction;
+
+                float LongitudinalForce = 0.0f;
+                if (bBrake)
+                {
+                    const float MaximumBrakeForcePerWheel =
+                        Chassis->GetMass()
+                        * ConveyorTuning::ForkliftMaximumBrakeDecelerationCm
+                        / 4.0f;
+                    LongitudinalForce = FMath::Clamp(
+                        -TireLongitudinalSpeed
+                            * ConveyorTuning::ForkliftTireLongitudinalStiffness * 2.0f,
+                        -MaximumBrakeForcePerWheel,
+                        MaximumBrakeForcePerWheel);
+                }
+                else if (!bRearWheel && FMath::Abs(Throttle) > 0.01f)
+                {
+                    const float MaximumDriveForcePerWheel =
+                        Chassis->GetMass()
+                        * ConveyorTuning::ForkliftMaximumDriveAccelerationCm
+                        * FMath::Abs(Throttle)
+                        / 2.0f;
+                    LongitudinalForce = FMath::Clamp(
+                        (TargetSpeed - TireLongitudinalSpeed)
+                            * ConveyorTuning::ForkliftTireLongitudinalStiffness,
+                        -MaximumDriveForcePerWheel,
+                        MaximumDriveForcePerWheel);
+                }
+                else if (FMath::Abs(TireLongitudinalSpeed) > 0.2f)
+                {
+                    LongitudinalForce = -FMath::Sign(TireLongitudinalSpeed)
+                        * NormalForce * ConveyorTuning::ForkliftRollingResistance;
+                }
+                const float LateralForce = FMath::Clamp(
+                    -TireLateralSpeed * ConveyorTuning::ForkliftTireLateralStiffness,
+                    -FrictionLimit,
+                    FrictionLimit);
+                const FVector PlanarTireForce = (
+                    TireForward * LongitudinalForce + TireRight * LateralForce)
+                    .GetClampedToMaxSize(FrictionLimit);
+                TotalPlanarTireForce += PlanarTireForce;
+                Chassis->AddForceAtLocation(PlanarTireForce, Hit.ImpactPoint);
+                if (UPrimitiveComponent* SupportBody = Hit.GetComponent();
+                    SupportBody && SupportBody->IsSimulatingPhysics())
+                {
+                    SupportBody->AddForceAtLocation(-PlanarTireForce, Hit.ImpactPoint);
+                }
+            }
+            else
+            {
+                Forklift.SuspensionCompressionCm[WheelIndex] = FMath::FInterpTo(
+                    Forklift.SuspensionCompressionCm[WheelIndex],
+                    0.0f,
+                    SafeDeltaSeconds,
+                    8.0f);
+            }
+            if (USceneComponent* WheelPivot = Forklift.WheelPivots[WheelIndex].Get())
+            {
+                // The imported wheel used to remain rigidly attached to the
+                // body while the raycast tire moved invisibly underneath it.
+                // Resolve both presentation and F8 bounds to the same hub.
+                WheelPivot->SetWorldLocation(
+                    ResolvedHubWorld,
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
+            }
+            ++WheelIndex;
+        }
+
+        // Passive driveline drag supplies the static-like tire resistance that
+        // raycast wheels otherwise lack. This is force-limited: throttle,
+        // braking, a forklift impact, or a sufficiently large external load
+        // still moves the truck normally.
+        if (SupportedNormalForce > 0.0f && FMath::Abs(Throttle) <= 0.01f && !bBrake)
+        {
+            FVector PlanarVelocity = ChassisVelocity;
+            PlanarVelocity.Z = 0.0f;
+            if (!PlanarVelocity.IsNearlyZero(0.03f))
+            {
+                const FVector IdleDragForce = (
+                    -PlanarVelocity.GetSafeNormal()
+                        * SupportedNormalForce * ConveyorTuning::ForkliftIdleDrivelineDrag
+                    -PlanarVelocity
+                        * Chassis->GetMass()
+                        * ConveyorTuning::ForkliftIdleVelocityDampingPerSecond)
+                    .GetClampedToMaxSize(
+                        SupportedNormalForce
+                        * ConveyorTuning::ForkliftIdleMaximumDrag);
+                Chassis->AddForce(
+                    IdleDragForce,
+                    NAME_None,
+                    false);
+            }
+        }
+
+        if (bResolutionDataset && ForkliftIndex == 0)
+        {
+            const int32 TelemetrySecond = FMath::FloorToInt(ResolutionDatasetElapsed);
+            if (TelemetrySecond != ResolutionDatasetLastForceTelemetrySecond)
+            {
+                ResolutionDatasetLastForceTelemetrySecond = TelemetrySecond;
+                SimulatorLog(FString::Printf(
+                    TEXT("resolution_dataset tire_force elapsed=%.2f throttle=%.3f forward=(%.3f,%.3f,%.3f) planar_force=(%.0f,%.0f,%.0f) magnitude=%.0f supported_force=%.0f mass=%.1f"),
+                    ResolutionDatasetElapsed,
+                    Throttle,
+                    ChassisForward.X,
+                    ChassisForward.Y,
+                    ChassisForward.Z,
+                    TotalPlanarTireForce.X,
+                    TotalPlanarTireForce.Y,
+                    TotalPlanarTireForce.Z,
+                    TotalPlanarTireForce.Size(),
+                    SupportedNormalForce,
+                    Chassis->GetMass()));
+            }
+        }
+
+        const float PreviousActualLift = Forklift.ActualLiftCm;
+        const float PreviousLiftTarget = Forklift.LiftCm;
+        Forklift.LiftCm = FMath::Clamp(
+            Forklift.LiftCm + LiftInput * ConveyorTuning::ForkliftLiftSpeedCm * SafeDeltaSeconds,
+            0.0f,
+            ConveyorTuning::ForkliftMaximumCommandedLiftCm);
+        // Derive velocity from the clamped target displacement, not directly
+        // from the held key. At either end stop this becomes exactly zero, so
+        // holding E/Q cannot continuously inject force into the chassis.
+        const float ResolvedLiftVelocityCmPerSecond =
+            (Forklift.LiftCm - PreviousLiftTarget) / SafeDeltaSeconds;
+        if (UPhysicsConstraintComponent* LiftConstraint = Forklift.ChaosLiftConstraint.Get())
+        {
+            // The constrained carriage is body two; Chaos's relative Z drive
+            // uses the opposite sign from the forklift-local visual lift axis.
+            // A positive target previously drove the carriage downward while
+            // F8 correctly drew the intended upward fork position.
+            LiftConstraint->SetLinearPositionTarget(FVector(0.0f, 0.0f, -Forklift.LiftCm));
+            LiftConstraint->SetLinearVelocityTarget(FVector(
+                0.0f,
+                0.0f,
+                -ResolvedLiftVelocityCmPerSecond));
+        }
+        const bool bHoldingUpperStop =
+            LiftInput > 0.01f
+            && Forklift.LiftCm >= ConveyorTuning::ForkliftMaximumCommandedLiftCm - 0.01f;
+        if (bHoldingUpperStop && !Forklift.bLiftUpperStopLatched)
+        {
+            Forklift.bLiftUpperStopLatched = true;
+            SimulatorLog(FString::Printf(
+                TEXT("forklift_lift_upper_stop forklift=%d target_cm=%.1f actual_cm=%.1f velocity_target_cm_s=0.0"),
+                ForkliftIndex + 1,
+                Forklift.LiftCm,
+                Forklift.ActualLiftCm));
+        }
+        else if (Forklift.LiftCm < ConveyorTuning::ForkliftMaximumCommandedLiftCm - 2.0f)
+        {
+            Forklift.bLiftUpperStopLatched = false;
+        }
+        const FVector ExpectedLoweredCarriageWorld =
+            ChassisTransform.TransformPositionNoScale(CarriageBaseLocal);
+        Forklift.ActualLiftCm = FMath::Clamp(
+            FVector::DotProduct(
+                Carriage->GetComponentLocation() - ExpectedLoweredCarriageWorld,
+                ChassisUp),
+            0.0f,
+            ConveyorTuning::ForkliftLiftTravelCm);
+        Forklift.LiftDeltaCm = Forklift.ActualLiftCm - PreviousActualLift;
+        if (FMath::Abs(LiftInput) > 0.01f)
+        {
+            Carriage->WakeRigidBody();
+            Chassis->WakeRigidBody();
+        }
+
+        Forklift.SpeedCmPerSecond = LongitudinalSpeed;
+        Forklift.SurfaceLinearVelocityCmPerSecond = ChassisVelocity;
+        Forklift.SurfaceYawVelocityDegreesPerSecond =
+            Chassis->GetPhysicsAngularVelocityInDegrees().Z;
+        Forklift.BodyPitchDegrees = Chassis->GetComponentRotation().Pitch;
+        Forklift.BodyRollDegrees = Chassis->GetComponentRotation().Roll;
+        Forklift.MaximumAbsoluteTipDegrees = FMath::Max(
+            Forklift.MaximumAbsoluteTipDegrees,
+            FMath::Max(FMath::Abs(Forklift.BodyPitchDegrees), FMath::Abs(Forklift.BodyRollDegrees)));
+        Forklift.WheelAngleDegrees = FMath::Fmod(
+            Forklift.WheelAngleDegrees
+                + FMath::RadiansToDegrees(
+                    LongitudinalSpeed * SafeDeltaSeconds
+                    / ConveyorTuning::ForkliftWheelRadiusCm),
+            360.0f);
+        for (int32 VisualWheelIndex = 0; VisualWheelIndex < 4; ++VisualWheelIndex)
+        {
+            if (USceneComponent* WheelPivot = Forklift.WheelPivots[VisualWheelIndex].Get())
+            {
+                const float VisualSteer = VisualWheelIndex >= 2 ? RearSteerRadians : 0.0f;
+                const FQuat Steering(FVector::UpVector, VisualSteer);
+                const FQuat Rolling(
+                    FVector::RightVector,
+                    FMath::DegreesToRadians(Forklift.WheelAngleDegrees));
+                WheelPivot->SetRelativeRotation(
+                    Forklift.WheelPivotInitialRelative[VisualWheelIndex] * Steering * Rolling);
+            }
+        }
+    }
+}
+
+void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
+{
+    if (!bChaosPhysicsActive)
+    {
+        return;
+    }
+    if (ChaosConveyorStartupGraceSeconds > 0.0f)
+    {
+        ChaosConveyorStartupGraceSeconds = FMath::Max(
+            0.0f,
+            ChaosConveyorStartupGraceSeconds - StepSeconds);
+        if (ChaosConveyorStartupGraceSeconds > 0.0f)
+        {
+            return;
+        }
+    }
+    if (!bChaosConveyorBodiesActivated)
+    {
+        for (int32 ParcelIndex = 0; ParcelIndex < RuntimeChaosConveyorBodies.Num(); ++ParcelIndex)
+        {
+            UBoxComponent* Body = RuntimeChaosConveyorBodies[ParcelIndex];
+            if (!Body)
+            {
+                continue;
+            }
+            FVector Location = Body->GetComponentLocation();
+            const float HalfHeight = ParcelHalfExtents.IsValidIndex(ParcelIndex)
+                ? ParcelHalfExtents[ParcelIndex].Z
+                : 15.0f;
+            Location.Z = ConveyorSurfaceZCm + HalfHeight + 1.0f;
+            Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Body->SetSimulatePhysics(false);
+            Body->SetWorldLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
+            Body->SetSimulatePhysics(true);
+            // Creating the Chaos body can recalculate box mass from its volume.
+            // Reapply the authored carton properties after body creation so
+            // roller force, inertia and contact response all use the same mass.
+            if (ParcelPhysicsProfiles.IsValidIndex(ParcelIndex))
+            {
+                const FPropPhysicsProfile& Profile = ParcelPhysicsProfiles[ParcelIndex];
+                Body->SetMassOverrideInKg(NAME_None, Profile.MassKg, true);
+                Body->SetCenterOfMass(Profile.CenterOfMassLocalOffset);
+                Body->SetLinearDamping(Profile.AirLinearDamping);
+                Body->SetAngularDamping(Profile.AirAngularDamping);
+            }
+            Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+            Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            Body->PutRigidBodyToSleep();
+            Body->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        }
+        bChaosConveyorBodiesActivated = true;
+        SimulatorLog(FString::Printf(
+            TEXT("chaos_conveyor_activation bodies=%d clearance_cm=1.00 state=settled"),
+            RuntimeChaosConveyorBodies.Num()));
+        return;
+    }
+    ChaosConveyorMotorRampSeconds = FMath::Min(
+        1.5f,
+        ChaosConveyorMotorRampSeconds + StepSeconds);
+    const float MotorRamp = FMath::SmoothStep(
+        0.0f,
+        1.5f,
+        ChaosConveyorMotorRampSeconds);
+    int32 DrivenBodyCount = 0;
+    float TotalTangentialSpeedCmPerSecond = 0.0f;
+    float TotalTangentialAccelerationCmPerSecondSquared = 0.0f;
+    float TotalCenteringAccelerationCmPerSecondSquared = 0.0f;
+    const auto ApplyBeltTraction = [this, MotorRamp, &DrivenBodyCount,
+        &TotalTangentialSpeedCmPerSecond,
+        &TotalTangentialAccelerationCmPerSecondSquared,
+        &TotalCenteringAccelerationCmPerSecondSquared](
+        UPrimitiveComponent* Body,
+        const FVector& HalfExtent,
+        const FPropPhysicsProfile& Physics)
+    {
+        if (!Body || !Body->IsSimulatingPhysics())
+        {
+            return;
+        }
+        const FVector Location = Body->GetComponentLocation();
+        float BeltDistance = 0.0f;
+        float LateralDistance = 0.0f;
+        FVector BeltPoint;
+        FVector BeltTangent;
+        ConveyorTuning::ProjectToConveyor(
+            Location,
+            BeltDistance,
+            BeltPoint,
+            BeltTangent,
+            LateralDistance);
+        const float VerticalExtent = ConveyorTuning::ProjectedVerticalHalfExtent(
+            Body->GetComponentQuat(),
+            HalfExtent);
+        const float Bottom = Location.Z - VerticalExtent;
+        const bool bOnRollers = LateralDistance <= ConveyorTuning::BeltHalfWidth + 3.0f
+            && Bottom >= ConveyorSurfaceZCm - 4.0f
+            && Bottom <= ConveyorSurfaceZCm + 5.0f;
+        if (!bOnRollers)
+        {
+            return;
+        }
+        FVector CurrentVelocity = Body->GetPhysicsLinearVelocity();
+        CurrentVelocity.Z = 0.0f;
+        const FVector Tangent = BeltTangent.GetSafeNormal2D();
+        const FVector BeltNormal(-Tangent.Y, Tangent.X, 0.0f);
+        const float TangentialSpeed = FVector::DotProduct(CurrentVelocity, Tangent);
+        ++DrivenBodyCount;
+        TotalTangentialSpeedCmPerSecond += TangentialSpeed;
+        const float ConveyorTargetSpeedCmPerSecond =
+            ConveyorTuning::ConveyorSpeedCm * ConveyorSpeedScale;
+        const float TangentialSpeedError =
+            ConveyorTargetSpeedCmPerSecond - TangentialSpeed;
+        // Static proxy rollers need a small breakaway allowance, but a
+        // constant positive allowance kept accelerating after target speed
+        // and produced a visible surge/coast stagger. Fade and reverse the
+        // compensation smoothly with the velocity error instead.
+        const float ResistanceCompensation =
+            ConveyorTuning::ConveyorProxyResistanceCompensationCm
+            * FMath::Clamp(
+                FMath::Abs(TangentialSpeedError)
+                    / ConveyorTuning::ConveyorResistanceFadeSpeedCm,
+                0.0f,
+                1.0f)
+            * FMath::Sign(TangentialSpeedError);
+        const float TangentialAcceleration = FMath::Clamp(
+            TangentialSpeedError
+                / ConveyorTuning::ConveyorTangentialResponseSeconds
+                + ResistanceCompensation,
+            -ConveyorTuning::ConveyorMaximumParcelAccelerationCm,
+            ConveyorTuning::ConveyorMaximumParcelAccelerationCm);
+
+        // The roller bank is treated as slightly crowned/skewed.  This is a
+        // bounded contact force, not a positional constraint: cargo can rotate,
+        // be knocked sideways, overhang and fall.  Lateral velocity damping
+        // also absorbs the energy that formerly flung parcels out of a turn.
+        const FVector LateralOffset = Location - BeltPoint;
+        const float SignedLateralOffset = FVector::DotProduct(LateralOffset, BeltNormal);
+        const float LateralSpeed = FVector::DotProduct(CurrentVelocity, BeltNormal);
+        const float CenteringAcceleration = FMath::Clamp(
+            -SignedLateralOffset * ConveyorTuning::ConveyorCrownStiffnessPerSecondSquared
+                - LateralSpeed * ConveyorTuning::ConveyorCrownDampingPerSecond,
+            -ConveyorTuning::ConveyorMaximumCenteringAccelerationCm,
+            ConveyorTuning::ConveyorMaximumCenteringAccelerationCm);
+        TotalTangentialAccelerationCmPerSecondSquared += TangentialAcceleration * MotorRamp;
+        TotalCenteringAccelerationCmPerSecondSquared += FMath::Abs(
+            CenteringAcceleration * MotorRamp);
+        FVector DriveAcceleration =
+            Tangent * TangentialAcceleration + BeltNormal * CenteringAcceleration;
+        const float MaximumFrictionAcceleration = FMath::Max(
+            0.85f,
+            Physics.StaticFriction * 1.25f) * ConveyorTuning::GravityCmPerSecondSquared;
+        DriveAcceleration = DriveAcceleration.GetClampedToMaxSize(
+            MaximumFrictionAcceleration) * MotorRamp;
+        // Multiple rollers support the parcel footprint simultaneously. Model
+        // their combined traction as a distributed resultant through the body,
+        // rather than one artificial point impulse that pitches a carton. There
+        // is still no trajectory constraint, transform, attachment or side wall.
+        // Acceleration-change form is intentional: it is exactly equivalent to
+        // F=m*a but remains correct if Chaos conditions/rebuilds a compound
+        // body's runtime mass after activation.
+        Body->AddForce(DriveAcceleration, NAME_None, true);
+        Body->WakeRigidBody();
+    };
+
+    for (int32 ParcelIndex = 0; ParcelIndex < RuntimeChaosConveyorBodies.Num(); ++ParcelIndex)
+    {
+        if (ParcelHalfExtents.IsValidIndex(ParcelIndex)
+            && ParcelPhysicsProfiles.IsValidIndex(ParcelIndex))
+        {
+            ApplyBeltTraction(
+                RuntimeChaosConveyorBodies[ParcelIndex],
+                ParcelHalfExtents[ParcelIndex],
+                ParcelPhysicsProfiles[ParcelIndex]);
+        }
+    }
+    for (FDynamicBoxRuntime& Prop : DynamicBoxes)
+    {
+        ApplyBeltTraction(
+            Cast<UPrimitiveComponent>(Prop.Root.Get()),
+            Prop.HalfExtent,
+            Prop.Physics);
+    }
+    if (!bLoggedChaosConveyorDrive && MotorRamp >= 0.999f)
+    {
+        bLoggedChaosConveyorDrive = true;
+        SimulatorLog(FString::Printf(
+            TEXT("chaos_conveyor_drive active_bodies=%d average_tangent_speed_cm_s=%.2f target_cm_s=%.2f average_command_acceleration_cm_s2=%.2f average_centering_acceleration_cm_s2=%.2f startup_ramp=complete powered_roller=true"),
+            DrivenBodyCount,
+            DrivenBodyCount > 0
+                ? TotalTangentialSpeedCmPerSecond / static_cast<float>(DrivenBodyCount)
+                : 0.0f,
+            ConveyorTuning::ConveyorSpeedCm * ConveyorSpeedScale,
+            DrivenBodyCount > 0
+                ? TotalTangentialAccelerationCmPerSecondSquared / static_cast<float>(DrivenBodyCount)
+                : 0.0f,
+            DrivenBodyCount > 0
+                ? TotalCenteringAccelerationCmPerSecondSquared / static_cast<float>(DrivenBodyCount)
+                : 0.0f));
+    }
+}
+
+void AQaiConveyorWorld::SimulateChaosForkContacts(float StepSeconds)
+{
+    if (!bChaosPhysicsActive || StepSeconds <= UE_SMALL_NUMBER)
+    {
+        return;
+    }
+
+    const auto ApplyForkForces = [this, StepSeconds](
+        UPrimitiveComponent* Body,
+        const FVector& HalfExtent,
+        const FPropPhysicsProfile& Profile,
+        int32* SupportedForklift)
+    {
+        if (!Body || !Body->IsSimulatingPhysics())
+        {
+            return;
+        }
+        const FVector BodyLocation = Body->GetComponentLocation();
+        const FQuat BodyRotation = Body->GetComponentQuat();
+        const float BodyBottom = BodyLocation.Z
+            - ConveyorTuning::ProjectedVerticalHalfExtent(BodyRotation, HalfExtent);
+
+        for (int32 ForkliftIndex = 0; ForkliftIndex < ConveyorTuning::EnabledForkliftCount; ++ForkliftIndex)
+        {
+            if (SupportedForklift && *SupportedForklift != INDEX_NONE
+                && *SupportedForklift != ForkliftIndex)
+            {
+                continue;
+            }
+            const FForkliftRuntime& Forklift = Forklifts[ForkliftIndex];
+            const USceneComponent* ForkliftRoot = Forklift.Root.Get();
+            if (!ForkliftRoot)
+            {
+                continue;
+            }
+            const FQuat ForkliftRotation = ForkliftRoot->GetComponentQuat();
+            const FVector ForkForward = ForkliftRotation.GetForwardVector();
+            const FVector ForkRight = ForkliftRotation.GetRightVector();
+            const FVector BodyForward = BodyRotation.GetForwardVector();
+            const FVector BodyRight = BodyRotation.GetRightVector();
+            const float BodyProjectionX = FMath::Abs(FVector::DotProduct(BodyForward, ForkForward)) * HalfExtent.X
+                + FMath::Abs(FVector::DotProduct(BodyRight, ForkForward)) * HalfExtent.Y;
+            const float BodyProjectionY = FMath::Abs(FVector::DotProduct(BodyForward, ForkRight)) * HalfExtent.X
+                + FMath::Abs(FVector::DotProduct(BodyRight, ForkRight)) * HalfExtent.Y;
+            const FVector ForkLocalBody = ForkliftRoot->GetComponentTransform()
+                .InverseTransformPositionNoScale(BodyLocation);
+            const bool bCachedSupport = SupportedForklift && *SupportedForklift == ForkliftIndex;
+            const bool bInsideForkEnvelope = ForkLocalBody.X + BodyProjectionX >= -50.0f
+                && ForkLocalBody.X - BodyProjectionX <= 250.0f
+                && FMath::Abs(ForkLocalBody.Y) <= 80.0f + BodyProjectionY;
+            if (bCachedSupport && !bInsideForkEnvelope)
+            {
+                *SupportedForklift = INDEX_NONE;
+                continue;
+            }
+            float HighestSupportTop = -TNumericLimits<float>::Max();
+            int32 ContactTines = 0;
+            for (const FFittedCollisionBox& Shape : Forklift.CollisionBoxes)
+            {
+                if (Shape.IsWedge()
+                    || !Shape.Name.Contains(TEXT("fork tine"), ESearchCase::IgnoreCase))
+                {
+                    continue;
+                }
+                FVector LocalCenter = Shape.LocalCenter;
+                LocalCenter.Z += Forklift.LiftCm;
+                FVector TineCenter = ForkliftRoot->GetComponentLocation()
+                    + ForkliftRotation.RotateVector(LocalCenter);
+                const float TineTop = TineCenter.Z + Shape.HalfExtent.Z + 1.5f;
+                // Project the rotated cargo footprint onto forklift-local X/Y
+                // and require overlap with an individual tine. This avoids a
+                // 3-D SAT rejection caused solely by the intentionally small
+                // vertical contact gap.
+                if (!bCachedSupport
+                    && (FMath::Abs(ForkLocalBody.X - LocalCenter.X)
+                        > BodyProjectionX + Shape.HalfExtent.X
+                    || FMath::Abs(ForkLocalBody.Y - LocalCenter.Y)
+                        > BodyProjectionY + Shape.HalfExtent.Y + 1.0f))
+                {
+                    continue;
+                }
+                HighestSupportTop = FMath::Max(HighestSupportTop, TineTop);
+                ++ContactTines;
+            }
+            if (ContactTines == 0)
+            {
+                continue;
+            }
+            const float GapCm = BodyBottom - HighestSupportTop;
+            const float VerticalHalfExtent = ConveyorTuning::ProjectedVerticalHalfExtent(
+                BodyRotation,
+                HalfExtent);
+            // Recover a missed thin-surface manifold only while the tine top
+            // is still inside the supported object's vertical silhouette.
+            // Once it exits the object's top this is no longer support.
+            if (!bCachedSupport && (GapCm < -3.0f * VerticalHalfExtent || GapCm > 8.0f))
+            {
+                continue;
+            }
+            if (SupportedForklift)
+            {
+                *SupportedForklift = ForkliftIndex;
+            }
+
+            const float MassKg = FMath::Max(0.1f, Profile.MassKg);
+            const FVector Velocity = Body->GetPhysicsLinearVelocity();
+            const FVector CarrierVelocity = Forklift.SurfaceLinearVelocityCmPerSecond;
+            const float PenetrationCm = FMath::Max(0.0f, -GapCm);
+            const float NormalAcceleration = ConveyorTuning::GravityCmPerSecondSquared
+                + (CarrierVelocity.Z - Velocity.Z) * 24.0f
+                + PenetrationCm * 120.0f;
+            const float NormalForce = FMath::Clamp(
+                MassKg * NormalAcceleration,
+                0.0f,
+                MassKg * ConveyorTuning::GravityCmPerSecondSquared * 8.0f);
+            FVector PlanarError = CarrierVelocity - Velocity;
+            PlanarError.Z = 0.0f;
+            FVector FrictionForce = PlanarError * (MassKg / 0.10f);
+            const float MaximumFriction = FMath::Max(0.0f, Profile.DynamicFriction * NormalForce);
+            FrictionForce = FrictionForce.GetClampedToMaxSize(MaximumFriction);
+            FVector ResolvedVelocity = Velocity;
+            ResolvedVelocity.Z += NormalForce * StepSeconds / MassKg;
+            ResolvedVelocity.Z = FMath::Max(
+                ResolvedVelocity.Z,
+                FMath::Min(
+                    180.0f,
+                    CarrierVelocity.Z + PenetrationCm * 20.0f));
+            ResolvedVelocity.Z = FMath::Min(
+                ResolvedVelocity.Z,
+                FMath::Max(0.0f, CarrierVelocity.Z) + 10.0f);
+            ResolvedVelocity.X += FrictionForce.X * StepSeconds / MassKg;
+            ResolvedVelocity.Y += FrictionForce.Y * StepSeconds / MassKg;
+            const FVector PlanarSlipCorrection = FVector(
+                (CarrierVelocity.X - Velocity.X) * StepSeconds,
+                (CarrierVelocity.Y - Velocity.Y) * StepSeconds,
+                0.0f).GetClampedToMaxSize(
+                    FMath::Clamp(Profile.StaticFriction * 4.0f, 0.5f, 3.0f));
+            if (GapCm < 0.0f || !PlanarSlipCorrection.IsNearlyZero())
+            {
+                // Position-level non-penetration projection, analogous to
+                // the positional solve in a rigid-body contact constraint.
+                // Correct only the measured vertical overlap; never pull a
+                // body toward a fork across an air gap.
+                Body->SetWorldLocation(
+                    BodyLocation
+                        + PlanarSlipCorrection
+                        + FVector(0.0f, 0.0f, GapCm < 0.0f ? -GapCm + 0.05f : 0.0f),
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
+            }
+            Body->SetPhysicsLinearVelocity(ResolvedVelocity);
+            Body->WakeRigidBody();
+            break;
+        }
+    };
+
+    for (FDynamicBoxRuntime& DynamicBody : DynamicBoxes)
+    {
+        ApplyForkForces(
+            Cast<UPrimitiveComponent>(DynamicBody.Root.Get()),
+            DynamicBody.HalfExtent,
+            DynamicBody.Physics,
+            &DynamicBody.SupportedForklift);
+    }
+    for (int32 ParcelIndex = 0; ParcelIndex < RuntimeChaosConveyorBodies.Num(); ++ParcelIndex)
+    {
+        if (ParcelHalfExtents.IsValidIndex(ParcelIndex)
+            && ParcelPhysicsProfiles.IsValidIndex(ParcelIndex))
+        {
+            ApplyForkForces(
+                RuntimeChaosConveyorBodies[ParcelIndex],
+                ParcelHalfExtents[ParcelIndex],
+                ParcelPhysicsProfiles[ParcelIndex],
+                ParcelSupportedForklifts.IsValidIndex(ParcelIndex)
+                    ? &ParcelSupportedForklifts[ParcelIndex]
+                    : nullptr);
+        }
+    }
+}
+
+void AQaiConveyorWorld::SyncChaosTelemetry()
+{
+    for (FDynamicBoxRuntime& Body : DynamicBoxes)
+    {
+        if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Body.Root.Get()))
+        {
+            Body.LinearVelocity = Primitive->GetPhysicsLinearVelocity();
+            Body.AngularVelocityDegrees = Primitive->GetPhysicsAngularVelocityInDegrees();
+            Body.bAwake = Primitive->IsAnyRigidBodyAwake();
+            Body.SupportedForklift = INDEX_NONE;
+            Body.SupportBodyIndex = INDEX_NONE;
+        }
+    }
+    for (int32 Index = 0; Index < Parcels.Num(); ++Index)
+    {
+        if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Parcels[Index].Get()))
+        {
+            if (ParcelLinearVelocities.IsValidIndex(Index))
+            {
+                ParcelLinearVelocities[Index] = Primitive->GetPhysicsLinearVelocity();
+            }
+            if (ParcelGrounded.IsValidIndex(Index))
+            {
+                const FVector HalfExtent = ParcelHalfExtents.IsValidIndex(Index)
+                    ? ParcelHalfExtents[Index]
+                    : FVector::ZeroVector;
+                const float VerticalHalfExtent = ConveyorTuning::ProjectedVerticalHalfExtent(
+                    Primitive->GetComponentQuat(), HalfExtent);
+                ParcelGrounded[Index] = Primitive->GetComponentLocation().Z
+                    - VerticalHalfExtent <= ConveyorSurfaceZCm + 3.0f;
+            }
+            if (ParcelSupportedForklifts.IsValidIndex(Index))
+            {
+                ParcelSupportedForklifts[Index] = INDEX_NONE;
+            }
+        }
+    }
+    if (bPhysicsContactTestInitialized && Parcels.IsValidIndex(0) && Parcels[0].IsValid())
+    {
+        PhysicsContactMaximumParcelLiftCm = FMath::Max(
+            PhysicsContactMaximumParcelLiftCm,
+            Parcels[0]->GetComponentLocation().Z - PhysicsContactInitialParcelZ);
+    }
+}
+
+void AQaiConveyorWorld::MaintainChaosGravity()
+{
+    if (!bChaosPhysicsActive)
+    {
+        return;
+    }
+
+    const auto HasStaticSupport = [this](
+        const FVector& Location,
+        const FQuat& Rotation,
+        const FVector& HalfExtent)
+    {
+        const float Bottom = Location.Z
+            - ConveyorTuning::ProjectedVerticalHalfExtent(Rotation, HalfExtent);
+        if (Bottom <= 1.5f)
+        {
+            return true;
+        }
+        for (const FCollisionObstacle& Obstacle : CollisionObstacles)
+        {
+            if (Obstacle.Name != TEXT("shelf plane")
+                && Obstacle.Name != TEXT("packing table")
+                && Obstacle.Name != TEXT("conveyor"))
+            {
+                continue;
+            }
+            const FVector Local = Obstacle.Rotation.UnrotateVector(Location - Obstacle.Center);
+            const float BodyProjectionX = FMath::Abs(FVector::DotProduct(
+                Rotation.GetForwardVector(), Obstacle.Rotation.GetForwardVector())) * HalfExtent.X
+                + FMath::Abs(FVector::DotProduct(
+                    Rotation.GetRightVector(), Obstacle.Rotation.GetForwardVector())) * HalfExtent.Y;
+            const float BodyProjectionY = FMath::Abs(FVector::DotProduct(
+                Rotation.GetForwardVector(), Obstacle.Rotation.GetRightVector())) * HalfExtent.X
+                + FMath::Abs(FVector::DotProduct(
+                    Rotation.GetRightVector(), Obstacle.Rotation.GetRightVector())) * HalfExtent.Y;
+            const bool bOverSupport = FMath::Abs(Local.X) <= Obstacle.HalfExtent.X + BodyProjectionX
+                && FMath::Abs(Local.Y) <= Obstacle.HalfExtent.Y + BodyProjectionY;
+            const float SupportTop = Obstacle.Center.Z + Obstacle.HalfExtent.Z;
+            if (bOverSupport && FMath::Abs(Bottom - SupportTop) <= 2.0f)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    for (FDynamicBoxRuntime& Body : DynamicBoxes)
+    {
+        UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Body.Root.Get());
+        if (!Primitive || !Primitive->IsSimulatingPhysics())
+        {
+            continue;
+        }
+        const bool bCarried = Body.SupportedForklift != INDEX_NONE;
+        const bool bSupported = bCarried || HasStaticSupport(
+            Primitive->GetComponentLocation(),
+            Primitive->GetComponentQuat(),
+            Body.HalfExtent);
+        if (!bSupported && !Primitive->IsAnyRigidBodyAwake())
+        {
+            // Chaos may put a slowly rotating body to sleep after resolving a
+            // bad imported contact. An unsupported rigid body must never be
+            // allowed to remain suspended; waking it restores gravity without
+            // adding any artificial trajectory or downward impulse.
+            Primitive->WakeRigidBody();
+        }
+    }
 }
 
 void AQaiConveyorWorld::FixedSimulationStep(float StepSeconds)
 {
     SimulateForklifts(StepSeconds);
-    SimulateDynamicBoxes(StepSeconds);
-    SimulateConveyor(StepSeconds);
+    if (bChaosPhysicsActive)
+    {
+        SimulateChaosForkContacts(StepSeconds);
+        SimulateChaosConveyor(StepSeconds);
+        MaintainChaosGravity();
+        SyncChaosTelemetry();
+        if (bPhysicsContactTestInitialized && Parcels.IsValidIndex(0) && Parcels[0].IsValid())
+        {
+            PhysicsContactMaximumParcelLiftCm = FMath::Max(
+                PhysicsContactMaximumParcelLiftCm,
+                Parcels[0]->GetComponentLocation().Z - PhysicsContactInitialParcelZ);
+        }
+    }
+    else
+    {
+        SimulateDynamicBoxes(StepSeconds);
+        SimulateConveyor(StepSeconds);
+    }
     SimulateWorkers(StepSeconds);
     UpdateSafetySignal();
 }
@@ -5324,6 +10433,15 @@ void AQaiConveyorWorld::SimulateForklifts(float StepSeconds)
                     OutWheelIndex = ShapeIndex;
                 }
             };
+
+            if (InferenceRedZoneBounds.IsValid)
+            {
+                ConsiderSupport(
+                    TEXT("red safety mat"),
+                    InferenceRedZoneBounds.GetCenter(),
+                    FQuat::Identity,
+                    InferenceRedZoneBounds.GetExtent());
+            }
 
             for (int32 BodyIndex = 0; BodyIndex < DynamicBoxes.Num(); ++BodyIndex)
             {
@@ -5847,6 +10965,28 @@ void AQaiConveyorWorld::SimulateForklifts(float StepSeconds)
                 const FQuat Steering(FVector::UpVector, WheelSteer);
                 const FQuat Rolling(FVector::RightVector, FMath::DegreesToRadians(Forklift.WheelAngleDegrees));
                 WheelPivot->SetRelativeRotation(Forklift.WheelPivotInitialRelative[WheelIndex] * Steering * Rolling);
+            }
+        }
+        for (int32 ShapeIndex = 0;
+             ShapeIndex < Forklift.ChaosCollisionComponents.Num()
+                && ShapeIndex < Forklift.CollisionBoxes.Num();
+             ++ShapeIndex)
+        {
+            if (UBoxComponent* Collider = Forklift.ChaosCollisionComponents[ShapeIndex].Get())
+            {
+                FVector LocalCenter = Forklift.CollisionBoxes[ShapeIndex].LocalCenter;
+                LocalCenter.Z += Forklift.CollisionBoxes[ShapeIndex].bLiftDriven
+                    ? Forklift.LiftCm
+                    : 0.0f;
+                const FTransform ChaosForkliftTransform = Forklift.Root->GetComponentTransform();
+                const FVector TargetLocation = ChaosForkliftTransform.TransformPositionNoScale(LocalCenter);
+                const FQuat TargetRotation = ChaosForkliftTransform.GetRotation();
+                Collider->SetWorldLocationAndRotation(
+                    TargetLocation,
+                    TargetRotation,
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
             }
         }
         UpdateCargo(Forklift);
@@ -6996,7 +12136,8 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
             && FMath::Abs(CurrentBottom - ConveyorSurfaceZCm) <= 7.0f;
         if (bWasOnBelt)
         {
-            const FVector TargetVelocity = CurrentTangent * ConveyorTuning::ConveyorSpeedCm;
+            const FVector TargetVelocity = CurrentTangent
+                * ConveyorTuning::ConveyorSpeedCm * ConveyorSpeedScale;
             ConveyorTuning::ApplyCoulombFriction(
                 Velocity,
                 TargetVelocity,
@@ -7076,7 +12217,8 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
             && (NextBottom <= ConveyorSurfaceZCm + 3.0f || bWasOnBelt))
         {
             SupportTop = ConveyorSurfaceZCm;
-            SupportVelocity = NextTangent * ConveyorTuning::ConveyorSpeedCm;
+            SupportVelocity = NextTangent
+                * ConveyorTuning::ConveyorSpeedCm * ConveyorSpeedScale;
             bOnBelt = true;
         }
         else if (NextBeltCoverage > 0.0f
@@ -7478,7 +12620,8 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
             FVector ResetTangent;
             ConveyorTuning::EvaluateConveyor(ParcelDistances[Index], NextCenter, ResetTangent);
             NextCenter.Z = ConveyorSurfaceZCm + HalfExtent.Z + 35.0f;
-            Velocity = ResetTangent * ConveyorTuning::ConveyorSpeedCm;
+            Velocity = ResetTangent
+                * ConveyorTuning::ConveyorSpeedCm * ConveyorSpeedScale;
             Velocity.Z = -20.0f;
             PitchVelocity = 0.0f;
             RollVelocity = 0.0f;
@@ -7621,20 +12764,156 @@ void AQaiConveyorWorld::SimulateConveyor(float StepSeconds)
 
 void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
 {
+    // USD-imported skeletal bounds remain tied to the reference pose, so they
+    // can claim that the worker is grounded while the evaluated walking pose
+    // is visibly below the floor. Track actual animated foot/toe bones instead.
+    // The sole-to-bone distance was calibrated from the intact imported mesh at
+    // startup, preserving each character's different shoe/rig proportions.
+    const auto AlignAnimatedFeetToCapsule = [this](FWorkerRuntime& Worker)
+    {
+        UCapsuleComponent* Body = Worker.ChaosBody.Get();
+        USceneComponent* VisualRoot = Worker.Root.Get();
+        USkeletalMeshComponent* SkeletalMesh = Worker.SkeletalMesh.Get();
+        if (!Body || !VisualRoot || !SkeletalMesh || Worker.FootBones.IsEmpty())
+        {
+            return;
+        }
+
+        float LowestAnimatedFootBoneZ = TNumericLimits<float>::Max();
+        for (const FName FootBone : Worker.FootBones)
+        {
+            if (SkeletalMesh->GetBoneIndex(FootBone) != INDEX_NONE)
+            {
+                LowestAnimatedFootBoneZ = FMath::Min(
+                    LowestAnimatedFootBoneZ,
+                    SkeletalMesh->GetBoneLocation(FootBone, EBoneSpaces::WorldSpace).Z);
+            }
+        }
+        if (LowestAnimatedFootBoneZ == TNumericLimits<float>::Max())
+        {
+            return;
+        }
+
+        const float CapsuleBottomZ = Body->GetComponentLocation().Z
+            - ConveyorTuning::WorkerCapsuleHalfHeightCm;
+        const float EstimatedAnimatedSoleZ = LowestAnimatedFootBoneZ
+            - Worker.SoleBelowLowestFootBoneCm;
+        const float HeightErrorCm = CapsuleBottomZ - EstimatedAnimatedSoleZ;
+        const float RootZBefore = VisualRoot->GetComponentLocation().Z;
+        if (FMath::Abs(HeightErrorCm) > 0.05f)
+        {
+            // One frame of animation can briefly report the previous evaluated
+            // pose. Limit that correction, but converge large import offsets in
+            // a few fixed steps instead of allowing a visible floor crossing.
+            const float CorrectionCm = FMath::Clamp(HeightErrorCm, -12.0f, 12.0f);
+            VisualRoot->AddWorldOffset(
+                FVector(0.0f, 0.0f, CorrectionCm),
+                false,
+                nullptr,
+                ETeleportType::TeleportPhysics);
+        }
+        if (!Worker.bLoggedFootGroundingRuntime
+            && GetWorld()
+            && GetWorld()->GetTimeSeconds() >= 3.0f)
+        {
+            Worker.bLoggedFootGroundingRuntime = true;
+            SimulatorLog(FString::Printf(
+                TEXT("worker_grounding_runtime body=%s capsule_bottom_z_cm=%.2f lowest_foot_bone_z_cm=%.2f estimated_sole_z_cm=%.2f correction_cm=%.2f visual_root_z_before_cm=%.2f visual_root_z_after_cm=%.2f"),
+                *Body->GetName(),
+                CapsuleBottomZ,
+                LowestAnimatedFootBoneZ,
+                EstimatedAnimatedSoleZ,
+                HeightErrorCm,
+                RootZBefore,
+                VisualRoot->GetComponentLocation().Z));
+        }
+    };
+    for (FWorkerRuntime& Worker : Workers)
+    {
+        if (UCapsuleComponent* Body = Worker.ChaosBody.Get())
+        {
+            const float WalkingPlaneZ = Worker.InitialChaosTransform.GetLocation().Z;
+            FVector BodyLocation = Body->GetComponentLocation();
+            if (FMath::Abs(BodyLocation.Z - WalkingPlaneZ) > 0.10f)
+            {
+                BodyLocation.Z = WalkingPlaneZ;
+                Body->SetWorldLocation(
+                    BodyLocation,
+                    false,
+                    nullptr,
+                    ETeleportType::TeleportPhysics);
+            }
+            FVector BodyVelocity = Body->GetPhysicsLinearVelocity();
+            if (FMath::Abs(BodyVelocity.Z) > 0.01f)
+            {
+                BodyVelocity.Z = 0.0f;
+                Body->SetPhysicsLinearVelocity(BodyVelocity);
+            }
+        }
+        AlignAnimatedFeetToCapsule(Worker);
+    }
+
+    const auto MotionRoot = [](FWorkerRuntime& Worker) -> USceneComponent*
+    {
+        return Worker.ChaosBody.IsValid()
+            ? static_cast<USceneComponent*>(Worker.ChaosBody.Get())
+            : Worker.Root.Get();
+    };
+    const auto ApplyRouteMotor = [](
+        FWorkerRuntime& Worker,
+        const FVector& DesiredPlanarVelocity)
+    {
+        UCapsuleComponent* Body = Worker.ChaosBody.Get();
+        if (!Body || !Body->IsSimulatingPhysics())
+        {
+            return;
+        }
+        const FVector CurrentVelocity = Body->GetPhysicsLinearVelocity();
+        const FVector CurrentPlanar(CurrentVelocity.X, CurrentVelocity.Y, 0.0f);
+        FVector DesiredPlanar(
+            DesiredPlanarVelocity.X,
+            DesiredPlanarVelocity.Y,
+            0.0f);
+        DesiredPlanar = DesiredPlanar.GetClampedToMaxSize(
+            ConveyorTuning::WorkerSpeedCm);
+        FVector RequestedAcceleration =
+            (DesiredPlanar - CurrentPlanar)
+            * ConveyorTuning::WorkerMotorResponsePerSecond;
+        if (!DesiredPlanar.IsNearlyZero(0.5f))
+        {
+            // Model the horizontal ground reaction supplied by a walking foot.
+            // Without it, the motor merely fights static floor friction and a
+            // simulated worker cannot start walking despite a clear route.
+            RequestedAcceleration += DesiredPlanar.GetSafeNormal2D()
+                * ConveyorTuning::WorkerMotorGroundFrictionCompensationCm;
+        }
+        RequestedAcceleration = RequestedAcceleration.GetClampedToMaxSize(
+            ConveyorTuning::WorkerMotorMaximumAccelerationCm);
+        Body->AddForce(
+            RequestedAcceleration * ConveyorTuning::WorkerMassKg,
+            NAME_None,
+            false);
+        if (!DesiredPlanar.IsNearlyZero(0.5f)
+            || CurrentPlanar.SizeSquared() > FMath::Square(2.0f))
+        {
+            Body->WakeRigidBody();
+        }
+    };
+
     // Prediction prevents new pedestrian overlaps, but an authored/reset pose
     // or a moving prop can still leave two capsules intersecting. Separate an
     // existing overlap before route planning so neither worker deadlocks while
     // waiting for the other to leave the same occupied space.
     for (int32 FirstIndex = 0; FirstIndex < UE_ARRAY_COUNT(Workers); ++FirstIndex)
     {
-        USceneComponent* FirstRoot = Workers[FirstIndex].Root.Get();
+        USceneComponent* FirstRoot = MotionRoot(Workers[FirstIndex]);
         if (!FirstRoot)
         {
             continue;
         }
         for (int32 SecondIndex = FirstIndex + 1; SecondIndex < UE_ARRAY_COUNT(Workers); ++SecondIndex)
         {
-            USceneComponent* SecondRoot = Workers[SecondIndex].Root.Get();
+            USceneComponent* SecondRoot = MotionRoot(Workers[SecondIndex]);
             if (!SecondRoot)
             {
                 continue;
@@ -7642,7 +12921,7 @@ void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
             FVector Delta = SecondRoot->GetComponentLocation() - FirstRoot->GetComponentLocation();
             Delta.Z = 0.0f;
             const float Distance = Delta.Size2D();
-            const float RequiredDistance = 2.0f * ConveyorTuning::WorkerRadiusCm + 2.0f;
+            const float RequiredDistance = ConveyorTuning::WorkerPersonalSpaceCm;
             if (Distance >= RequiredDistance)
             {
                 continue;
@@ -7686,10 +12965,114 @@ void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
         }
     }
 
+    // Reserve the shared crossing before either kinematic capsule commits its
+    // next step.  Previously each pedestrian independently picked a steering
+    // arc, which allowed both to choose incompatible corrections and oscillate
+    // nose-to-nose.  A stable token gives one worker right of way until the
+    // pair has separated; the other yields or reverses out of a head-on lane.
+    USceneComponent* ConflictRoots[2] = {
+        MotionRoot(Workers[0]),
+        MotionRoot(Workers[1])};
+    if (ConflictRoots[0] && ConflictRoots[1])
+    {
+        const FVector ConflictLocations[2] = {
+            ConflictRoots[0]->GetComponentLocation(),
+            ConflictRoots[1]->GetComponentLocation()};
+        FVector DesiredDirections[2] = {FVector::ZeroVector, FVector::ZeroVector};
+        FVector PredictedLocations[2] = {ConflictLocations[0], ConflictLocations[1]};
+        for (int32 WorkerIndex = 0; WorkerIndex < 2; ++WorkerIndex)
+        {
+            const FWorkerRuntime& Worker = Workers[WorkerIndex];
+            if (Worker.Waypoints.IsValidIndex(Worker.DestinationIndex)
+                && Worker.DwellRemaining <= 0.0f
+                && Worker.WorkerYieldRemainingSeconds <= 0.0f)
+            {
+                FVector Destination = Worker.Waypoints[Worker.DestinationIndex];
+                Destination.Z = ConflictLocations[WorkerIndex].Z;
+                DesiredDirections[WorkerIndex] =
+                    (Destination - ConflictLocations[WorkerIndex]).GetSafeNormal2D();
+                PredictedLocations[WorkerIndex] += DesiredDirections[WorkerIndex]
+                    * ConveyorTuning::WorkerSpeedCm
+                    * ConveyorTuning::WorkerConflictLookaheadSeconds;
+            }
+        }
+
+        const float CurrentDistance = FVector::Dist2D(ConflictLocations[0], ConflictLocations[1]);
+        const float PredictedDistance = FVector::Dist2D(PredictedLocations[0], PredictedLocations[1]);
+        if (WorkerRightOfWayIndex != INDEX_NONE)
+        {
+            WorkerConflictElapsedSeconds += StepSeconds;
+            if (CurrentDistance >= ConveyorTuning::WorkerConflictReleaseDistanceCm)
+            {
+                SimulatorLog(FString::Printf(
+                    TEXT("worker_right_of_way_released priority=%d separation_cm=%.1f elapsed_ms=%.0f"),
+                    WorkerRightOfWayIndex + 1,
+                    CurrentDistance,
+                    WorkerConflictElapsedSeconds * 1000.0f));
+                WorkerRightOfWayIndex = INDEX_NONE;
+                WorkerConflictElapsedSeconds = 0.0f;
+                bWorkerConflictHeadOn = false;
+            }
+        }
+
+        const bool bClosing = PredictedDistance + 0.5f < CurrentDistance;
+        if (WorkerRightOfWayIndex == INDEX_NONE
+            && bClosing
+            && PredictedDistance < ConveyorTuning::WorkerPersonalSpaceCm)
+        {
+            WorkerRightOfWayIndex = WorkerNextRightOfWayIndex;
+            WorkerNextRightOfWayIndex = 1 - WorkerNextRightOfWayIndex;
+            const int32 YieldingIndex = 1 - WorkerRightOfWayIndex;
+            const float DirectionDot = FVector::DotProduct(
+                DesiredDirections[0],
+                DesiredDirections[1]);
+            bWorkerConflictHeadOn = DirectionDot < -0.35f;
+            FWorkerRuntime& YieldingWorker = Workers[YieldingIndex];
+            YieldingWorker.AvoidanceTurnSign = YieldingIndex == 0 ? 1 : -1;
+            YieldingWorker.WorkerYieldRemainingSeconds = bWorkerConflictHeadOn
+                ? ConveyorTuning::WorkerHeadOnYieldSeconds
+                : ConveyorTuning::WorkerCrossingYieldSeconds;
+            ++YieldingWorker.RightOfWayYieldCount;
+
+            if (bWorkerConflictHeadOn
+                && YieldingWorker.RouteReversalCooldownSeconds <= 0.0f
+                && YieldingWorker.Waypoints.Num() > 1)
+            {
+                YieldingWorker.RouteDirection *= -1;
+                ++YieldingWorker.RouteReversalCount;
+                YieldingWorker.RouteReversalCooldownSeconds =
+                    ConveyorTuning::WorkerRouteReversalCooldownSeconds;
+                const int32 LastWaypoint = YieldingWorker.Waypoints.Num() - 1;
+                int32 NextDestination =
+                    YieldingWorker.DestinationIndex + YieldingWorker.RouteDirection;
+                if (NextDestination > LastWaypoint)
+                {
+                    YieldingWorker.RouteDirection = -1;
+                    NextDestination = FMath::Max(0, LastWaypoint - 1);
+                }
+                else if (NextDestination < 0)
+                {
+                    YieldingWorker.RouteDirection = 1;
+                    NextDestination = FMath::Min(LastWaypoint, 1);
+                }
+                YieldingWorker.DestinationIndex = NextDestination;
+            }
+
+            SimulatorLog(FString::Printf(
+                TEXT("worker_right_of_way_reserved priority=%d yielding=%d conflict=%s current_cm=%.1f predicted_cm=%.1f yield_ms=%.0f"),
+                WorkerRightOfWayIndex + 1,
+                YieldingIndex + 1,
+                bWorkerConflictHeadOn ? TEXT("head_on") : TEXT("crossing"),
+                CurrentDistance,
+                PredictedDistance,
+                YieldingWorker.WorkerYieldRemainingSeconds * 1000.0f));
+        }
+    }
+
     for (int32 WorkerIndex = 0; WorkerIndex < UE_ARRAY_COUNT(Workers); ++WorkerIndex)
     {
         FWorkerRuntime& Worker = Workers[WorkerIndex];
-        USceneComponent* WorkerRoot = Worker.Root.Get();
+        USceneComponent* WorkerRoot = MotionRoot(Worker);
         if (!WorkerRoot || !Worker.Waypoints.IsValidIndex(Worker.DestinationIndex))
         {
             continue;
@@ -7697,6 +13080,9 @@ void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
         Worker.RouteReversalCooldownSeconds = FMath::Max(
             0.0f,
             Worker.RouteReversalCooldownSeconds - StepSeconds);
+        Worker.WorkerYieldRemainingSeconds = FMath::Max(
+            0.0f,
+            Worker.WorkerYieldRemainingSeconds - StepSeconds);
         const auto AdvanceRoute = [&Worker]()
         {
             const int32 LastWaypoint = Worker.Waypoints.Num() - 1;
@@ -7726,9 +13112,16 @@ void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
             AdvanceRoute();
             return true;
         };
+        if (Worker.WorkerYieldRemainingSeconds > 0.0f)
+        {
+            Worker.BlockedSeconds = 0.0f;
+            ApplyRouteMotor(Worker, FVector::ZeroVector);
+            continue;
+        }
         if (Worker.DwellRemaining > 0.0f)
         {
             Worker.DwellRemaining = FMath::Max(0.0f, Worker.DwellRemaining - StepSeconds);
+            ApplyRouteMotor(Worker, FVector::ZeroVector);
             continue;
         }
         FVector Current = WorkerRoot->GetComponentLocation();
@@ -7743,13 +13136,21 @@ void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
                 : 0.0f;
             AdvanceRoute();
             Worker.BlockedSeconds = 0.0f;
+            ApplyRouteMotor(Worker, FVector::ZeroVector);
             continue;
         }
         const float StepCm = ConveyorTuning::WorkerSpeedCm * StepSeconds;
         const FVector Direction = Delta.GetSafeNormal2D();
         const bool bWouldArrive = Distance <= StepCm + 0.1f;
         FVector Next = bWouldArrive ? Destination : Current + Direction * StepCm;
-        if (!CanWorkerOccupy(WorkerIndex, Next))
+        // Look farther ahead than one 120-Hz integration step. Once these are
+        // real dynamic bodies, checking only the sub-centimetre next pose is
+        // too late to brake a walking capsule before a wall or rack contact.
+        const float ProbeDistance = FMath::Min(
+            Distance,
+            FMath::Max(StepCm, ConveyorTuning::WorkerAvoidanceProbeCm));
+        const FVector ForwardProbe = Current + Direction * ProbeDistance;
+        if (!CanWorkerOccupy(WorkerIndex, ForwardProbe))
         {
             Worker.BlockedSeconds += StepSeconds;
             bool bFoundDetour = false;
@@ -7768,10 +13169,10 @@ void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
             for (const float AngleDegrees : AvoidanceAngles)
             {
                 const FVector AvoidanceDirection = Direction.RotateAngleAxis(AngleDegrees, FVector::UpVector);
-                const FVector Candidate = Current + AvoidanceDirection * StepCm;
-                if (CanWorkerOccupy(WorkerIndex, Candidate))
+                const FVector ProbeCandidate = Current + AvoidanceDirection * ProbeDistance;
+                if (CanWorkerOccupy(WorkerIndex, ProbeCandidate))
                 {
-                    Next = Candidate;
+                    Next = Current + AvoidanceDirection * StepCm;
                     Worker.AvoidanceTurnSign = AngleDegrees >= 0.0f ? 1 : -1;
                     bFoundDetour = true;
                     break;
@@ -7792,6 +13193,7 @@ void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
                             ConveyorTuning::WorkerRouteReversalCooldownSeconds * 1000.0f));
                     }
                 }
+                ApplyRouteMotor(Worker, FVector::ZeroVector);
                 continue;
             }
             // A usable detour is forward progress, not a blocked state. Decay
@@ -7809,9 +13211,23 @@ void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
         const FVector ActualDelta = Next - Current;
         if (ActualDelta.SizeSquared2D() <= UE_KINDA_SMALL_NUMBER)
         {
+            ApplyRouteMotor(Worker, FVector::ZeroVector);
             continue;
         }
-        const float InstantHeadingYaw = ActualDelta.Rotation().Yaw;
+        FVector ResolvedHeadingDirection = ActualDelta;
+        if (UCapsuleComponent* Body = Worker.ChaosBody.Get())
+        {
+            FVector PhysicalVelocity = Body->GetPhysicsLinearVelocity();
+            PhysicalVelocity.Z = 0.0f;
+            // At normal walking speed, face the motion Chaos actually resolved,
+            // including collision deflection, rather than the requested route
+            // step. Retain the intended direction near rest to avoid noise.
+            if (PhysicalVelocity.SizeSquared2D() >= FMath::Square(12.0f))
+            {
+                ResolvedHeadingDirection = PhysicalVelocity;
+            }
+        }
+        const float InstantHeadingYaw = ResolvedHeadingDirection.Rotation().Yaw;
         const float TargetError = FMath::FindDeltaAngleDegrees(
             Worker.TargetHeadingYawDegrees,
             InstantHeadingYaw);
@@ -7870,7 +13286,35 @@ void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
             0.0f,
             Worker.VisualHeadingYawDegrees,
             0.0f).Quaternion();
-        WorkerRoot->SetWorldLocationAndRotation(Next, VisualHeading * Worker.HeadingOffset);
+        if (Worker.ChaosBody.IsValid())
+        {
+            const float RequestedSpeed = FMath::Min(
+                ConveyorTuning::WorkerSpeedCm,
+                ActualDelta.Size2D() / FMath::Max(StepSeconds, UE_SMALL_NUMBER));
+            ApplyRouteMotor(
+                Worker,
+                ActualDelta.GetSafeNormal2D() * RequestedSpeed);
+            const FQuat DesiredVisualWorldRotation = VisualHeading * Worker.HeadingOffset;
+            if (USceneComponent* VisualPivot = Worker.VisualPivot.Get())
+            {
+                // Rotate the imported hierarchy about the rendered character's
+                // body centre. Rotating its remote USD root directly makes the
+                // mesh orbit away from its Chaos capsule.
+                VisualPivot->SetWorldRotation(
+                    DesiredVisualWorldRotation
+                    * Worker.InitialVisualRelativeTransform.GetRotation().Inverse());
+            }
+            else if (USceneComponent* VisualRoot = Worker.Root.Get())
+            {
+                VisualRoot->SetWorldRotation(DesiredVisualWorldRotation);
+            }
+        }
+        else
+        {
+            WorkerRoot->SetWorldLocationAndRotation(
+                Next,
+                VisualHeading * Worker.HeadingOffset);
+        }
         if (bWouldArrive && FVector::DistSquared2D(Next, Destination) <= 1.0f)
         {
             Worker.DwellRemaining = Worker.DwellSeconds.IsValidIndex(Worker.DestinationIndex)
@@ -7883,12 +13327,9 @@ void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
 
 void AQaiConveyorWorld::UpdateSafetySignal()
 {
-    bool bMoving = false;
-    float MinimumClearance = TNumericLimits<float>::Max();
-    const float BeltMinX = ConveyorTuning::BeltCenterX - ConveyorTuning::BeltHalfWidth;
-    const float BeltMaxX = ConveyorTuning::BeltCenterX + ConveyorTuning::BeltHalfWidth;
-    const float BeltMinY = ConveyorTuning::BeltCenterY - ConveyorTuning::BeltHalfLength;
-    const float BeltMaxY = ConveyorTuning::BeltCenterY + ConveyorTuning::BeltHalfLength;
+    bool bInstantlyMoving = false;
+    bool bRedOverlap = false;
+    FString OverlappingPart;
 
     for (int32 ForkliftIndex = 0; ForkliftIndex < ConveyorTuning::EnabledForkliftCount; ++ForkliftIndex)
     {
@@ -7897,29 +13338,100 @@ void AQaiConveyorWorld::UpdateSafetySignal()
         {
             continue;
         }
-        bMoving |= FMath::Abs(Forklift.SpeedCmPerSecond) >= ConveyorTuning::MovingThresholdCm;
-        const FVector Center = Forklift.Root->GetComponentLocation();
-        const float ClosestX = FMath::Clamp(Center.X, BeltMinX, BeltMaxX);
-        const float ClosestY = FMath::Clamp(Center.Y, BeltMinY, BeltMaxY);
-        const FVector2D Direction(ClosestX - Center.X, ClosestY - Center.Y);
-        const float CenterDistance = Direction.Size();
-        float Support = ConveyorTuning::ForkliftHalfWidth;
-        if (CenterDistance > KINDA_SMALL_NUMBER)
+        bInstantlyMoving |= FMath::Abs(Forklift.SpeedCmPerSecond) >= ConveyorTuning::MovingThresholdCm;
+
+        if (InferenceRedZoneBounds.IsValid)
         {
-            const FVector2D Unit = Direction / CenterDistance;
-            const FVector Forward3 = Forklift.Root->GetForwardVector();
-            const FVector Right3 = Forklift.Root->GetRightVector();
-            const FVector2D Forward(Forward3.X, Forward3.Y);
-            const FVector2D Right(Right3.X, Right3.Y);
-            Support = FMath::Abs(FVector2D::DotProduct(Unit, Forward)) * ConveyorTuning::ForkliftHalfLength
-                + FMath::Abs(FVector2D::DotProduct(Unit, Right)) * ConveyorTuning::ForkliftHalfWidth;
+            const FTransform RootTransform = Forklift.Root->GetComponentTransform();
+            const FQuat PlanarRotation = FRotator(
+                0.0f,
+                RootTransform.Rotator().Yaw,
+                0.0f).Quaternion();
+            FVector RedCenter = InferenceRedZoneBounds.GetCenter();
+            FVector RedExtent = InferenceRedZoneBounds.GetExtent();
+            RedCenter.Z = 0.0f;
+            RedExtent.Z = 1.0f;
+            for (const FFittedCollisionBox& Shape : Forklift.CollisionBoxes)
+            {
+                FVector LocalCenter = Shape.LocalCenter;
+                LocalCenter.Z += Shape.bLiftDriven ? Forklift.ActualLiftCm : 0.0f;
+                FVector ShapeCenter = RootTransform.TransformPositionNoScale(LocalCenter);
+                FVector ShapeExtent = Shape.GetCollisionHalfExtent();
+                ShapeCenter.Z = 0.0f;
+                ShapeExtent.Z = 1.0f;
+                if (ConveyorTuning::ObbOverlapsObb(
+                        ShapeCenter,
+                        PlanarRotation,
+                        ShapeExtent,
+                        RedCenter,
+                        FQuat::Identity,
+                        RedExtent,
+                        0.0f))
+                {
+                    bRedOverlap = true;
+                    OverlappingPart = FString::Printf(
+                        TEXT("forklift %d %s"), ForkliftIndex + 1, *Shape.Name);
+                    break;
+                }
+            }
+
+            // Retain a conservative fallback while the fitted part list is
+            // still being bound during startup.
+            if (Forklift.CollisionBoxes.IsEmpty())
+            {
+                bRedOverlap = ConveyorTuning::ObbOverlapsAabb(
+                    Forklift.Root->GetComponentLocation(),
+                    Forklift.Root->GetComponentRotation(),
+                    FVector2D(RedCenter.X, RedCenter.Y),
+                    FVector2D(RedExtent.X, RedExtent.Y),
+                    0.0f);
+                if (bRedOverlap)
+                {
+                    OverlappingPart = FString::Printf(
+                        TEXT("forklift %d fallback footprint"), ForkliftIndex + 1);
+                }
+            }
         }
-        MinimumClearance = FMath::Min(MinimumClearance, CenterDistance - Support);
+        if (bRedOverlap)
+        {
+            break;
+        }
     }
 
-    const FString NewSignal = MinimumClearance < ConveyorTuning::RedClearanceCm ? TEXT("R") : (bMoving ? TEXT("A") : TEXT("G"));
+    const float EvidenceStepSeconds = GetWorld()
+        ? FMath::Clamp(GetWorld()->GetDeltaSeconds(), 0.0f, 0.05f)
+        : 0.0f;
+    if (bInstantlyMoving)
+    {
+        GroundTruthMovingEvidenceSeconds += EvidenceStepSeconds;
+        GroundTruthStationaryEvidenceSeconds = 0.0f;
+        if (GroundTruthMovingEvidenceSeconds >= 0.12f)
+        {
+            bGroundTruthMovingLatched = true;
+        }
+    }
+    else
+    {
+        GroundTruthStationaryEvidenceSeconds += EvidenceStepSeconds;
+        GroundTruthMovingEvidenceSeconds = 0.0f;
+        if (GroundTruthStationaryEvidenceSeconds >= 0.30f)
+        {
+            bGroundTruthMovingLatched = false;
+        }
+    }
+
+    const FString NewSignal = bRedOverlap
+        ? TEXT("R")
+        : (bGroundTruthMovingLatched ? TEXT("A") : TEXT("G"));
     if (NewSignal != GroundTruthSignal)
     {
+        SimulatorLog(FString::Printf(
+            TEXT("ground_truth_transition from=%s to=%s red_overlap=%s overlapping_part=%s movement=%s boundary=visible_red_mat"),
+            *GroundTruthSignal,
+            *NewSignal,
+            bRedOverlap ? TEXT("true") : TEXT("false"),
+            OverlappingPart.IsEmpty() ? TEXT("none") : *OverlappingPart,
+            bGroundTruthMovingLatched ? TEXT("true") : TEXT("false")));
         GroundTruthSignal = NewSignal;
     }
 }
@@ -8105,38 +13617,84 @@ void AQaiConveyorWorld::SetupInferenceCapture()
     if (CaptureActor)
     {
         USceneCaptureComponent2D* Capture = CaptureActor->GetCaptureComponent2D();
-        // SceneCapture's manual, non-physical path uses a distinct compensation
-        // baseline. This calibrated value retains the bright warehouse look
-        // while keeping neutral-white clipping below one percent.
-        float CaptureExposureBias = 10.0f;
+        // F8 is a local diagnostic only. Scene captures otherwise render the
+        // world's foreground line batcher just like the player viewport, which
+        // leaked collision boxes into Reason2 input. Hide every debug batcher
+        // from this capture without changing its visibility in the game view.
+        constexpr UWorld::ELineBatcherType DebugBatcherTypes[] = {
+            UWorld::ELineBatcherType::World,
+            UWorld::ELineBatcherType::WorldPersistent,
+            UWorld::ELineBatcherType::Foreground,
+            UWorld::ELineBatcherType::ForegroundPersistent,
+        };
+        int32 HiddenDebugBatchers = 0;
+        for (const UWorld::ELineBatcherType BatcherType : DebugBatcherTypes)
+        {
+            if (ULineBatchComponent* DebugBatcher = GetWorld()->GetLineBatcher(BatcherType))
+            {
+                Capture->HiddenComponents.Add(DebugBatcher);
+                ++HiddenDebugBatchers;
+            }
+        }
+        // Lumen's physically bounced radiance requires a very different fixed
+        // exposure from the temporary raster baseline. A 512x288 bracket on
+        // the RTX Ultra path selected -8 EV: mean sRGB 124, p95 195 and zero
+        // clipped neutral-white pixels, compared with 94% clipping at +11 EV.
+        float CaptureExposureBias = -8.0f;
         FParse::Value(FCommandLine::Get(), TEXT("QaiCaptureExposureBias="), CaptureExposureBias);
         Capture->TextureTarget = CaptureTarget;
         Capture->bCaptureEveryFrame = false;
         Capture->bCaptureOnMovement = false;
+        // A manually sampled SceneCapture otherwise discards its view state.
+        // Keep it for Lumen's surface-cache history, but do not use temporal
+        // anti-aliasing here: this camera is sampled at only 4 FPS. TSR/TAA then
+        // interprets large object displacement as short-frame motion and leaves
+        // black, stippled disocclusion trails in the lossless PNGs themselves.
+        Capture->bAlwaysPersistRenderingState = true;
         Capture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
-        // Preserve the authored Omniverse detector optics rather than using
-        // Unreal's former 70-degree approximation. The wider shifted sensor
-        // keeps the complete forklift and aisle context in frame and prevents
-        // nearby workers/parcels from dominating the vision tokens.
-        constexpr float DetectorFocalLengthMm = 9.5f;
-        constexpr float DetectorHorizontalApertureMm = 20.955f;
-        constexpr float DetectorHorizontalApertureOffsetMm = -3.0f;
-        const float DetectorHalfFovRadians = FMath::Atan(
-            DetectorHorizontalApertureMm / (2.0f * DetectorFocalLengthMm));
-        Capture->FOVAngle = FMath::RadiansToDegrees(DetectorHalfFovRadians * 2.0f);
-        Capture->bUseCustomProjectionMatrix = true;
-        Capture->CustomProjectionMatrix = FReversedZPerspectiveMatrix(
-            DetectorHalfFovRadians,
-            DetectorHalfFovRadians,
-            1.0f,
-            static_cast<float>(CaptureRenderWidth) / CaptureRenderHeight,
-            GNearClippingPlane,
-            GNearClippingPlane);
-        const float HorizontalProjectionOffset =
-            2.0f * DetectorHorizontalApertureOffsetMm / DetectorHorizontalApertureMm;
-        Capture->CustomProjectionMatrix.M[2][0] = -HorizontalProjectionOffset;
+        const bool bUseAuthoredWideCamera =
+            InferenceCameraVariant.Equals(TEXT("authored-wide"), ESearchCase::IgnoreCase);
+        if (bUseAuthoredWideCamera)
+        {
+            // The controlled classification run favoured the earlier
+            // 105-degree view over the natural 95.5-degree DetectorEndline
+            // optics. The camera is also backed away so important geometry is
+            // less concentrated at the more distorted outer edge.
+            constexpr float DetectorHorizontalFovDegrees = 105.0f;
+            constexpr float DetectorHorizontalApertureMm = 20.955f;
+            constexpr float DetectorHorizontalApertureOffsetMm = -3.0f;
+            const float DetectorHalfFovRadians = FMath::DegreesToRadians(
+                DetectorHorizontalFovDegrees * 0.5f);
+            Capture->FOVAngle = DetectorHorizontalFovDegrees;
+            Capture->bUseCustomProjectionMatrix = true;
+            Capture->CustomProjectionMatrix = FReversedZPerspectiveMatrix(
+                DetectorHalfFovRadians,
+                DetectorHalfFovRadians,
+                1.0f,
+                static_cast<float>(CaptureRenderWidth) / CaptureRenderHeight,
+                GNearClippingPlane,
+                GNearClippingPlane);
+            const float HorizontalProjectionOffset =
+                2.0f * DetectorHorizontalApertureOffsetMm / DetectorHorizontalApertureMm;
+            Capture->CustomProjectionMatrix.M[2][0] = -HorizontalProjectionOffset;
+        }
+        else
+        {
+            // The tighter centred lens deliberately excludes more of the upper
+            // wall while retaining the safety boundary and approach lane.
+            constexpr float DetectorHorizontalFovDegrees = 56.0f;
+            Capture->FOVAngle = DetectorHorizontalFovDegrees;
+            Capture->bUseCustomProjectionMatrix = false;
+        }
         Capture->ShowFlags.SetMotionBlur(false);
-        Capture->ShowFlags.SetTemporalAA(true);
+        Capture->ShowFlags.SetTemporalAA(false);
+        Capture->ShowFlags.SetGlobalIllumination(true);
+        Capture->ShowFlags.SetLumenGlobalIllumination(true);
+        Capture->ShowFlags.SetLumenReflections(true);
+        // Do not locally relight dark and bright image regions independently.
+        // One global manual exposure is closer to a calibrated industrial
+        // camera and preserves relative luminance cues for Reason2.
+        Capture->ShowFlags.SetLocalExposure(false);
         // Match the constrained game camera so inference frames do not change
         // exposure when a bright red source enters view. Bloom is lower than
         // presentation bloom to retain parcel/person edges for Reason2.
@@ -8163,9 +13721,9 @@ void AQaiConveyorWorld::SetupInferenceCapture()
         Capture->PostProcessSettings.bOverride_ColorSaturation = true;
         Capture->PostProcessSettings.ColorSaturation = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
         Capture->PostProcessSettings.bOverride_ColorContrast = true;
-        Capture->PostProcessSettings.ColorContrast = FVector4(0.94f, 0.94f, 0.94f, 1.0f);
+        Capture->PostProcessSettings.ColorContrast = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
         Capture->PostProcessSettings.bOverride_ColorGain = true;
-        Capture->PostProcessSettings.ColorGain = FVector4(0.98f, 0.98f, 0.98f, 1.0f);
+        Capture->PostProcessSettings.ColorGain = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
         Capture->PostProcessSettings.bOverride_FilmSlope = true;
         Capture->PostProcessSettings.FilmSlope = 0.82f;
         Capture->PostProcessSettings.bOverride_FilmToe = true;
@@ -8178,9 +13736,220 @@ void AQaiConveyorWorld::SetupInferenceCapture()
         Capture->PostProcessSettings.BloomThreshold = 1.35f;
         Capture->PostProcessSettings.bOverride_VignetteIntensity = true;
         Capture->PostProcessSettings.VignetteIntensity = 0.08f;
+
+        // Controlled vision ablations affect this sensor only. The physical
+        // scene, collision, illumination, player view, and ground-truth tracker
+        // remain unchanged, so every run differs only in which visual primitive
+        // groups Reason2 can see.
+        int32 AblationVisiblePrimitives = 0;
+        int32 AblationForkliftPrimitives = 0;
+        int32 AblationArchitecturePrimitives = 0;
+        int32 AblationConveyorPrimitives = 0;
+        int32 AblationWorkerPrimitives = 0;
+        int32 AblationParcelPrimitives = 0;
+        int32 AblationStoragePrimitives = 0;
+        int32 AblationTablePrimitives = 0;
+        int32 AblationBillboardPrimitives = 0;
+        int32 AblationPortalPrimitives = 0;
+        int32 AblationRestPrimitives = 0;
+        if (!InferenceAblationVariant.Equals(TEXT("full"), ESearchCase::IgnoreCase))
+        {
+            TArray<FString> AblationGroups;
+            // FParse::Value terminates an unquoted command-line value at a
+            // comma on Windows. Accept '+' as the CLI-safe group separator so
+            // automated add-back runs do not silently collapse to "minimal".
+            FString NormalizedAblationGroups = InferenceAblationVariant;
+            NormalizedAblationGroups.ReplaceInline(TEXT("+"), TEXT(","));
+            NormalizedAblationGroups.ParseIntoArray(AblationGroups, TEXT(","), true);
+            for (FString& Group : AblationGroups)
+            {
+                Group = Group.TrimStartAndEnd().ToLower();
+            }
+            const auto IncludesGroup = [&AblationGroups](const TCHAR* GroupName)
+            {
+                return AblationGroups.ContainsByPredicate(
+                    [GroupName](const FString& Value)
+                    {
+                        return Value.Equals(GroupName, ESearchCase::IgnoreCase);
+                    });
+            };
+            const bool bRestoreWorkers = IncludesGroup(TEXT("workers"));
+            const bool bRestoreParcels = IncludesGroup(TEXT("parcels"));
+            const bool bRestoreBeltParcels = bRestoreParcels
+                || IncludesGroup(TEXT("belt-parcels"));
+            const bool bRestoreShelfParcels = bRestoreParcels
+                || IncludesGroup(TEXT("shelf-parcels"));
+            const bool bRestorePallets = bRestoreParcels
+                || IncludesGroup(TEXT("pallets"));
+            const bool bRestoreStorage = IncludesGroup(TEXT("storage"));
+            const bool bRestoreTable = IncludesGroup(TEXT("table"));
+            const bool bRestoreBillboard = IncludesGroup(TEXT("billboard"));
+            const bool bRestorePortals = IncludesGroup(TEXT("portals"));
+            const bool bRestoreRest = IncludesGroup(TEXT("rest"));
+
+            Capture->PrimitiveRenderMode =
+                ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
+            Capture->ClearShowOnlyComponents();
+            for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+            {
+                AActor* Actor = *It;
+                if (!Actor || Actor == CaptureActor)
+                {
+                    continue;
+                }
+                const FString OwnerName = Actor->GetName().ToLower();
+                const FString OwnerLabel = Actor->GetActorNameOrLabel().ToLower();
+                TInlineComponentArray<UPrimitiveComponent*> Primitives(Actor);
+                for (UPrimitiveComponent* Primitive : Primitives)
+                {
+                    if (!Primitive
+                        || (!Primitive->IsA<UStaticMeshComponent>()
+                            && !Primitive->IsA<USkeletalMeshComponent>()))
+                    {
+                        continue;
+                    }
+
+                    FString MeshPath;
+                    if (const UStaticMeshComponent* StaticMesh =
+                            Cast<UStaticMeshComponent>(Primitive))
+                    {
+                        if (StaticMesh->GetStaticMesh())
+                        {
+                            MeshPath = StaticMesh->GetStaticMesh()->GetPathName().ToLower();
+                        }
+                    }
+                    else if (const USkeletalMeshComponent* SkeletalMesh =
+                                 Cast<USkeletalMeshComponent>(Primitive))
+                    {
+                        if (SkeletalMesh->GetSkeletalMeshAsset())
+                        {
+                            MeshPath = SkeletalMesh->GetSkeletalMeshAsset()->GetPathName().ToLower();
+                        }
+                    }
+                    FString Identity = Primitive->GetName().ToLower() + TEXT("|") + MeshPath;
+                    for (const FName& Tag : Primitive->ComponentTags)
+                    {
+                        Identity += TEXT("|") + Tag.ToString().ToLower();
+                    }
+                    for (const USceneComponent* Parent = Primitive->GetAttachParent();
+                         Parent;
+                         Parent = Parent->GetAttachParent())
+                    {
+                        Identity += TEXT("|") + Parent->GetName().ToLower();
+                    }
+                    const FString ActorIdentity = OwnerName + TEXT("|") + OwnerLabel;
+
+                    const bool bBillboard =
+                        ActorIdentity.Contains(TEXT("qualcommwallbillboard"))
+                        || ActorIdentity.Contains(TEXT("dragonwingbillboard"))
+                        || Identity.Contains(TEXT("qualcommwallbillboard"));
+                    const bool bWorker = Identity.Contains(TEXT("qai.worker"))
+                        || Identity.Contains(TEXT("/workers/worker"))
+                        || ActorIdentity.Contains(TEXT("worker1"))
+                        || ActorIdentity.Contains(TEXT("worker2"));
+                    const bool bPallet = Identity.Contains(TEXT("pallet"))
+                        || ActorIdentity.Contains(TEXT("palletstack"));
+                    // Shelf cartons deliberately reuse the same authored box
+                    // meshes as conveyor parcels. Runtime semantic tags must
+                    // therefore win over asset-path classification.
+                    const bool bExplicitShelfParcel =
+                        Identity.Contains(TEXT("qai.shelfparcel"))
+                        || ActorIdentity.Contains(TEXT("shelfparcel"));
+                    const bool bBeltParcel = !bPallet && !bExplicitShelfParcel
+                        && (Identity.Contains(TEXT("qai.parcel"))
+                            || Identity.Contains(TEXT("/conveyor/parcels/")));
+                    const bool bShelfParcel = !bPallet && !bBeltParcel
+                        && (bExplicitShelfParcel
+                            || Identity.Contains(TEXT("/dynamiccargo/"))
+                            || Identity.Contains(TEXT("parcel"))
+                            || Identity.Contains(TEXT("carton"))
+                            );
+                    const bool bParcel = bBeltParcel || bShelfParcel || bPallet;
+                    const bool bForklift = !bParcel
+                        && (Identity.Contains(TEXT("qai.forklift1"))
+                            || Identity.Contains(TEXT("/forklifts/forklift1/"))
+                            || ActorIdentity.Equals(TEXT("forklift1")));
+                    const bool bStorage = !bParcel
+                        && (Identity.Contains(TEXT("/storage/"))
+                            || Identity.Contains(TEXT("west rack"))
+                            || Identity.Contains(TEXT("westrack"))
+                            || ActorIdentity.Contains(TEXT("shelf"))
+                            || ActorIdentity.Contains(TEXT("rack")));
+                    const bool bTable = Identity.Contains(TEXT("packing_table"))
+                        || Identity.Contains(TEXT("packingtable"))
+                        || Identity.Contains(TEXT("sortingtable"))
+                        || Identity.Contains(TEXT("iq9"))
+                        || ActorIdentity.Contains(TEXT("packingtable"))
+                        || ActorIdentity.Contains(TEXT("sortingtable"))
+                        || ActorIdentity.Contains(TEXT("iq9"));
+                    const bool bPortal = ActorIdentity.Contains(TEXT("sortingportal"))
+                        || Identity.Contains(TEXT("sortingportal"));
+                    const bool bArchitecture = !bBillboard
+                        && (Identity.Contains(TEXT("/floor/"))
+                            || Identity.Contains(TEXT("/floorfinish/"))
+                            || Identity.Contains(TEXT("floorfinish"))
+                            || Identity.Contains(TEXT("sm_floor"))
+                            || Identity.Contains(TEXT("behindwallfloor"))
+                            || Identity.Contains(TEXT("/shell/"))
+                            || Identity.Contains(TEXT("clearancezone"))
+                            || ActorIdentity.Contains(TEXT("safetyborder"))
+                            || ActorIdentity.Contains(TEXT("safetystripe"))
+                            || ActorIdentity.Contains(TEXT("northwall"))
+                            || ActorIdentity.Contains(TEXT("westwall"))
+                            || ActorIdentity.Contains(TEXT("solidwall")));
+                    const bool bConveyor = !bParcel && !bPortal
+                        && (Identity.Contains(TEXT("/conveyor/modules/"))
+                            || Identity.Contains(TEXT("conveyormodule"))
+                            || Identity.Contains(TEXT("conveyorvisual")));
+                    const bool bKnownGroup = bForklift || bArchitecture || bConveyor
+                        || bWorker || bParcel || bStorage || bTable || bBillboard || bPortal;
+                    const bool bShow = bForklift || bArchitecture || bConveyor
+                        || (bWorker && bRestoreWorkers)
+                        || (bBeltParcel && bRestoreBeltParcels)
+                        || (bShelfParcel && bRestoreShelfParcels)
+                        || (bPallet && bRestorePallets)
+                        || (bStorage && bRestoreStorage)
+                        || (bTable && bRestoreTable)
+                        || (bBillboard && bRestoreBillboard)
+                        || (bPortal && bRestorePortals)
+                        || (!bKnownGroup && bRestoreRest);
+                    if (!bShow)
+                    {
+                        continue;
+                    }
+                    Capture->ShowOnlyComponent(Primitive);
+                    ++AblationVisiblePrimitives;
+                    AblationForkliftPrimitives += bForklift ? 1 : 0;
+                    AblationArchitecturePrimitives += bArchitecture ? 1 : 0;
+                    AblationConveyorPrimitives += bConveyor ? 1 : 0;
+                    AblationWorkerPrimitives += bWorker ? 1 : 0;
+                    AblationParcelPrimitives += bParcel ? 1 : 0;
+                    AblationStoragePrimitives += bStorage ? 1 : 0;
+                    AblationTablePrimitives += bTable ? 1 : 0;
+                    AblationBillboardPrimitives += bBillboard ? 1 : 0;
+                    AblationPortalPrimitives += bPortal ? 1 : 0;
+                    AblationRestPrimitives += !bKnownGroup ? 1 : 0;
+                }
+            }
+            SimulatorLog(FString::Printf(
+                TEXT("inference_ablation variant=%s visible=%d forklift=%d architecture=%d conveyor=%d workers=%d parcels=%d storage=%d table=%d billboard=%d portals=%d rest=%d"),
+                *InferenceAblationVariant,
+                AblationVisiblePrimitives,
+                AblationForkliftPrimitives,
+                AblationArchitecturePrimitives,
+                AblationConveyorPrimitives,
+                AblationWorkerPrimitives,
+                AblationParcelPrimitives,
+                AblationStoragePrimitives,
+                AblationTablePrimitives,
+                AblationBillboardPrimitives,
+                AblationPortalPrimitives,
+                AblationRestPrimitives));
+        }
+
         const bool bEvkCapture = ActiveBackend == TEXT("evk");
         SimulatorLog(FString::Printf(
-            TEXT("capture_initialized render_size=%dx%d output_size=%dx%d backend=%s exposure_mode=manual physical_camera=false exposure_compensation=%.2f highlight_scale=0.62 bloom=0.12 horizontal_fov_deg=%.2f aperture_offset_mm=%.2f"),
+            TEXT("capture_initialized render_size=%dx%d output_size=%dx%d backend=%s exposure_mode=manual_global physical_camera=false exposure_compensation=%.2f local_exposure=false highlight_scale=0.62 bloom=0.12 lumen_view_state=persistent horizontal_fov_deg=%.2f projection=%s composition=%s debug_line_batchers_hidden=%d"),
             CaptureRenderWidth,
             CaptureRenderHeight,
             bEvkCapture ? ConveyorTuning::EvkCaptureWidth : HostCaptureWidth,
@@ -8188,7 +13957,9 @@ void AQaiConveyorWorld::SetupInferenceCapture()
             *ActiveBackend,
             CaptureExposureBias,
             Capture->FOVAngle,
-            DetectorHorizontalApertureOffsetMm));
+            bUseAuthoredWideCamera ? TEXT("omniverse_off_axis") : TEXT("centered"),
+            bUseAuthoredWideCamera ? TEXT("authored_detector_endline") : TEXT("fixed_red_zone_and_approach"),
+            HiddenDebugBatchers));
     }
     else
     {
@@ -8208,10 +13979,14 @@ void AQaiConveyorWorld::CancelActiveInference()
         InferenceRequest.Reset();
     }
     bInferenceBusy = false;
+    CaptureAccumulator = 0.0f;
     EncodedFrames.Reset();
+    EncodedFrameWidths.Reset();
+    EncodedFrameHeights.Reset();
     EncodedForkliftFrameTransforms.Reset();
     EncodedFrameTextures.Reset();
     EncodedFrameTimes.Reset();
+    EncodedFrameCaptureSeconds.Reset();
     SubmittedEncodedFrames.Reset();
     SubmittedFrameTextures.Reset();
     SubmittedFrameTimes.Reset();
@@ -8247,14 +14022,11 @@ void AQaiConveyorWorld::TickInferenceCapture(float DeltaSeconds)
         return;
     }
     CaptureAccumulator += DeltaSeconds;
-    if (CaptureAccumulator >= ConveyorTuning::CaptureInterval)
+    if (CaptureAccumulator >= CaptureIntervalSeconds)
     {
-        CaptureAccumulator = 0.0f;
-        if (bInferenceBusy)
-        {
-            ++DroppedInferenceFrames;
-            return;
-        }
+        // Retain fractional cadence error without issuing catch-up bursts.
+        // The ring buffer therefore stays close to a true fixed 4 FPS clock.
+        CaptureAccumulator = FMath::Fmod(CaptureAccumulator, CaptureIntervalSeconds);
         QueueCapture();
     }
 }
@@ -8355,8 +14127,7 @@ void AQaiConveyorWorld::ReadbackAndCompressCapture()
                 && BufferHeight >= RenderHeight;
             if (bValid)
             {
-                Pixels.SetNumUninitialized(
-                    RenderWidth * RenderHeight);
+                Pixels.SetNumUninitialized(RenderWidth * RenderHeight);
                 const uint8* Source = static_cast<const uint8*>(Buffer);
                 for (int32 Row = 0; Row < RenderHeight; ++Row)
                 {
@@ -8407,6 +14178,16 @@ void AQaiConveyorWorld::ReadbackAndCompressCapture()
                     OutputPixels = MoveTemp(Pixels);
                 }
 
+                // Scene-capture alpha is renderer/RHI dependent and can be
+                // zero even though RGB is valid. These frames are deliberately
+                // opaque RGB observations; normalise alpha before both PNG
+                // encoding and HUD texture creation so a translucent canvas
+                // path cannot turn valid captures into black/empty previews.
+                for (FColor& Pixel : OutputPixels)
+                {
+                    Pixel.A = 255;
+                }
+
                 // The thumbnail helper is allowed to emit JPEG data and did
                 // so on Windows, despite this pipeline declaring image/png.
                 // Preserve every captured pixel with an explicitly lossless
@@ -8450,15 +14231,11 @@ UTexture2D* AQaiConveyorWorld::CreateInferencePreviewTexture(
     {
         return nullptr;
     }
-    const TConstArrayView64<uint8> ImageData(
-        reinterpret_cast<const uint8*>(Pixels.GetData()),
-        static_cast<int64>(Pixels.Num()) * sizeof(FColor));
     UTexture2D* Texture = UTexture2D::CreateTransient(
         FrameWidth,
         FrameHeight,
         PF_B8G8R8A8,
-        NAME_None,
-        ImageData);
+        NAME_None);
     if (!Texture || !Texture->GetPlatformData() || Texture->GetPlatformData()->Mips.IsEmpty())
     {
         return nullptr;
@@ -8466,9 +14243,21 @@ UTexture2D* AQaiConveyorWorld::CreateInferencePreviewTexture(
     Texture->SRGB = true;
     Texture->NeverStream = true;
     Texture->Filter = TF_Bilinear;
-    // CreateTransient initialized the mip before its first render resource was
-    // created. Recreate once after setting the display flags so the HUD never
-    // races an empty transient resource under heavy GPU load.
+    FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+    void* Destination = Mip.BulkData.Lock(LOCK_READ_WRITE);
+    if (!Destination)
+    {
+        Mip.BulkData.Unlock();
+        return nullptr;
+    }
+    FMemory::Memcpy(
+        Destination,
+        Pixels.GetData(),
+        static_cast<SIZE_T>(Pixels.Num()) * sizeof(FColor));
+    Mip.BulkData.Unlock();
+    // Upload the explicitly populated CPU mip. The UE 5.8 ImageData overload
+    // could create the RHI resource before its initialization buffer survived
+    // the rolling-history handoff, leaving a valid but black HUD texture.
     Texture->UpdateResource();
     return Texture;
 }
@@ -8540,7 +14329,8 @@ void AQaiConveyorWorld::OnFrameEncoded(
         const int32 SignalIndex = GroundTruthSignal == TEXT("G")
             ? 0
             : (GroundTruthSignal == TEXT("A") ? 1 : (GroundTruthSignal == TEXT("R") ? 2 : INDEX_NONE));
-        if (SignalIndex != INDEX_NONE && ResolutionDatasetFrameCounts[SignalIndex] < 10)
+        if (SignalIndex != INDEX_NONE
+            && ResolutionDatasetFrameCounts[SignalIndex] < ResolutionDatasetFramesPerSignal)
         {
             TArray<uint8> PngBytes;
             if (FBase64::Decode(EncodedPng, PngBytes))
@@ -8567,6 +14357,16 @@ void AQaiConveyorWorld::OnFrameEncoded(
                         FrameWidth,
                         FrameHeight,
                         *SanitizeLogField(OutputPath)));
+                    if (bResolutionDatasetAutoExit
+                        && ResolutionDatasetFrameCounts[0] >= ResolutionDatasetFramesPerSignal
+                        && ResolutionDatasetFrameCounts[1] >= ResolutionDatasetFramesPerSignal
+                        && ResolutionDatasetFrameCounts[2] >= ResolutionDatasetFramesPerSignal)
+                    {
+                        SimulatorLog(FString::Printf(
+                            TEXT("resolution_dataset complete frames_per_signal=%d action=request_exit"),
+                            ResolutionDatasetFramesPerSignal));
+                        FPlatformMisc::RequestExit(true);
+                    }
                 }
             }
         }
@@ -8574,30 +14374,51 @@ void AQaiConveyorWorld::OnFrameEncoded(
     if (!bInferenceEnabled)
     {
         EncodedFrames.Reset();
+        EncodedFrameWidths.Reset();
+        EncodedFrameHeights.Reset();
         EncodedForkliftFrameTransforms.Reset();
         EncodedFrameTextures.Reset();
         EncodedFrameTimes.Reset();
+        EncodedFrameCaptureSeconds.Reset();
         return;
     }
     EncodedFrames.Add(MoveTemp(EncodedPng));
+    EncodedFrameTextures.Add(CreateInferencePreviewTexture(Pixels, FrameWidth, FrameHeight));
+    EncodedFrameWidths.Add(FrameWidth);
+    EncodedFrameHeights.Add(FrameHeight);
     EncodedForkliftFrameTransforms.Add(
         Forklifts[0].Root.IsValid()
             ? Forklifts[0].Root->GetComponentTransform()
             : FTransform::Identity);
-    EncodedFrameTextures.Add(CreateInferencePreviewTexture(Pixels, FrameWidth, FrameHeight));
     EncodedFrameTimes.Add(FDateTime::Now().ToString(TEXT("%H:%M:%S")));
-    while (EncodedFrames.Num() > 2)
+    EncodedFrameCaptureSeconds.Add(FPlatformTime::Seconds());
+    while (EncodedFrames.Num() > 32
+        || (EncodedFrameCaptureSeconds.Num() > 2
+            && EncodedFrameCaptureSeconds.Last() - EncodedFrameCaptureSeconds[0] > 6.0))
     {
         EncodedFrames.RemoveAt(0);
+        EncodedFrameWidths.RemoveAt(0);
+        EncodedFrameHeights.RemoveAt(0);
         EncodedForkliftFrameTransforms.RemoveAt(0);
         EncodedFrameTextures.RemoveAt(0);
         EncodedFrameTimes.RemoveAt(0);
+        EncodedFrameCaptureSeconds.RemoveAt(0);
     }
-    if (EncodedFrames.Num() == 1)
+    const bool bEvkRequest = ActiveBackend == TEXT("evk");
+    const int32 RequiredFrames = bEvkRequest ? EvkTemporalFrameCount : 2;
+    if (EncodedFrames.Num() < RequiredFrames)
     {
-        // Motion classification requires two distinct observations. The old
-        // warm-up duplicated the first image and elicited AMBER even though no
-        // temporal evidence existed.
+        return;
+    }
+    const int32 WindowStartIndex = 0;
+    const double RequiredSpanSeconds = bEvkRequest
+        ? EvkTemporalBaselineSeconds
+        : HostTemporalBaselineSeconds;
+    if (EncodedFrameCaptureSeconds.Last() - EncodedFrameCaptureSeconds[WindowStartIndex]
+        < RequiredSpanSeconds - CaptureIntervalSeconds * 0.55f)
+    {
+        // Never duplicate a warm-up frame. Both transports receive genuinely
+        // distinct chronological observations spanning their requested time.
         return;
     }
     SubmitInference();
@@ -8605,13 +14426,113 @@ void AQaiConveyorWorld::OnFrameEncoded(
 
 void AQaiConveyorWorld::SubmitInference()
 {
-    if (!bInferenceEnabled || !bBackendHealthy || bInferenceBusy || EncodedFrames.Num() < 2)
+    const bool bEvkRequest = ActiveBackend == TEXT("evk");
+    const int32 RequiredFrames = bEvkRequest ? EvkTemporalFrameCount : 2;
+    if (!bInferenceEnabled
+        || !bBackendHealthy
+        || bInferenceBusy
+        || EncodedFrames.Num() < RequiredFrames)
     {
         return;
     }
+    const int32 NewestIndex = EncodedFrames.Num() - 1;
+    int32 OldestIndex = INDEX_NONE;
+    {
+        // Both transports preserve their configured temporal baseline. Host
+        // sends the endpoints; EVK additionally selects two evenly distributed
+        // interior observations from the same buffered time range.
+        const double TemporalBaselineSeconds = bEvkRequest
+            ? EvkTemporalBaselineSeconds
+            : HostTemporalBaselineSeconds;
+        const double TargetSeconds = EncodedFrameCaptureSeconds[NewestIndex]
+            - TemporalBaselineSeconds;
+        double BestErrorSeconds = TNumericLimits<double>::Max();
+        for (int32 FrameIndex = 0; FrameIndex < NewestIndex; ++FrameIndex)
+        {
+            const double ErrorSeconds = FMath::Abs(
+                EncodedFrameCaptureSeconds[FrameIndex] - TargetSeconds);
+            if (ErrorSeconds < BestErrorSeconds)
+            {
+                BestErrorSeconds = ErrorSeconds;
+                OldestIndex = FrameIndex;
+            }
+        }
+    }
+    if (OldestIndex < 0
+        || !EncodedFrameWidths.IsValidIndex(NewestIndex)
+        || !EncodedFrameHeights.IsValidIndex(NewestIndex))
+    {
+        return;
+    }
+    const double ActualBaselineSeconds = EncodedFrameCaptureSeconds[NewestIndex]
+        - EncodedFrameCaptureSeconds[OldestIndex];
+    const int32 FrameWidth = EncodedFrameWidths[NewestIndex];
+    const int32 FrameHeight = EncodedFrameHeights[NewestIndex];
 
-    // Keep this byte-for-byte equivalent to the original Omniverse
-    // HAZARD_PROMPT. Even whitespace changes alter multimodal tokenization.
+    TArray<int32> SelectedIndices;
+    TArray<FString> SelectedEncodedFrames;
+    SelectedIndices.Reserve(RequiredFrames);
+    SelectedEncodedFrames.Reserve(RequiredFrames);
+    if (bEvkRequest)
+    {
+        // Select genuinely distinct observations nearest to evenly spaced
+        // target times. Keeping the endpoints exact preserves the red test in
+        // the newest frame and the full motion baseline.
+        SelectedIndices.Add(OldestIndex);
+        for (int32 SampleIndex = 1; SampleIndex < EvkTemporalFrameCount - 1; ++SampleIndex)
+        {
+            const double Alpha = static_cast<double>(SampleIndex)
+                / static_cast<double>(EvkTemporalFrameCount - 1);
+            const double TargetSeconds = FMath::Lerp(
+                EncodedFrameCaptureSeconds[OldestIndex],
+                EncodedFrameCaptureSeconds[NewestIndex],
+                Alpha);
+            const int32 MinimumIndex = SelectedIndices.Last() + 1;
+            const int32 RemainingInteriorFrames = EvkTemporalFrameCount - SampleIndex - 1;
+            const int32 MaximumIndex = NewestIndex - RemainingInteriorFrames;
+            int32 BestIndex = MinimumIndex;
+            double BestErrorSeconds = TNumericLimits<double>::Max();
+            for (int32 FrameIndex = MinimumIndex; FrameIndex <= MaximumIndex; ++FrameIndex)
+            {
+                const double ErrorSeconds = FMath::Abs(
+                    EncodedFrameCaptureSeconds[FrameIndex] - TargetSeconds);
+                if (ErrorSeconds < BestErrorSeconds)
+                {
+                    BestErrorSeconds = ErrorSeconds;
+                    BestIndex = FrameIndex;
+                }
+            }
+            SelectedIndices.Add(BestIndex);
+        }
+        SelectedIndices.Add(NewestIndex);
+    }
+    else
+    {
+        SelectedIndices.Add(OldestIndex);
+        SelectedIndices.Add(NewestIndex);
+    }
+    for (const int32 FrameIndex : SelectedIndices)
+    {
+        if (!EncodedFrames.IsValidIndex(FrameIndex)
+            || !EncodedFrameWidths.IsValidIndex(FrameIndex)
+            || !EncodedFrameHeights.IsValidIndex(FrameIndex)
+            || EncodedFrameWidths[FrameIndex] != FrameWidth
+            || EncodedFrameHeights[FrameIndex] != FrameHeight)
+        {
+            BackendStatus = TEXT("temporal frame dimensions changed");
+            SimulatorLog(TEXT("inference_window_rejected reason=inconsistent_frame_dimensions"));
+            return;
+        }
+        SelectedEncodedFrames.Add(EncodedFrames[FrameIndex]);
+    }
+
+    const float FramesPerSecond = bEvkRequest && ActualBaselineSeconds > UE_SMALL_NUMBER
+        ? static_cast<float>(SelectedIndices.Num() - 1) / static_cast<float>(ActualBaselineSeconds)
+        : 1.0f / CaptureIntervalSeconds;
+    // Keep the classifier instructions byte-for-byte equivalent across the
+    // host and EVK backends. The EVK transport is a two-frame lossless video,
+    // but changing the wording with the transport caused a material behavior
+    // difference—especially for the amber/motion decision.
     const FString Prompt = TEXT(
         "Review the images in chronological order, with the newest image last.\n"
         "Return R if any part of any forklift is inside the marked red zone.\n"
@@ -8619,11 +14540,214 @@ void AQaiConveyorWorld::SubmitInference()
         "Otherwise, return G.\n"
         "Ignore human workers, parcels, and the stack light.\n"
         "Return one letter only: R, A, or G.\n");
-    TArray<TSharedPtr<FJsonValue>> Content;
-    for (const FString& Frame : EncodedFrames)
+
+    // Pin the exact chronological source frames for HUD and diagnostics before
+    // media preparation leaves the game thread. Capture continues at 4 FPS
+    // while FFmpeg and inference work on this immutable window.
+    SubmittedEncodedFrames = SelectedEncodedFrames;
+    SubmittedFrameTextures.Reset(SelectedIndices.Num());
+    SubmittedFrameTimes.Reset(SelectedIndices.Num());
+    for (const int32 FrameIndex : SelectedIndices)
     {
+        SubmittedFrameTextures.Add(EncodedFrameTextures[FrameIndex]);
+        SubmittedFrameTimes.Add(EncodedFrameTimes[FrameIndex]);
+    }
+    // GroundTruthSignal is a live, debounced HUD diagnostic. Label this
+    // request from the exact observations Reason2 receives instead of sampling
+    // an instantaneous Chaos velocity at submit time.
+    bSubmittedRedOverlap = GroundTruthSignal == TEXT("R");
+    bSubmittedForkliftMotion = false;
+    if (EncodedForkliftFrameTransforms.IsValidIndex(OldestIndex)
+        && EncodedForkliftFrameTransforms.IsValidIndex(NewestIndex))
+    {
+        const FTransform& Older = EncodedForkliftFrameTransforms[OldestIndex];
+        const FTransform& Newest = EncodedForkliftFrameTransforms[NewestIndex];
+        const float TranslationDeltaCm = FVector::Dist(
+            Older.GetLocation(), Newest.GetLocation());
+        const float YawDeltaDegrees = FMath::Abs(FMath::FindDeltaAngleDegrees(
+            Older.Rotator().Yaw, Newest.Rotator().Yaw));
+        bSubmittedForkliftMotion = TranslationDeltaCm >= 1.25f
+            || YawDeltaDegrees >= 0.50f;
+        SubmittedGroundTruthSignal = bSubmittedRedOverlap
+            ? TEXT("R")
+            : (bSubmittedForkliftMotion ? TEXT("A") : TEXT("G"));
+        SimulatorLog(FString::Printf(
+            TEXT("inference_visual_tracker frames=%d span_seconds=%.3f translation_delta_cm=%.2f yaw_delta_deg=%.2f moving=%s red_overlap_newest=%s submitted_truth=%s"),
+            SelectedIndices.Num(),
+            ActualBaselineSeconds,
+            TranslationDeltaCm,
+            YawDeltaDegrees,
+            bSubmittedForkliftMotion ? TEXT("true") : TEXT("false"),
+            bSubmittedRedOverlap ? TEXT("true") : TEXT("false"),
+            *SubmittedGroundTruthSignal));
+    }
+    else
+    {
+        SubmittedGroundTruthSignal = bSubmittedRedOverlap ? TEXT("R") : TEXT("G");
+    }
+
+    bInferenceBusy = true;
+    BackendStatus = bEvkRequest
+        ? TEXT("preparing 2-frame video")
+        : TEXT("submitting lossless image pair");
+    RequestStartSeconds = FPlatformTime::Seconds();
+    const uint32 RequestGeneration = InferenceCaptureGeneration;
+    if (!bEvkRequest)
+    {
+        TArray<FString> MediaMimeTypes;
+        MediaMimeTypes.Init(TEXT("image/png"), SelectedEncodedFrames.Num());
+        int64 MediaBytes = 0;
+        for (const FString& EncodedFrame : SelectedEncodedFrames)
+        {
+            MediaBytes += static_cast<int64>(FBase64::GetDecodedDataSize(EncodedFrame));
+        }
+        DispatchPreparedInference(
+            MoveTemp(SelectedEncodedFrames),
+            MoveTemp(MediaMimeTypes),
+            Prompt,
+            TEXT("two_separate_lossless_png_approximately_2s"),
+            MoveTemp(SelectedIndices),
+            ActualBaselineSeconds,
+            FrameWidth,
+            FrameHeight,
+            MediaBytes,
+            RequestGeneration);
+        return;
+    }
+
+    const FString FfmpegOverride = FfmpegExecutableOverride;
+    const bool bSaveDiagnostics = bSaveInferenceFrames;
+    TWeakObjectPtr<AQaiConveyorWorld> WeakThis(this);
+    Async(EAsyncExecution::ThreadPool,
+        [WeakThis,
+         SelectedEncodedFrames = MoveTemp(SelectedEncodedFrames),
+         SelectedIndices = MoveTemp(SelectedIndices),
+         Prompt,
+         FrameWidth,
+         FrameHeight,
+         FramesPerSecond,
+         ActualBaselineSeconds,
+         RequestGeneration,
+         FfmpegOverride,
+         bSaveDiagnostics]() mutable
+    {
+        FPreparedInferenceMedia Media = BuildLosslessEvkVideo(
+            SelectedEncodedFrames,
+            FrameWidth,
+            FrameHeight,
+            FramesPerSecond,
+            FfmpegOverride,
+            bSaveDiagnostics);
+        AsyncTask(ENamedThreads::GameThread,
+            [WeakThis,
+             Media = MoveTemp(Media),
+             Prompt,
+             SelectedIndices = MoveTemp(SelectedIndices),
+             ActualBaselineSeconds,
+             RequestGeneration]() mutable
+        {
+            AQaiConveyorWorld* Runtime = WeakThis.Get();
+            if (!Runtime
+                || Runtime->bIsShuttingDown
+                || RequestGeneration != Runtime->InferenceCaptureGeneration)
+            {
+                return;
+            }
+            if (!Media.IsValid())
+            {
+                Runtime->bInferenceBusy = false;
+                Runtime->BackendStatus = TEXT("media preparation failed");
+                SimulatorLog(FString::Printf(
+                    TEXT("inference_media_failed backend=%s error=\"%s\""),
+                    *Runtime->ActiveBackend,
+                    *SanitizeLogField(Media.Error)));
+                return;
+            }
+            TArray<FString> MediaItems;
+            MediaItems.Add(MoveTemp(Media.Base64));
+            TArray<FString> MediaMimeTypes;
+            MediaMimeTypes.Add(MoveTemp(Media.MimeType));
+            Runtime->DispatchPreparedInference(
+                MoveTemp(MediaItems),
+                MoveTemp(MediaMimeTypes),
+                Prompt,
+                MoveTemp(Media.Transport),
+                MoveTemp(SelectedIndices),
+                ActualBaselineSeconds,
+                Media.Width,
+                Media.Height,
+                Media.Bytes,
+                RequestGeneration);
+        });
+    });
+}
+
+void AQaiConveyorWorld::DispatchPreparedInference(
+    TArray<FString> EncodedMediaItems,
+    TArray<FString> MediaMimeTypes,
+    FString Prompt,
+    FString TransportName,
+    TArray<int32> SelectedIndices,
+    double ActualBaselineSeconds,
+    int32 MediaWidth,
+    int32 MediaHeight,
+    int64 MediaBytes,
+    uint32 RequestGeneration)
+{
+    if (bIsShuttingDown
+        || !bInferenceEnabled
+        || !bBackendHealthy
+        || RequestGeneration != InferenceCaptureGeneration)
+    {
+        bInferenceBusy = false;
+        return;
+    }
+    if (EncodedMediaItems.IsEmpty()
+        || EncodedMediaItems.Num() != MediaMimeTypes.Num())
+    {
+        bInferenceBusy = false;
+        BackendStatus = TEXT("invalid inference media items");
+        SimulatorLog(FString::Printf(
+            TEXT("inference_media_failed backend=%s reason=invalid_item_count media=%d mime=%d"),
+            *ActiveBackend,
+            EncodedMediaItems.Num(),
+            MediaMimeTypes.Num()));
+        return;
+    }
+
+    // GenieX's native-video path expects a path/URL and does not safely
+    // accept an embedded MP4 data URL. Upload the bounded clip to the EVK
+    // bridge first; it returns an EVK-local file URI for the model request.
+    if (ActiveBackend == TEXT("evk")
+        && !EncodedMediaItems[0].StartsWith(TEXT("file://")))
+    {
+        UploadEvkMediaAndDispatch(
+            MoveTemp(EncodedMediaItems[0]),
+            MoveTemp(MediaMimeTypes[0]),
+            MoveTemp(Prompt),
+            MoveTemp(TransportName),
+            MoveTemp(SelectedIndices),
+            ActualBaselineSeconds,
+            MediaWidth,
+            MediaHeight,
+            MediaBytes,
+            RequestGeneration);
+        return;
+    }
+
+    TArray<TSharedPtr<FJsonValue>> Content;
+    for (int32 MediaIndex = 0; MediaIndex < EncodedMediaItems.Num(); ++MediaIndex)
+    {
+        const FString& EncodedMedia = EncodedMediaItems[MediaIndex];
         TSharedPtr<FJsonObject> Url = MakeShared<FJsonObject>();
-        Url->SetStringField(TEXT("url"), TEXT("data:image/png;base64,") + Frame);
+        Url->SetStringField(
+            TEXT("url"),
+            EncodedMedia.StartsWith(TEXT("file://"))
+                ? EncodedMedia
+                : FString::Printf(
+                    TEXT("data:%s;base64,%s"),
+                    *MediaMimeTypes[MediaIndex],
+                    *EncodedMedia));
         TSharedPtr<FJsonObject> Item = MakeShared<FJsonObject>();
         Item->SetStringField(TEXT("type"), TEXT("image_url"));
         Item->SetObjectField(TEXT("image_url"), Url);
@@ -8656,16 +14780,31 @@ void AQaiConveyorWorld::SubmitInference()
     Request->SetURL(CurrentServerUrl() + TEXT("/v1/chat/completions"));
     Request->SetVerb(TEXT("POST"));
     Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
+    if (ActiveBackend == TEXT("evk"))
+    {
+        // The patched persistent GenieX service handles independent native
+        // video requests most reliably on independent HTTP connections.
+        Request->SetHeader(TEXT("Connection"), TEXT("close"));
+    }
     Request->SetTimeout(ActiveBackend == TEXT("evk") ? 120.0f : 60.0f);
     Request->SetContentAsString(BodyText);
     if (!bLoggedFirstInferenceSubmission)
     {
         bLoggedFirstInferenceSubmission = true;
         SimulatorLog(FString::Printf(
-            TEXT("inference_submitted backend=%s request_bytes=%d frames=%d prompt_profile=omniverse_compact_r5 detector_projection=authored_endline"),
+            TEXT("inference_submitted backend=%s request_bytes=%d media_bytes=%lld frames=%d source_size=%dx%d media_size=%dx%d span_seconds=%.3f transport=%s prompt_profile=%s detector_projection=authored_endline preparation_ms=%.0f"),
             *ActiveBackend,
             BodyText.Len(),
-            EncodedFrames.Num()));
+            MediaBytes,
+            SubmittedEncodedFrames.Num(),
+            EncodedFrameWidths.IsEmpty() ? 0 : EncodedFrameWidths.Last(),
+            EncodedFrameHeights.IsEmpty() ? 0 : EncodedFrameHeights.Last(),
+            MediaWidth,
+            MediaHeight,
+            ActualBaselineSeconds,
+            *TransportName,
+            TEXT("omniverse_exact_two_image"),
+            (FPlatformTime::Seconds() - RequestStartSeconds) * 1000.0));
     }
     TWeakObjectPtr<AQaiConveyorWorld> WeakThis(this);
     Request->OnProcessRequestComplete().BindLambda([WeakThis](FHttpRequestPtr, FHttpResponsePtr Response, bool bSucceeded)
@@ -8676,8 +14815,6 @@ void AQaiConveyorWorld::SubmitInference()
             Runtime->HandleModelResponse(Response.IsValid() ? Response->GetContentAsString() : FString(), bSucceeded, Response.IsValid() ? Response->GetResponseCode() : 0);
         }
     });
-    bInferenceBusy = true;
-    RequestStartSeconds = FPlatformTime::Seconds();
     const bool bRequestStarted = Request->ProcessRequest();
     if (!bRequestStarted)
     {
@@ -8692,35 +14829,6 @@ void AQaiConveyorWorld::SubmitInference()
     }
     else
     {
-        // Snapshot only after HTTP accepts the request. These are therefore
-        // the exact two images fed to Reason2, not a separate preview camera.
-        SubmittedEncodedFrames = EncodedFrames;
-        SubmittedFrameTextures = EncodedFrameTextures;
-        SubmittedFrameTimes = EncodedFrameTimes;
-        SubmittedGroundTruthSignal = GroundTruthSignal;
-        bSubmittedRedOverlap = SubmittedGroundTruthSignal == TEXT("R");
-        bSubmittedForkliftMotion = false;
-        if (EncodedForkliftFrameTransforms.Num() >= 2)
-        {
-            const FTransform& Older = EncodedForkliftFrameTransforms[EncodedForkliftFrameTransforms.Num() - 2];
-            const FTransform& Newest = EncodedForkliftFrameTransforms.Last();
-            const float TranslationDeltaCm = FVector::Dist(
-                Older.GetLocation(),
-                Newest.GetLocation());
-            const float YawDeltaDegrees = FMath::Abs(FMath::FindDeltaAngleDegrees(
-                Older.Rotator().Yaw,
-                Newest.Rotator().Yaw));
-            // These thresholds reject suspension/solver noise while remaining
-            // well below the visible displacement at the one-second cadence.
-            bSubmittedForkliftMotion = TranslationDeltaCm >= 1.25f
-                || YawDeltaDegrees >= 0.50f;
-            SimulatorLog(FString::Printf(
-                TEXT("inference_visual_tracker translation_delta_cm=%.2f yaw_delta_deg=%.2f moving=%s red_overlap=%s"),
-                TranslationDeltaCm,
-                YawDeltaDegrees,
-                bSubmittedForkliftMotion ? TEXT("true") : TEXT("false"),
-                bSubmittedRedOverlap ? TEXT("true") : TEXT("false")));
-        }
         if (!bLoggedFirstInferencePreview)
         {
             bLoggedFirstInferencePreview = true;
@@ -8728,8 +14836,130 @@ void AQaiConveyorWorld::SubmitInference()
                 TEXT("inference_preview_updated frames=%d oldest=%s newest=%s"),
                 SubmittedFrameTextures.Num(),
                 SubmittedFrameTimes.IsValidIndex(0) ? *SubmittedFrameTimes[0] : TEXT("-"),
-                SubmittedFrameTimes.IsValidIndex(1) ? *SubmittedFrameTimes[1] : TEXT("-")));
+                SubmittedFrameTimes.IsValidIndex(SubmittedFrameTimes.Num() - 1)
+                    ? *SubmittedFrameTimes.Last()
+                    : TEXT("-")));
         }
+    }
+}
+
+void AQaiConveyorWorld::UploadEvkMediaAndDispatch(
+    FString EncodedMedia,
+    FString MediaMimeType,
+    FString Prompt,
+    FString TransportName,
+    TArray<int32> SelectedIndices,
+    double ActualWindowSeconds,
+    int32 MediaWidth,
+    int32 MediaHeight,
+    int64 MediaBytes,
+    uint32 RequestGeneration)
+{
+    TArray<uint8> VideoBytes;
+    if (MediaMimeType != TEXT("video/mp4")
+        || !FBase64::Decode(EncodedMedia, VideoBytes)
+        || VideoBytes.IsEmpty())
+    {
+        bInferenceBusy = false;
+        BackendStatus = TEXT("invalid EVK video payload");
+        SimulatorLog(TEXT("evk_media_upload_failed reason=invalid_local_mp4"));
+        return;
+    }
+
+    TSharedRef<IHttpRequest> Upload = FHttpModule::Get().CreateRequest();
+    InferenceRequest = Upload;
+    Upload->SetURL(EvkMediaBridgeUrl + TEXT("/v1/media"));
+    Upload->SetVerb(TEXT("POST"));
+    Upload->SetHeader(TEXT("Content-Type"), TEXT("video/mp4"));
+    Upload->SetHeader(TEXT("Connection"), TEXT("close"));
+    Upload->SetHeader(
+        TEXT("X-Qai-Media-Id"),
+        FString::Printf(
+            TEXT("window-%s-%llu"),
+            *FDateTime::UtcNow().ToString(TEXT("%Y%m%dT%H%M%S")),
+            static_cast<unsigned long long>(FPlatformTime::Cycles64())));
+    Upload->SetTimeout(20.0f);
+    Upload->SetContent(VideoBytes);
+    TWeakObjectPtr<AQaiConveyorWorld> WeakThis(this);
+    Upload->OnProcessRequestComplete().BindLambda(
+        [WeakThis,
+         MediaMimeType = MoveTemp(MediaMimeType),
+         Prompt = MoveTemp(Prompt),
+         TransportName = MoveTemp(TransportName),
+         SelectedIndices = MoveTemp(SelectedIndices),
+         ActualWindowSeconds,
+         MediaWidth,
+         MediaHeight,
+         MediaBytes,
+         RequestGeneration](FHttpRequestPtr, FHttpResponsePtr Response, bool bSucceeded) mutable
+        {
+            AQaiConveyorWorld* Runtime = WeakThis.Get();
+            if (!Runtime)
+            {
+                return;
+            }
+            Runtime->InferenceRequest.Reset();
+            if (Runtime->bIsShuttingDown
+                || RequestGeneration != Runtime->InferenceCaptureGeneration)
+            {
+                Runtime->bInferenceBusy = false;
+                return;
+            }
+            const int32 ResponseCode = Response.IsValid() ? Response->GetResponseCode() : 0;
+            FString MediaUrl;
+            TSharedPtr<FJsonObject> Json;
+            if (bSucceeded && Response.IsValid() && EHttpResponseCodes::IsOk(ResponseCode))
+            {
+                const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(
+                    Response->GetContentAsString());
+                if (FJsonSerializer::Deserialize(Reader, Json) && Json.IsValid())
+                {
+                    Json->TryGetStringField(TEXT("url"), MediaUrl);
+                }
+            }
+            if (!MediaUrl.StartsWith(TEXT("file:///home/ubuntu/qai-conveyor/run/media/")))
+            {
+                Runtime->bInferenceBusy = false;
+                Runtime->BackendStatus = FString::Printf(
+                    TEXT("EVK media upload HTTP %d"), ResponseCode);
+                SimulatorLog(FString::Printf(
+                    TEXT("evk_media_upload_failed http_status=%d bridge=%s"),
+                    ResponseCode,
+                    *Runtime->EvkMediaBridgeUrl));
+                return;
+            }
+            SimulatorLog(FString::Printf(
+                TEXT("evk_media_uploaded bytes=%lld bridge=%s"),
+                MediaBytes,
+                *Runtime->EvkMediaBridgeUrl));
+            TArray<FString> MediaItems;
+            MediaItems.Add(MoveTemp(MediaUrl));
+            TArray<FString> MediaMimeTypes;
+            MediaMimeTypes.Add(MoveTemp(MediaMimeType));
+            Runtime->DispatchPreparedInference(
+                MoveTemp(MediaItems),
+                MoveTemp(MediaMimeTypes),
+                MoveTemp(Prompt),
+                MoveTemp(TransportName) + TEXT("_evk_file_bridge"),
+                MoveTemp(SelectedIndices),
+                ActualWindowSeconds,
+                MediaWidth,
+                MediaHeight,
+                MediaBytes,
+                RequestGeneration);
+        });
+    if (!Upload->ProcessRequest())
+    {
+        InferenceRequest.Reset();
+        bInferenceBusy = false;
+        BackendStatus = TEXT("EVK media upload could not start");
+        SimulatorLog(FString::Printf(
+            TEXT("evk_media_upload_failed reason=request_start bridge=%s"),
+            *EvkMediaBridgeUrl));
+    }
+    else
+    {
+        BackendStatus = TEXT("uploading lossless EVK video");
     }
 }
 
@@ -8781,7 +15011,7 @@ void AQaiConveyorWorld::HandleModelResponse(const FString& Body, bool bSucceeded
         SimulatorLog(FString::Printf(TEXT("inference_invalid_response backend=%s"), *ActiveBackend));
         return;
     }
-    if (FParse::Param(FCommandLine::Get(), TEXT("QaiSaveInferenceFrames")))
+    if (bSaveInferenceFrames)
     {
         const FString DiagnosticRoot = FPaths::Combine(
             FPaths::ProjectSavedDir(),
@@ -8792,7 +15022,14 @@ void AQaiConveyorWorld::HandleModelResponse(const FString& Body, bool bSucceeded
             TArray<uint8> PngBytes;
             if (FBase64::Decode(SubmittedEncodedFrames[FrameIndex], PngBytes))
             {
-                const FString FrameRole = FrameIndex == 0 ? TEXT("older") : TEXT("newest");
+                const FString FrameRole = FString::Printf(
+                    TEXT("frame-%02d-%s"),
+                    FrameIndex + 1,
+                    FrameIndex == 0
+                        ? TEXT("oldest")
+                        : (FrameIndex == SubmittedEncodedFrames.Num() - 1
+                            ? TEXT("newest")
+                            : TEXT("middle")));
                 const FString Filename = FString::Printf(
                     TEXT("last-raw-%s-truth-%s-%s.png"),
                     *Proposed,

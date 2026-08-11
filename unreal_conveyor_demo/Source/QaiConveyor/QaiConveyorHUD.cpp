@@ -89,7 +89,6 @@ void AQaiConveyorHUD::DrawHUD()
         return;
     }
 
-    Line(FString::Printf(TEXT("Forklift %d  |  speed %+.2f m/s  |  lift %.2f m"), Runtime->GetActiveForkliftIndex() + 1, Runtime->GetActiveSpeedMetersPerSecond(), Runtime->GetActiveLiftMeters()));
     const FString PhysicsText = FString::Printf(
         TEXT("Physics %s"),
         *SignalLabel(Runtime->GetGroundTruthSignal()));
@@ -129,7 +128,15 @@ void AQaiConveyorHUD::DrawHUD()
         false);
     LineY += 22.0f * Scale;
     Line(FString::Printf(TEXT("%s: %s  |  %s"), *Runtime->GetBackendName().ToUpper(), *Runtime->GetModelName(), *Runtime->GetBackendStatus()));
-    Line(FString::Printf(TEXT("Inference %s%s  |  skipped AI captures %d"), Runtime->IsInferenceEnabled() ? TEXT("ON") : TEXT("OFF"), Runtime->IsInferenceBusy() ? TEXT(" (busy)") : TEXT(""), Runtime->GetDroppedInferenceFrames()));
+    const double LastInferenceMilliseconds = Runtime->GetLastInferenceMilliseconds();
+    const FString LatencyText = LastInferenceMilliseconds > 0.0
+        ? FString::Printf(TEXT("%.0f ms"), LastInferenceMilliseconds)
+        : TEXT("--");
+    Line(FString::Printf(
+        TEXT("Inference %s%s  |  latency %s"),
+        Runtime->IsInferenceEnabled() ? TEXT("ON") : TEXT("OFF"),
+        Runtime->IsInferenceBusy() ? TEXT(" (busy)") : TEXT(""),
+        *LatencyText));
     Line(TEXT("WASD/arrows or RT/LT: drive   left stick: steer   Q/E or D-pad: lift"), FLinearColor(0.72f, 0.76f, 0.8f));
     Line(TEXT("Space/A: brake   X: reset scene   LB/RB: previous/next forklift"), FLinearColor(0.72f, 0.76f, 0.8f));
     Line(TEXT("Mouse/right stick: orbit   View: zoom preset   B/Start: switch Host/EVK   I: AI"), FLinearColor(0.72f, 0.76f, 0.8f));
@@ -137,11 +144,20 @@ void AQaiConveyorHUD::DrawHUD()
         FString::Printf(TEXT("F8: collision bounds %s"), Runtime->IsCollisionDebugEnabled() ? TEXT("ON") : TEXT("OFF")),
         Runtime->IsCollisionDebugEnabled() ? FLinearColor(0.3f, 1.0f, 0.45f) : FLinearColor(0.72f, 0.76f, 0.8f));
 
-    const float PreviewW = 246.0f * Scale;
+    const bool bEvkPreview = Runtime->GetBackendName().Equals(TEXT("evk"), ESearchCase::IgnoreCase);
+    const int32 PreviewSlots = 2;
+    const int32 PreviewColumns = 2;
+    const int32 PreviewRows = 1;
+    const float PreviewW = 244.0f * Scale;
     const float PreviewH = PreviewW * 9.0f / 16.0f;
-    const float PreviewGap = 10.0f * Scale;
-    const float PreviewPanelW = PreviewW * 2.0f + PreviewGap + 28.0f * Scale;
-    const float PreviewPanelH = PreviewH + 58.0f * Scale;
+    const float PreviewGapX = 8.0f * Scale;
+    const float PreviewGapY = 23.0f * Scale;
+    const float PreviewPanelW = PreviewW * PreviewColumns
+        + PreviewGapX * (PreviewColumns - 1)
+        + 28.0f * Scale;
+    const float PreviewPanelH = PreviewH * PreviewRows
+        + PreviewGapY * (PreviewRows - 1)
+        + 58.0f * Scale;
     const float PreviewPanelX = Canvas->SizeX - PreviewPanelW - 22.0f * Scale;
     const float PreviewPanelY = 22.0f * Scale;
     DrawRect(
@@ -151,7 +167,9 @@ void AQaiConveyorHUD::DrawHUD()
         PreviewPanelW,
         PreviewPanelH);
     DrawText(
-        TEXT("REASON2 INPUT  |  LAST SUBMITTED PAIR"),
+        bEvkPreview
+            ? TEXT("REASON2 INPUT  |  LAST SUBMITTED 2-FRAME VIDEO")
+            : TEXT("REASON2 INPUT  |  LAST SUBMITTED LOSSLESS PAIR"),
         FLinearColor(0.35f, 0.78f, 1.0f),
         PreviewPanelX + 14.0f * Scale,
         PreviewPanelY + 10.0f * Scale,
@@ -160,10 +178,14 @@ void AQaiConveyorHUD::DrawHUD()
         false);
 
     const int32 SubmittedCount = Runtime->GetSubmittedInferenceFrameCount();
-    for (int32 Index = 0; Index < 2; ++Index)
+    for (int32 Index = 0; Index < PreviewSlots; ++Index)
     {
-        const float FrameX = PreviewPanelX + 14.0f * Scale + Index * (PreviewW + PreviewGap);
-        const float FrameY = PreviewPanelY + 34.0f * Scale;
+        const int32 Column = Index % PreviewColumns;
+        const int32 Row = Index / PreviewColumns;
+        const float FrameX = PreviewPanelX + 14.0f * Scale
+            + Column * (PreviewW + PreviewGapX);
+        const float FrameY = PreviewPanelY + 34.0f * Scale
+            + Row * (PreviewH + PreviewGapY);
         DrawRect(
             FLinearColor(0.001f, 0.002f, 0.003f, 1.0f),
             FrameX - 2.0f,
@@ -172,19 +194,38 @@ void AQaiConveyorHUD::DrawHUD()
             PreviewH + 4.0f);
         if (UTexture2D* Frame = Runtime->GetSubmittedInferenceFrame(Index))
         {
-            DrawTexture(Frame, FrameX, FrameY, PreviewW, PreviewH, 0.0f, 0.0f, 1.0f, 1.0f);
+            // Diagnostic source frames are opaque RGB. Explicit opaque
+            // blending also makes the panel independent of scene-capture
+            // alpha conventions across D3D12, Metal and render profiles.
+            DrawTexture(
+                Frame,
+                FrameX,
+                FrameY,
+                PreviewW,
+                PreviewH,
+                0.0f,
+                0.0f,
+                1.0f,
+                1.0f,
+                FLinearColor::White,
+                BLEND_Opaque);
         }
-        const FString FrameRole = Index == 0 ? TEXT("OLDER") : TEXT("NEWEST");
         const FString FrameTime = Runtime->GetSubmittedInferenceFrameTime(Index);
         DrawText(
             SubmittedCount > Index
-                ? FString::Printf(TEXT("%s  %s"), *FrameRole, FrameTime.IsEmpty() ? TEXT("--:--:--") : *FrameTime)
-                : FString::Printf(TEXT("%s  waiting for inference"), *FrameRole),
+                ? FString::Printf(
+                    TEXT("%d%s  %s"),
+                    Index + 1,
+                    Index == 0
+                        ? TEXT(" OLD")
+                        : (Index == PreviewSlots - 1 ? TEXT(" NEW") : TEXT("")),
+                    FrameTime.IsEmpty() ? TEXT("--:--:--") : *FrameTime)
+                : FString::Printf(TEXT("%d  waiting"), Index + 1),
             FLinearColor(0.72f, 0.76f, 0.8f),
             FrameX,
             FrameY + PreviewH + 5.0f * Scale,
             Font,
-            Scale * 0.92f,
+            Scale * 0.72f,
             false);
     }
 }
