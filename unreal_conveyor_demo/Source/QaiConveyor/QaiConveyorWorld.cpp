@@ -97,9 +97,9 @@ namespace ConveyorTuning
     // provide a larger forklift manoeuvring lane. Keep the analytic world
     // guard in step with the physical floor/wall extension.
     constexpr float WorldMinimumX = -850.0f;
-    // The two presentation sides remain visually open. Their collision-only
-    // catch walls sit two metres beyond the rendered slab so the player can
-    // use the open apron without driving or pushing props out of the world.
+    // The broad analytic limits remain a final fallback. The two visually
+    // open presentation sides use fitted collision-only walls at the rendered
+    // floor edge so a vehicle can never appear to drive into empty space.
     constexpr float WorldMaximumX = 850.0f;
     constexpr float WorldMinimumY = -560.0f;
     constexpr float WorldMaximumY = 700.0f;
@@ -4225,7 +4225,11 @@ int32 AQaiConveyorWorld::BuildCollisionGuard()
 
     if (VisibleFloorBounds.IsValid)
     {
-        constexpr float OpenApronDepthCm = 200.0f;
+        // Keep the barrier face flush with the visible slab. A previous
+        // interpretation put it two metres outside the room and supported the
+        // gap with an invisible apron; the truck therefore appeared to drive
+        // or fall over the rendered edge before reaching the catch wall.
+        constexpr float OpenApronDepthCm = 0.0f;
         constexpr float BarrierHalfThicknessCm = 10.0f;
         constexpr float BarrierHeightCm = 400.0f;
         const float FloorTopZ = VisibleFloorBounds.Max.Z;
@@ -4233,9 +4237,9 @@ int32 AQaiConveyorWorld::BuildCollisionGuard()
         const float EastInnerFaceX = VisibleFloorBounds.Max.X + OpenApronDepthCm;
         const float FrontInnerFaceY = VisibleFloorBounds.Min.Y - OpenApronDepthCm;
 
-        // The perimeter is deliberately two metres beyond the presented
-        // floor. Support that complete apron with one continuous hidden Chaos
-        // slab; otherwise a vehicle falls before it can ever reach the wall.
+        // The hidden support now matches the visible slab exactly. The fitted
+        // perimeter below prevents vehicles and loose rigid bodies from ever
+        // entering unsupported, invisible space.
         constexpr float FloorSupportThicknessCm = 10.0f;
         WarehouseFloorSupportBounds = FBox(
             FVector(

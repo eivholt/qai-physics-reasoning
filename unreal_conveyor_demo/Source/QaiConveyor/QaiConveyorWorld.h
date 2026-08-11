@@ -477,8 +477,8 @@ private:
     int32 PackingTableTrayDynamicBody = INDEX_NONE;
     FBox PackingTableDesktopBounds = FBox(ForceInit);
     FBox PackingTableTrayBounds = FBox(ForceInit);
-    // Final visible room footprint plus the supported apron leading to the
-    // two distant invisible perimeter walls.
+    // Final visible room footprint shared by its support slab and the two
+    // flush, collision-only perimeter walls on visually open sides.
     FBox WarehouseFloorSupportBounds = FBox(ForceInit);
     // Authoritative world-space footprint and surface height of the visible
     // red safety mat. Ground truth and wheel support both use this same box so
