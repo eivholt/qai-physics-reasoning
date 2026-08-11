@@ -321,6 +321,7 @@ private:
     void SyncChaosTelemetry();
     void SimulateWorkers(float StepSeconds);
     void UpdateCargo(FForkliftRuntime& Forklift);
+    FString EvaluateParcelSafetySignal(FString* OutDetails = nullptr) const;
     void UpdateSafetySignal();
     void UpdateStackLights();
     void TickStackLightRig(float DeltaSeconds);
@@ -498,6 +499,8 @@ private:
     UPROPERTY(Transient)
     TArray<TObjectPtr<UBoxComponent>> RuntimeChaosConveyorBodies;
     UPROPERTY(Transient)
+    TArray<TObjectPtr<UStaticMeshComponent>> RuntimeChaosRollerColliders;
+    UPROPERTY(Transient)
     TArray<TObjectPtr<UCapsuleComponent>> RuntimeChaosWorkerBodies;
     UPROPERTY(Transient)
     TArray<TObjectPtr<UPhysicalMaterial>> RuntimeChaosMaterials;
@@ -513,12 +516,8 @@ private:
     FString LastLoggedStageFailure;
     FString LastLoggedInferenceState;
     FString GroundTruthSignal = TEXT("G");
-    // Live deterministic motion truth is intentionally debounced so tiny
-    // Chaos suspension/contact jitter cannot flash the HUD between G and A.
-    // Inference requests use their exact captured transform window below.
-    bool bGroundTruthMovingLatched = false;
-    float GroundTruthMovingEvidenceSeconds = 0.0f;
-    float GroundTruthStationaryEvidenceSeconds = 0.0f;
+    FString ParcelSafetyCandidateSignal = TEXT("G");
+    float ParcelSafetyCandidateSeconds = 0.0f;
     FString RawModelSignal = TEXT("-");
     FString ModelSignal = TEXT("-");
     FString BackendStatus = TEXT("not checked");
@@ -537,10 +536,10 @@ private:
     // RGB H.264 clip for the native-video endpoint.
     TArray<int32> EncodedFrameWidths;
     TArray<int32> EncodedFrameHeights;
-    // A transform observation is captured at the same instant as each RGB
-    // frame. It is used only as the Omniverse-style consistency tracker; it is
-    // never included in the Reason2 request.
-    TArray<FTransform> EncodedForkliftFrameTransforms;
+    // Deterministic parcel support state sampled at the same instant as each
+    // RGB frame. It is diagnostic ground truth only and is never sent to the
+    // model.
+    TArray<FString> EncodedParcelSafetySignals;
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTexture2D>> EncodedFrameTextures;
     TArray<FString> EncodedFrameTimes;
@@ -552,8 +551,6 @@ private:
     TArray<TObjectPtr<UTexture2D>> SubmittedFrameTextures;
     TArray<FString> SubmittedFrameTimes;
     FString SubmittedGroundTruthSignal = TEXT("G");
-    bool bSubmittedForkliftMotion = false;
-    bool bSubmittedRedOverlap = false;
     float CommandThrottle = 0.0f;
     float CommandSteer = 0.0f;
     float CommandLift = 0.0f;
@@ -646,7 +643,7 @@ private:
     // Sensor optics/composition experiment. "authored-wide" uses the original
     // Omniverse DetectorEndline lens/off-axis projection and moves that fixed
     // camera backward for coverage without changing player view or physics.
-    FString InferenceCameraVariant = TEXT("authored-wide");
+    FString InferenceCameraVariant = TEXT("parcel-belt");
     FString ForkliftPaintVariant = TEXT("isaac-yellow");
     int32 ResolutionDatasetFramesPerSignal = 10;
     bool bStackLightRigInitialized = false;

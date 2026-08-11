@@ -119,12 +119,28 @@ namespace ConveyorTuning
     constexpr float ConveyorProxyResistanceCompensationCm = 135.0f;
     constexpr float ConveyorResistanceFadeSpeedCm = 18.0f;
     constexpr float ConveyorMaximumParcelAccelerationCm = 230.0f;
-    // A mild crowned/skewed-roller response recentres a free body without a
-    // guide rail.  It is deliberately weak enough that a forklift or another
-    // parcel can still push cargo over the edge.
-    constexpr float ConveyorCrownStiffnessPerSecondSquared = 2.8f;
-    constexpr float ConveyorCrownDampingPerSecond = 2.4f;
-    constexpr float ConveyorMaximumCenteringAccelerationCm = 65.0f;
+    // The authoritative Chaos belt is supported by individual cylindrical
+    // contacts. Five motor samples across each parcel footprint approximate
+    // the powered roller skins and naturally lose support as cargo overhangs.
+    constexpr float ConveyorRollerRadiusCm = 4.8f;
+    constexpr float ConveyorRollerSpacingCm = 9.25f;
+    constexpr float ConveyorRollerHalfLengthCm = 54.0f;
+    constexpr int32 ConveyorMotorContactSamples = 5;
+    // Curved industrial roller conveyors use tapered or mildly skewed rollers
+    // to cancel outward migration. Model that as a small axial surface speed
+    // at each real contact patch, not a position or trajectory constraint.
+    constexpr float ConveyorAxialTargetSpeedPerOffset = 0.28f;
+    constexpr float ConveyorMaximumAxialTargetSpeedCm = 18.0f;
+    constexpr float ConveyorAxialResponseSeconds = 0.25f;
+    constexpr float ConveyorMaximumAxialAccelerationCm = 80.0f;
+    constexpr float ParcelAmberSupportFraction = 0.68f;
+    // Red means the parcel has actually lost the conveyor, not merely that a
+    // low corner has dipped below the roller crown while the box is tipping.
+    constexpr float ParcelRedSupportFraction = 0.05f;
+    constexpr float ParcelFallenSupportFraction = 0.25f;
+    constexpr float ParcelFallenDropCm = 15.0f;
+    constexpr float ParcelDangerPredictionSeconds = 0.65f;
+    constexpr float ParcelDangerTiltDegrees = 16.0f;
     // Chaos forklift tuning uses centimetres, kilograms and seconds, matching
     // Unreal's rigid-body force units (kg*cm/s^2).
     constexpr float ForkliftMaximumSpeedCm = 520.0f;
@@ -1277,7 +1293,7 @@ void AQaiConveyorWorld::BeginPlay()
     InferenceCameraVariant = InferenceCameraVariant.TrimStartAndEnd().ToLower();
     if (InferenceCameraVariant.IsEmpty())
     {
-        InferenceCameraVariant = TEXT("authored-wide");
+        InferenceCameraVariant = TEXT("parcel-belt");
     }
     if (bResolutionDataset)
     {
@@ -1336,7 +1352,7 @@ void AQaiConveyorWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
     EncodedFrames.Reset();
     EncodedFrameWidths.Reset();
     EncodedFrameHeights.Reset();
-    EncodedForkliftFrameTransforms.Reset();
+    EncodedParcelSafetySignals.Reset();
     EncodedFrameTextures.Reset();
     EncodedFrameTimes.Reset();
     EncodedFrameCaptureSeconds.Reset();
@@ -3528,7 +3544,22 @@ bool AQaiConveyorWorld::ConfigureInferenceScene()
         : nullptr;
     if (MatteRed)
     {
-        MatteRed->SetScalarParameterValue(TEXT("TintBlend"), 0.68f);
+        const bool bParcelSafetyExperiment =
+            InferenceCameraVariant.Equals(TEXT("parcel-belt"), ESearchCase::IgnoreCase);
+        if (bParcelSafetyExperiment)
+        {
+            // The previous red safety mat was the label for the forklift-zone
+            // task. In the parcel experiment it is irrelevant and strongly
+            // biases a vision-language model toward the literal answer "R".
+            // Keep the same physical textured surface but render it as neutral
+            // charcoal, so the task is decided by parcel support geometry.
+            MatteRed->SetVectorParameterValue(
+                TEXT("EpoxyTint"),
+                FLinearColor(0.085f, 0.105f, 0.13f, 1.0f));
+        }
+        MatteRed->SetScalarParameterValue(
+            TEXT("TintBlend"),
+            bParcelSafetyExperiment ? 0.48f : 0.68f);
         MatteRed->SetScalarParameterValue(TEXT("TextureBrightness"), 2.15f);
         MatteRed->SetScalarParameterValue(TEXT("VariationFloor"), 0.70f);
         MatteRed->SetScalarParameterValue(TEXT("RoughnessScale"), 1.20f);
@@ -3796,13 +3827,15 @@ bool AQaiConveyorWorld::ConfigureInferenceScene()
         RetunedCeilingPanels,
         RetunedPracticalFills));
 
-    // Derive a fixed high-oblique composition from the physical red-zone
-    // bounds. The left side extends to the forklift approach lane, while the
-    // downward angle makes the upper wall and Dragonwing board fall above the
-    // detector frame rather than spending vision tokens on branding.
+    // The parcel-safety experiment uses a fixed industrial camera centred on
+    // the roller loop. It retains enough of the west approach for the model to
+    // see a forklift make contact, but spends most image tokens on parcel/edge
+    // relationships instead of the former red-zone boundary.
     const FTransform AuthoredDetectorTransform = DetectorCamera->GetComponentTransform();
     const bool bUseAuthoredWideCamera =
         InferenceCameraVariant.Equals(TEXT("authored-wide"), ESearchCase::IgnoreCase);
+    const bool bUseParcelBeltCamera =
+        InferenceCameraVariant.Equals(TEXT("parcel-belt"), ESearchCase::IgnoreCase);
     const float ApproachMinimumX = FMath::Min(
         RedBounds.Min.X - 80.0f,
         Forklifts[0].Root.IsValid()
@@ -3842,13 +3875,32 @@ bool AQaiConveyorWorld::ConfigureInferenceScene()
         RedBounds.Max.Z + 48.0f + SensorCameraDownOffsetCm);
     const FRotator CameraRotation = FRotationMatrix::MakeFromX(
         CameraTarget - CameraLocation).Rotator();
+    const FVector ParcelCameraTarget(
+        ConveyorTuning::BeltCenterX,
+        ConveyorTuning::BeltCenterY,
+        ConveyorSurfaceZCm + 24.0f);
+    const FVector ParcelCameraLocation(
+        ConveyorTuning::BeltCenterX,
+        ConveyorTuning::BeltCenterY + 460.0f,
+        ConveyorSurfaceZCm + 780.0f);
+    const FRotator ParcelCameraRotation = FRotationMatrix::MakeFromX(
+        ParcelCameraTarget - ParcelCameraLocation).Rotator();
     const FVector AuthoredCameraForward =
         AuthoredDetectorTransform.GetRotation().GetForwardVector();
     const FVector BackedAuthoredCameraLocation =
         AuthoredDetectorTransform.GetLocation()
         - AuthoredCameraForward * AuthoredCameraBackwardOffsetCm;
     MakeMovable(DetectorCamera.Get());
-    if (bUseAuthoredWideCamera)
+    if (bUseParcelBeltCamera)
+    {
+        DetectorCamera->SetWorldLocationAndRotation(
+            ParcelCameraLocation,
+            ParcelCameraRotation,
+            false,
+            nullptr,
+            ETeleportType::TeleportPhysics);
+    }
+    else if (bUseAuthoredWideCamera)
     {
         // Keep the original optical axis but gain scene coverage by moving the
         // camera back, rather than by stretching the edges with a shorter lens.
@@ -3869,17 +3921,21 @@ bool AQaiConveyorWorld::ConfigureInferenceScene()
             ETeleportType::TeleportPhysics);
     }
 
-    const FVector EffectiveCameraLocation = bUseAuthoredWideCamera
-        ? BackedAuthoredCameraLocation
-        : CameraLocation;
-    const FVector EffectiveCameraTarget = bUseAuthoredWideCamera
-        ? BackedAuthoredCameraLocation + AuthoredCameraForward * 1000.0f
-        : CameraTarget;
+    const FVector EffectiveCameraLocation = bUseParcelBeltCamera
+        ? ParcelCameraLocation
+        : (bUseAuthoredWideCamera ? BackedAuthoredCameraLocation : CameraLocation);
+    const FVector EffectiveCameraTarget = bUseParcelBeltCamera
+        ? ParcelCameraTarget
+        : (bUseAuthoredWideCamera
+            ? BackedAuthoredCameraLocation + AuthoredCameraForward * 1000.0f
+            : CameraTarget);
 
     bInferenceSceneConfigured = true;
     SimulatorLog(FString::Printf(
-        TEXT("inference_scene status=ready camera=%s location=(%.1f,%.1f,%.1f) target=(%.1f,%.1f,%.1f) sensor_left_offset_cm=%.1f sensor_down_offset_cm=%.1f sensor_backward_offset_cm=%.1f red_bounds_min=(%.1f,%.1f,%.1f) red_bounds_max=(%.1f,%.1f,%.1f) border=physical_white_black stripe_cm=%.1f width_cm=%.1f stripes=%d red_finish=matte neutral_workcell_fill_lumens=%.0f legacy_point_fills_disabled=%d billboard_excluded_by_composition=%s"),
-        bUseAuthoredWideCamera ? TEXT("authored_wide") : TEXT("fixed_low_oblique_red_focus"),
+        TEXT("inference_scene status=ready camera=%s focus=conveyor_parcels location=(%.1f,%.1f,%.1f) target=(%.1f,%.1f,%.1f) sensor_left_offset_cm=%.1f sensor_down_offset_cm=%.1f sensor_backward_offset_cm=%.1f red_bounds_min=(%.1f,%.1f,%.1f) red_bounds_max=(%.1f,%.1f,%.1f) border=physical_white_black stripe_cm=%.1f width_cm=%.1f stripes=%d floor_finish=%s neutral_workcell_fill_lumens=%.0f legacy_point_fills_disabled=%d billboard_excluded_by_composition=%s"),
+        bUseParcelBeltCamera
+            ? TEXT("fixed_oblique_parcel_belt")
+            : (bUseAuthoredWideCamera ? TEXT("authored_wide") : TEXT("fixed_low_oblique_red_focus")),
         EffectiveCameraLocation.X,
         EffectiveCameraLocation.Y,
         EffectiveCameraLocation.Z,
@@ -3888,7 +3944,7 @@ bool AQaiConveyorWorld::ConfigureInferenceScene()
         EffectiveCameraTarget.Z,
         SensorCameraLeftOffsetCm,
         SensorCameraDownOffsetCm,
-        bUseAuthoredWideCamera ? AuthoredCameraBackwardOffsetCm : 0.0f,
+        bUseAuthoredWideCamera && !bUseParcelBeltCamera ? AuthoredCameraBackwardOffsetCm : 0.0f,
         RedBounds.Min.X,
         RedBounds.Min.Y,
         RedBounds.Min.Z,
@@ -3898,9 +3954,10 @@ bool AQaiConveyorWorld::ConfigureInferenceScene()
         StripeLengthCm,
         BorderWidthCm,
         RuntimeSafetyBorderComponents.Num(),
+        bUseParcelBeltCamera ? TEXT("neutral_charcoal") : TEXT("matte_red"),
         bNeutralWorkcellFillEnabled ? NeutralWorkcellFillLumens : 0.0f,
         DisabledLegacyPointFills,
-        bUseAuthoredWideCamera ? TEXT("false") : TEXT("true")));
+        bUseAuthoredWideCamera && !bUseParcelBeltCamera ? TEXT("false") : TEXT("true")));
     return true;
 }
 
@@ -5851,7 +5908,12 @@ void AQaiConveyorWorld::BindNativeComponents()
             FVector AuthoredTangent;
             ConveyorTuning::EvaluateConveyor(Phase * ConveyorPerimeter, AuthoredPosition, AuthoredTangent);
             const FQuat Heading = FRotator(0.0f, AuthoredTangent.Rotation().Yaw, 0.0f).Quaternion();
-            ParcelHeadingOffsets.Add(Heading.Inverse() * Parcel->GetComponentQuat());
+            // Begin with the carton's long local axis aligned to belt travel.
+            // The authored USD yaw scatter made otherwise healthy parcels
+            // scrub diagonally across successive roller contacts. Chaos is
+            // still free to rotate a parcel after a forklift or another box
+            // applies an off-centre impulse.
+            ParcelHeadingOffsets.Add(FQuat::Identity);
             AuthoredPosition.Z = ConveyorSurfaceZCm + HalfHeight;
             Parcel->SetWorldLocationAndRotation(
                 AuthoredPosition,
@@ -5888,7 +5950,7 @@ void AQaiConveyorWorld::BindNativeComponents()
                 ParcelPhysics.Restitution));
         }
     }
-    SimulatorLog(TEXT("conveyor_contact_model drive=coulomb_moving_surface centering_force=disabled heading=torque_limited fixed_step_hz=120"));
+    SimulatorLog(TEXT("conveyor_contact_model support=individual_cylindrical_rollers drive=distributed_contact_patch_forces centering=weak_skewed_roller_axial_traction edge_overhang=physical fixed_step_hz=120"));
 
     Workers[0].Root = FindTaggedComponent(TEXT("Qai.Worker1"));
     // Keep both workers in separated lanes at the far end of the room. This
@@ -7335,7 +7397,7 @@ void AQaiConveyorWorld::ResetScene()
     EncodedFrames.Reset();
     EncodedFrameWidths.Reset();
     EncodedFrameHeights.Reset();
-    EncodedForkliftFrameTransforms.Reset();
+    EncodedParcelSafetySignals.Reset();
     EncodedFrameTextures.Reset();
     EncodedFrameTimes.Reset();
     EncodedFrameCaptureSeconds.Reset();
@@ -7343,14 +7405,11 @@ void AQaiConveyorWorld::ResetScene()
     SubmittedFrameTextures.Reset();
     SubmittedFrameTimes.Reset();
     SubmittedGroundTruthSignal = TEXT("G");
-    bSubmittedForkliftMotion = false;
-    bSubmittedRedOverlap = false;
     RawModelSignal = TEXT("-");
     ModelSignal = TEXT("-");
     GroundTruthSignal = TEXT("G");
-    bGroundTruthMovingLatched = false;
-    GroundTruthMovingEvidenceSeconds = 0.0f;
-    GroundTruthStationaryEvidenceSeconds = 0.0f;
+    ParcelSafetyCandidateSignal = TEXT("G");
+    ParcelSafetyCandidateSeconds = 0.0f;
     LastLoggedStackSignal.Reset();
     bStackLightRigInitialized = false;
     EvkLedRandom.Initialize(0x19E9);
@@ -7745,6 +7804,7 @@ void AQaiConveyorWorld::ConfigureAuthoritativeChaosPhysics()
 
     RuntimeChaosMaterials.Reset();
     RuntimeChaosStaticColliders.Reset();
+    RuntimeChaosRollerColliders.Reset();
     RuntimeChaosForkliftColliders.Reset();
     RuntimeChaosConstraints.Reset();
     RuntimeChaosWorkerBodies.Reset();
@@ -7867,6 +7927,13 @@ void AQaiConveyorWorld::ConfigureAuthoritativeChaosPhysics()
     for (int32 Index = 0; Index < CollisionObstacles.Num(); ++Index)
     {
         const FCollisionObstacle& Obstacle = CollisionObstacles[Index];
+        // The old belt support was 96 overlapping tangent-aligned boxes. Their
+        // seam normals nudged parcels from side to side. Individual cylinders
+        // below are now the authoritative roller contact geometry.
+        if (Obstacle.Name == TEXT("conveyor"))
+        {
+            continue;
+        }
         FActorSpawnParameters Params;
         Params.Name = FName(*FString::Printf(TEXT("QaiChaosStaticActor_%d"), Index + 1));
         Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -7901,6 +7968,83 @@ void AQaiConveyorWorld::ConfigureAuthoritativeChaosPhysics()
         Collider->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
         RuntimeChaosStaticColliders.Add(Collider);
     }
+
+    // Build a closely spaced bank of real cylindrical Chaos contacts around
+    // the complete analytic loop. The cylinders remain fixed bearings; motor
+    // torque is applied at each parcel/roller contact patch in
+    // SimulateChaosConveyor. This retains rigid-body overhang, tipping and
+    // falling while eliminating the lateral seam impulses from box proxies.
+    UStaticMesh* RollerCylinderMesh = LoadObject<UStaticMesh>(
+        nullptr,
+        TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    constexpr float StraightHalf = 235.1374f;
+    constexpr float Radius = 150.0f;
+    constexpr float ConveyorPerimeter = 4.0f * StraightHalf + 2.0f * PI * Radius;
+    const int32 RollerCount = FMath::CeilToInt(
+        ConveyorPerimeter / ConveyorTuning::ConveyorRollerSpacingCm);
+    if (RollerCylinderMesh)
+    {
+        for (int32 RollerIndex = 0; RollerIndex < RollerCount; ++RollerIndex)
+        {
+            FVector RollerPosition;
+            FVector RollerTangent;
+            ConveyorTuning::EvaluateConveyor(
+                (static_cast<float>(RollerIndex) + 0.5f)
+                    * ConveyorPerimeter / static_cast<float>(RollerCount),
+                RollerPosition,
+                RollerTangent);
+            const FVector RollerAxis(
+                -RollerTangent.Y,
+                RollerTangent.X,
+                0.0f);
+            RollerPosition.Z = ConveyorSurfaceZCm
+                - ConveyorTuning::ConveyorRollerRadiusCm;
+            const FQuat RollerRotation = FQuat::FindBetweenNormals(
+                FVector::UpVector,
+                RollerAxis.GetSafeNormal());
+            FActorSpawnParameters RollerParams;
+            RollerParams.Name = FName(*FString::Printf(
+                TEXT("QaiPoweredRollerActor_%03d"), RollerIndex + 1));
+            RollerParams.SpawnCollisionHandlingOverride =
+                ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+            AActor* RollerActor = GetWorld()->SpawnActor<AActor>(
+                AActor::StaticClass(),
+                FTransform(RollerRotation, RollerPosition),
+                RollerParams);
+            if (!RollerActor)
+            {
+                continue;
+            }
+            RuntimeChaosActors.Add(RollerActor);
+            UStaticMeshComponent* Roller = NewObject<UStaticMeshComponent>(
+                RollerActor,
+                FName(*FString::Printf(TEXT("QaiPoweredRoller_%03d"), RollerIndex + 1)));
+            RollerActor->AddInstanceComponent(Roller);
+            RollerActor->SetRootComponent(Roller);
+            Roller->SetMobility(EComponentMobility::Movable);
+            Roller->SetStaticMesh(RollerCylinderMesh);
+            Roller->SetWorldScale3D(FVector(
+                ConveyorTuning::ConveyorRollerRadiusCm / 50.0f,
+                ConveyorTuning::ConveyorRollerRadiusCm / 50.0f,
+                ConveyorTuning::ConveyorRollerHalfLengthCm / 50.0f));
+            Roller->SetHiddenInGame(true);
+            Roller->SetVisibility(false);
+            Roller->SetPhysMaterialOverride(PoweredRollerMaterial);
+            ConfigureCollision(Roller, ECC_WorldStatic);
+            Roller->RegisterComponentWithWorld(GetWorld());
+            Roller->SetWorldLocationAndRotation(RollerPosition, RollerRotation);
+            Roller->SetMobility(EComponentMobility::Static);
+            Roller->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            RuntimeChaosRollerColliders.Add(Roller);
+        }
+    }
+    SimulatorLog(FString::Printf(
+        TEXT("chaos_powered_rollers geometry=cylinders count=%d radius_cm=%.2f spacing_cm=%.2f length_cm=%.2f motor_samples=%d box_support_removed=true"),
+        RuntimeChaosRollerColliders.Num(),
+        ConveyorTuning::ConveyorRollerRadiusCm,
+        ConveyorPerimeter / FMath::Max(1, RuntimeChaosRollerColliders.Num()),
+        ConveyorTuning::ConveyorRollerHalfLengthCm * 2.0f,
+        ConveyorTuning::ConveyorMotorContactSamples));
 
     // The front of the room is intentionally open visually, so add a floor
     // slab independently of the authored wall/furniture proxies.
@@ -9006,10 +9150,11 @@ void AQaiConveyorWorld::ConfigureAuthoritativeChaosPhysics()
     ChaosConveyorStartupGraceSeconds = 0.35f;
     ChaosConveyorMotorRampSeconds = 0.0f;
     SimulatorLog(FString::Printf(
-        TEXT("physics_backend mode=authoritative_chaos dynamic_props=%d conveyor_props=%d static_shapes=%d forklifts=%d custom_gravity=false transform_support=false cargo_attachment=false"),
+        TEXT("physics_backend mode=authoritative_chaos dynamic_props=%d conveyor_props=%d static_shapes=%d roller_shapes=%d forklifts=%d custom_gravity=false transform_support=false cargo_attachment=false"),
         RuntimeChaosBodies.Num(),
         RuntimeChaosConveyorBodies.Num(),
         RuntimeChaosStaticColliders.Num(),
+        RuntimeChaosRollerColliders.Num(),
         ConveyorTuning::EnabledForkliftCount));
 }
 
@@ -9847,13 +9992,15 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
         1.5f,
         ChaosConveyorMotorRampSeconds);
     int32 DrivenBodyCount = 0;
+    int32 DrivenContactCount = 0;
     float TotalTangentialSpeedCmPerSecond = 0.0f;
     float TotalTangentialAccelerationCmPerSecondSquared = 0.0f;
-    float TotalCenteringAccelerationCmPerSecondSquared = 0.0f;
+    float TotalAxialAccelerationCmPerSecondSquared = 0.0f;
     const auto ApplyBeltTraction = [this, MotorRamp, &DrivenBodyCount,
+        &DrivenContactCount,
         &TotalTangentialSpeedCmPerSecond,
         &TotalTangentialAccelerationCmPerSecondSquared,
-        &TotalCenteringAccelerationCmPerSecondSquared](
+        &TotalAxialAccelerationCmPerSecondSquared](
         UPrimitiveComponent* Body,
         const FVector& HalfExtent,
         const FPropPhysicsProfile& Physics)
@@ -9884,66 +10031,133 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
         {
             return;
         }
-        FVector CurrentVelocity = Body->GetPhysicsLinearVelocity();
-        CurrentVelocity.Z = 0.0f;
         const FVector Tangent = BeltTangent.GetSafeNormal2D();
         const FVector BeltNormal(-Tangent.Y, Tangent.X, 0.0f);
-        const float TangentialSpeed = FVector::DotProduct(CurrentVelocity, Tangent);
-        ++DrivenBodyCount;
-        TotalTangentialSpeedCmPerSecond += TangentialSpeed;
+        const FQuat BodyRotation = Body->GetComponentQuat();
+        const float HalfAcrossRollers =
+            FMath::Abs(FVector::DotProduct(BodyRotation.GetForwardVector(), BeltNormal))
+                * HalfExtent.X
+            + FMath::Abs(FVector::DotProduct(BodyRotation.GetRightVector(), BeltNormal))
+                * HalfExtent.Y;
+        FVector ContactPoints[ConveyorTuning::ConveyorMotorContactSamples];
+        FVector ContactTangents[ConveyorTuning::ConveyorMotorContactSamples];
+        FVector ContactNormals[ConveyorTuning::ConveyorMotorContactSamples];
+        float ContactLateralOffsets[ConveyorTuning::ConveyorMotorContactSamples];
+        int32 ContactCount = 0;
+        for (int32 SampleIndex = 0;
+             SampleIndex < ConveyorTuning::ConveyorMotorContactSamples;
+             ++SampleIndex)
+        {
+            const float Alpha = ConveyorTuning::ConveyorMotorContactSamples > 1
+                ? -0.8f + 1.6f * static_cast<float>(SampleIndex)
+                    / static_cast<float>(ConveyorTuning::ConveyorMotorContactSamples - 1)
+                : 0.0f;
+            const FVector SamplePosition = Location
+                + BeltNormal * (Alpha * HalfAcrossRollers);
+            float SampleDistance = 0.0f;
+            float SampleLateralDistance = 0.0f;
+            FVector SampleBeltPoint;
+            FVector SampleTangent;
+            ConveyorTuning::ProjectToConveyor(
+                SamplePosition,
+                SampleDistance,
+                SampleBeltPoint,
+                SampleTangent,
+                SampleLateralDistance);
+            if (SampleLateralDistance > ConveyorTuning::BeltHalfWidth - 1.0f)
+            {
+                continue;
+            }
+            ContactPoints[ContactCount] = FVector(
+                SamplePosition.X,
+                SamplePosition.Y,
+                ConveyorSurfaceZCm);
+            ContactTangents[ContactCount] = SampleTangent.GetSafeNormal2D();
+            ContactNormals[ContactCount] = FVector(
+                -ContactTangents[ContactCount].Y,
+                ContactTangents[ContactCount].X,
+                0.0f);
+            ContactLateralOffsets[ContactCount] = FVector::DotProduct(
+                SamplePosition - SampleBeltPoint,
+                ContactNormals[ContactCount]);
+            ++ContactCount;
+        }
+        if (ContactCount == 0)
+        {
+            return;
+        }
+
+        const float BodyMassKg = FMath::Max(0.05f, Body->GetMass());
         const float ConveyorTargetSpeedCmPerSecond =
             ConveyorTuning::ConveyorSpeedCm * ConveyorSpeedScale;
-        const float TangentialSpeedError =
-            ConveyorTargetSpeedCmPerSecond - TangentialSpeed;
-        // Static proxy rollers need a small breakaway allowance, but a
-        // constant positive allowance kept accelerating after target speed
-        // and produced a visible surge/coast stagger. Fade and reverse the
-        // compensation smoothly with the velocity error instead.
-        const float ResistanceCompensation =
-            ConveyorTuning::ConveyorProxyResistanceCompensationCm
-            * FMath::Clamp(
-                FMath::Abs(TangentialSpeedError)
-                    / ConveyorTuning::ConveyorResistanceFadeSpeedCm,
-                0.0f,
-                1.0f)
-            * FMath::Sign(TangentialSpeedError);
-        const float TangentialAcceleration = FMath::Clamp(
-            TangentialSpeedError
-                / ConveyorTuning::ConveyorTangentialResponseSeconds
-                + ResistanceCompensation,
-            -ConveyorTuning::ConveyorMaximumParcelAccelerationCm,
-            ConveyorTuning::ConveyorMaximumParcelAccelerationCm);
-
-        // The roller bank is treated as slightly crowned/skewed.  This is a
-        // bounded contact force, not a positional constraint: cargo can rotate,
-        // be knocked sideways, overhang and fall.  Lateral velocity damping
-        // also absorbs the energy that formerly flung parcels out of a turn.
-        const FVector LateralOffset = Location - BeltPoint;
-        const float SignedLateralOffset = FVector::DotProduct(LateralOffset, BeltNormal);
-        const float LateralSpeed = FVector::DotProduct(CurrentVelocity, BeltNormal);
-        const float CenteringAcceleration = FMath::Clamp(
-            -SignedLateralOffset * ConveyorTuning::ConveyorCrownStiffnessPerSecondSquared
-                - LateralSpeed * ConveyorTuning::ConveyorCrownDampingPerSecond,
-            -ConveyorTuning::ConveyorMaximumCenteringAccelerationCm,
-            ConveyorTuning::ConveyorMaximumCenteringAccelerationCm);
-        TotalTangentialAccelerationCmPerSecondSquared += TangentialAcceleration * MotorRamp;
-        TotalCenteringAccelerationCmPerSecondSquared += FMath::Abs(
-            CenteringAcceleration * MotorRamp);
-        FVector DriveAcceleration =
-            Tangent * TangentialAcceleration + BeltNormal * CenteringAcceleration;
-        const float MaximumFrictionAcceleration = FMath::Max(
-            0.85f,
-            Physics.StaticFriction * 1.25f) * ConveyorTuning::GravityCmPerSecondSquared;
-        DriveAcceleration = DriveAcceleration.GetClampedToMaxSize(
-            MaximumFrictionAcceleration) * MotorRamp;
-        // Multiple rollers support the parcel footprint simultaneously. Model
-        // their combined traction as a distributed resultant through the body,
-        // rather than one artificial point impulse that pitches a carton. There
-        // is still no trajectory constraint, transform, attachment or side wall.
-        // Acceleration-change form is intentional: it is exactly equivalent to
-        // F=m*a but remains correct if Chaos conditions/rebuilds a compound
-        // body's runtime mass after activation.
-        Body->AddForce(DriveAcceleration, NAME_None, true);
+        float BodyTangentialSpeed = 0.0f;
+        float BodyTangentialAcceleration = 0.0f;
+        float BodyAxialAcceleration = 0.0f;
+        for (int32 ContactIndex = 0; ContactIndex < ContactCount; ++ContactIndex)
+        {
+            FVector PointVelocity = Body->GetPhysicsLinearVelocityAtPoint(
+                ContactPoints[ContactIndex]);
+            PointVelocity.Z = 0.0f;
+            const float TangentialSpeed = FVector::DotProduct(
+                PointVelocity,
+                ContactTangents[ContactIndex]);
+            const float TangentialSpeedError =
+                ConveyorTargetSpeedCmPerSecond - TangentialSpeed;
+            const float ResistanceCompensation =
+                ConveyorTuning::ConveyorProxyResistanceCompensationCm
+                * FMath::Clamp(
+                    FMath::Abs(TangentialSpeedError)
+                        / ConveyorTuning::ConveyorResistanceFadeSpeedCm,
+                    0.0f,
+                    1.0f)
+                * FMath::Sign(TangentialSpeedError);
+            float TangentialAcceleration = FMath::Clamp(
+                TangentialSpeedError
+                    / ConveyorTuning::ConveyorTangentialResponseSeconds
+                    + ResistanceCompensation,
+                -ConveyorTuning::ConveyorMaximumParcelAccelerationCm,
+                ConveyorTuning::ConveyorMaximumParcelAccelerationCm);
+            const float MaximumFrictionAcceleration = FMath::Max(
+                0.85f,
+                Physics.StaticFriction * 1.25f)
+                * ConveyorTuning::GravityCmPerSecondSquared;
+            TangentialAcceleration = FMath::Clamp(
+                TangentialAcceleration,
+                -MaximumFrictionAcceleration,
+                MaximumFrictionAcceleration) * MotorRamp;
+            const float AxialSpeed = FVector::DotProduct(
+                PointVelocity,
+                ContactNormals[ContactIndex]);
+            const float TargetAxialSpeed = FMath::Clamp(
+                -ContactLateralOffsets[ContactIndex]
+                    * ConveyorTuning::ConveyorAxialTargetSpeedPerOffset,
+                -ConveyorTuning::ConveyorMaximumAxialTargetSpeedCm,
+                ConveyorTuning::ConveyorMaximumAxialTargetSpeedCm);
+            const float AxialAcceleration = FMath::Clamp(
+                (TargetAxialSpeed - AxialSpeed)
+                    / ConveyorTuning::ConveyorAxialResponseSeconds,
+                -ConveyorTuning::ConveyorMaximumAxialAccelerationCm,
+                ConveyorTuning::ConveyorMaximumAxialAccelerationCm) * MotorRamp;
+            const FVector ContactForce =
+                (ContactTangents[ContactIndex] * TangentialAcceleration
+                    + ContactNormals[ContactIndex] * AxialAcceleration)
+                * (BodyMassKg / static_cast<float>(ContactCount));
+            Body->AddForceAtLocation(
+                ContactForce,
+                ContactPoints[ContactIndex],
+                NAME_None);
+            BodyTangentialSpeed += TangentialSpeed;
+            BodyTangentialAcceleration += TangentialAcceleration;
+            BodyAxialAcceleration += FMath::Abs(AxialAcceleration);
+        }
+        ++DrivenBodyCount;
+        DrivenContactCount += ContactCount;
+        TotalTangentialSpeedCmPerSecond +=
+            BodyTangentialSpeed / static_cast<float>(ContactCount);
+        TotalTangentialAccelerationCmPerSecondSquared +=
+            BodyTangentialAcceleration / static_cast<float>(ContactCount);
+        TotalAxialAccelerationCmPerSecondSquared +=
+            BodyAxialAcceleration / static_cast<float>(ContactCount);
         Body->WakeRigidBody();
     };
 
@@ -9969,8 +10183,9 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
     {
         bLoggedChaosConveyorDrive = true;
         SimulatorLog(FString::Printf(
-            TEXT("chaos_conveyor_drive active_bodies=%d average_tangent_speed_cm_s=%.2f target_cm_s=%.2f average_command_acceleration_cm_s2=%.2f average_centering_acceleration_cm_s2=%.2f startup_ramp=complete powered_roller=true"),
+            TEXT("chaos_conveyor_drive active_bodies=%d active_contacts=%d average_tangent_speed_cm_s=%.2f target_cm_s=%.2f average_command_acceleration_cm_s2=%.2f average_axial_acceleration_cm_s2=%.2f startup_ramp=complete powered_roller_geometry=cylinders centering=skewed_roller_contact"),
             DrivenBodyCount,
+            DrivenContactCount,
             DrivenBodyCount > 0
                 ? TotalTangentialSpeedCmPerSecond / static_cast<float>(DrivenBodyCount)
                 : 0.0f,
@@ -9979,7 +10194,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
                 ? TotalTangentialAccelerationCmPerSecondSquared / static_cast<float>(DrivenBodyCount)
                 : 0.0f,
             DrivenBodyCount > 0
-                ? TotalCenteringAccelerationCmPerSecondSquared / static_cast<float>(DrivenBodyCount)
+                ? TotalAxialAccelerationCmPerSecondSquared / static_cast<float>(DrivenBodyCount)
                 : 0.0f));
     }
 }
@@ -13325,114 +13540,156 @@ void AQaiConveyorWorld::SimulateWorkers(float StepSeconds)
     }
 }
 
-void AQaiConveyorWorld::UpdateSafetySignal()
+FString AQaiConveyorWorld::EvaluateParcelSafetySignal(FString* OutDetails) const
 {
-    bool bInstantlyMoving = false;
-    bool bRedOverlap = false;
-    FString OverlappingPart;
+    FString WorstSignal = TEXT("G");
+    FString WorstDetails = TEXT("all conveyor parcels fully supported");
+    int32 WorstSeverity = 0;
+    float WorstSupportFraction = 1.0f;
 
-    for (int32 ForkliftIndex = 0; ForkliftIndex < ConveyorTuning::EnabledForkliftCount; ++ForkliftIndex)
+    for (int32 ParcelIndex = 0; ParcelIndex < Parcels.Num(); ++ParcelIndex)
     {
-        const FForkliftRuntime& Forklift = Forklifts[ForkliftIndex];
-        if (!Forklift.Root.IsValid())
+        USceneComponent* Parcel = Parcels[ParcelIndex].Get();
+        if (!Parcel || !ParcelHalfExtents.IsValidIndex(ParcelIndex))
         {
             continue;
         }
-        bInstantlyMoving |= FMath::Abs(Forklift.SpeedCmPerSecond) >= ConveyorTuning::MovingThresholdCm;
-
-        if (InferenceRedZoneBounds.IsValid)
+        // A parcel intentionally lifted by a forklift has not fallen from the
+        // conveyor. The experiment is about loss of roller support.
+        if (ParcelSupportedForklifts.IsValidIndex(ParcelIndex)
+            && ParcelSupportedForklifts[ParcelIndex] != INDEX_NONE)
         {
-            const FTransform RootTransform = Forklift.Root->GetComponentTransform();
-            const FQuat PlanarRotation = FRotator(
-                0.0f,
-                RootTransform.Rotator().Yaw,
-                0.0f).Quaternion();
-            FVector RedCenter = InferenceRedZoneBounds.GetCenter();
-            FVector RedExtent = InferenceRedZoneBounds.GetExtent();
-            RedCenter.Z = 0.0f;
-            RedExtent.Z = 1.0f;
-            for (const FFittedCollisionBox& Shape : Forklift.CollisionBoxes)
-            {
-                FVector LocalCenter = Shape.LocalCenter;
-                LocalCenter.Z += Shape.bLiftDriven ? Forklift.ActualLiftCm : 0.0f;
-                FVector ShapeCenter = RootTransform.TransformPositionNoScale(LocalCenter);
-                FVector ShapeExtent = Shape.GetCollisionHalfExtent();
-                ShapeCenter.Z = 0.0f;
-                ShapeExtent.Z = 1.0f;
-                if (ConveyorTuning::ObbOverlapsObb(
-                        ShapeCenter,
-                        PlanarRotation,
-                        ShapeExtent,
-                        RedCenter,
-                        FQuat::Identity,
-                        RedExtent,
-                        0.0f))
-                {
-                    bRedOverlap = true;
-                    OverlappingPart = FString::Printf(
-                        TEXT("forklift %d %s"), ForkliftIndex + 1, *Shape.Name);
-                    break;
-                }
-            }
-
-            // Retain a conservative fallback while the fitted part list is
-            // still being bound during startup.
-            if (Forklift.CollisionBoxes.IsEmpty())
-            {
-                bRedOverlap = ConveyorTuning::ObbOverlapsAabb(
-                    Forklift.Root->GetComponentLocation(),
-                    Forklift.Root->GetComponentRotation(),
-                    FVector2D(RedCenter.X, RedCenter.Y),
-                    FVector2D(RedExtent.X, RedExtent.Y),
-                    0.0f);
-                if (bRedOverlap)
-                {
-                    OverlappingPart = FString::Printf(
-                        TEXT("forklift %d fallback footprint"), ForkliftIndex + 1);
-                }
-            }
+            continue;
         }
-        if (bRedOverlap)
+
+        const FVector Location = Parcel->GetComponentLocation();
+        const FQuat Rotation = Parcel->GetComponentQuat();
+        const FVector HalfExtent = ParcelHalfExtents[ParcelIndex];
+        float BeltDistance = 0.0f;
+        float LateralDistance = 0.0f;
+        FVector BeltPoint;
+        FVector BeltTangent;
+        ConveyorTuning::ProjectToConveyor(
+            Location,
+            BeltDistance,
+            BeltPoint,
+            BeltTangent,
+            LateralDistance);
+        const FVector Tangent = BeltTangent.GetSafeNormal2D();
+        const FVector BeltNormal(-Tangent.Y, Tangent.X, 0.0f);
+        const float SignedLateralOffset = FVector::DotProduct(
+            Location - BeltPoint,
+            BeltNormal);
+        const float HalfAcrossRollers = FMath::Max(
+            1.0f,
+            FMath::Abs(FVector::DotProduct(Rotation.GetForwardVector(), BeltNormal))
+                    * HalfExtent.X
+                + FMath::Abs(FVector::DotProduct(Rotation.GetRightVector(), BeltNormal))
+                    * HalfExtent.Y);
+        const float ParcelMinimum = SignedLateralOffset - HalfAcrossRollers;
+        const float ParcelMaximum = SignedLateralOffset + HalfAcrossRollers;
+        const float SupportedWidth = FMath::Max(
+            0.0f,
+            FMath::Min(ParcelMaximum, ConveyorTuning::BeltHalfWidth)
+                - FMath::Max(ParcelMinimum, -ConveyorTuning::BeltHalfWidth));
+        const float SupportFraction = FMath::Clamp(
+            SupportedWidth / (2.0f * HalfAcrossRollers),
+            0.0f,
+            1.0f);
+        const float VerticalHalfExtent = ConveyorTuning::ProjectedVerticalHalfExtent(
+            Rotation,
+            HalfExtent);
+        const float Bottom = Location.Z - VerticalHalfExtent;
+        FVector Velocity = ParcelLinearVelocities.IsValidIndex(ParcelIndex)
+            ? ParcelLinearVelocities[ParcelIndex]
+            : FVector::ZeroVector;
+        if (const UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Parcel))
         {
-            break;
+            Velocity = Primitive->GetPhysicsLinearVelocity();
+        }
+        const float OutwardSpeed = SignedLateralOffset >= 0.0f
+            ? FVector::DotProduct(Velocity, BeltNormal)
+            : -FVector::DotProduct(Velocity, BeltNormal);
+        const float PredictedOffset = FMath::Abs(SignedLateralOffset)
+            + FMath::Max(0.0f, OutwardSpeed)
+                * ConveyorTuning::ParcelDangerPredictionSeconds;
+        const float PredictedMinimum = PredictedOffset - HalfAcrossRollers;
+        const float PredictedMaximum = PredictedOffset + HalfAcrossRollers;
+        const float PredictedSupportedWidth = FMath::Max(
+            0.0f,
+            FMath::Min(PredictedMaximum, ConveyorTuning::BeltHalfWidth)
+                - FMath::Max(PredictedMinimum, -ConveyorTuning::BeltHalfWidth));
+        const float PredictedSupportFraction = FMath::Clamp(
+            PredictedSupportedWidth / (2.0f * HalfAcrossRollers),
+            0.0f,
+            1.0f);
+        const FRotator ParcelRotation = Rotation.Rotator();
+        const float TiltDegrees = FMath::Max(
+            FMath::Abs(ParcelRotation.Pitch),
+            FMath::Abs(ParcelRotation.Roll));
+
+        const bool bFallen = SupportFraction <= ConveyorTuning::ParcelRedSupportFraction
+            || (Bottom < ConveyorSurfaceZCm - ConveyorTuning::ParcelFallenDropCm
+                && SupportFraction < ConveyorTuning::ParcelFallenSupportFraction);
+        const bool bDanger = !bFallen
+            && (SupportFraction < ConveyorTuning::ParcelAmberSupportFraction
+                || (OutwardSpeed > 4.0f && PredictedSupportFraction < 0.55f)
+                || (TiltDegrees >= ConveyorTuning::ParcelDangerTiltDegrees
+                    && SupportFraction < 0.88f));
+        const int32 Severity = bFallen ? 2 : (bDanger ? 1 : 0);
+        if (Severity > WorstSeverity
+            || (Severity == WorstSeverity && SupportFraction < WorstSupportFraction))
+        {
+            WorstSeverity = Severity;
+            WorstSupportFraction = SupportFraction;
+            WorstSignal = bFallen ? TEXT("R") : (bDanger ? TEXT("A") : TEXT("G"));
+            WorstDetails = FString::Printf(
+                TEXT("parcel=%d support=%.1f%% predicted_support=%.1f%% lateral_cm=%.1f outward_cm_s=%.1f bottom_delta_cm=%.1f tilt_deg=%.1f"),
+                ParcelIndex + 1,
+                SupportFraction * 100.0f,
+                PredictedSupportFraction * 100.0f,
+                FMath::Abs(SignedLateralOffset),
+                OutwardSpeed,
+                Bottom - ConveyorSurfaceZCm,
+                TiltDegrees);
         }
     }
 
-    const float EvidenceStepSeconds = GetWorld()
-        ? FMath::Clamp(GetWorld()->GetDeltaSeconds(), 0.0f, 0.05f)
-        : 0.0f;
-    if (bInstantlyMoving)
+    if (OutDetails)
     {
-        GroundTruthMovingEvidenceSeconds += EvidenceStepSeconds;
-        GroundTruthStationaryEvidenceSeconds = 0.0f;
-        if (GroundTruthMovingEvidenceSeconds >= 0.12f)
-        {
-            bGroundTruthMovingLatched = true;
-        }
+        *OutDetails = WorstDetails;
+    }
+    return WorstSignal;
+}
+
+void AQaiConveyorWorld::UpdateSafetySignal()
+{
+    FString Details;
+    const FString InstantSignal = EvaluateParcelSafetySignal(&Details);
+    if (InstantSignal != ParcelSafetyCandidateSignal)
+    {
+        ParcelSafetyCandidateSignal = InstantSignal;
+        ParcelSafetyCandidateSeconds = 0.0f;
     }
     else
     {
-        GroundTruthStationaryEvidenceSeconds += EvidenceStepSeconds;
-        GroundTruthMovingEvidenceSeconds = 0.0f;
-        if (GroundTruthStationaryEvidenceSeconds >= 0.30f)
-        {
-            bGroundTruthMovingLatched = false;
-        }
+        ParcelSafetyCandidateSeconds += GetWorld()
+            ? FMath::Clamp(GetWorld()->GetDeltaSeconds(), 0.0f, 0.05f)
+            : 0.0f;
     }
 
-    const FString NewSignal = bRedOverlap
-        ? TEXT("R")
-        : (bGroundTruthMovingLatched ? TEXT("A") : TEXT("G"));
-    if (NewSignal != GroundTruthSignal)
+    const float RequiredEvidenceSeconds = InstantSignal == TEXT("R")
+        ? 0.06f
+        : (InstantSignal == TEXT("A") ? 0.12f : 0.35f);
+    if (InstantSignal != GroundTruthSignal
+        && ParcelSafetyCandidateSeconds >= RequiredEvidenceSeconds)
     {
         SimulatorLog(FString::Printf(
-            TEXT("ground_truth_transition from=%s to=%s red_overlap=%s overlapping_part=%s movement=%s boundary=visible_red_mat"),
+            TEXT("ground_truth_transition from=%s to=%s focus=conveyor_parcel_support %s"),
             *GroundTruthSignal,
-            *NewSignal,
-            bRedOverlap ? TEXT("true") : TEXT("false"),
-            OverlappingPart.IsEmpty() ? TEXT("none") : *OverlappingPart,
-            bGroundTruthMovingLatched ? TEXT("true") : TEXT("false")));
-        GroundTruthSignal = NewSignal;
+            *InstantSignal,
+            *Details));
+        GroundTruthSignal = InstantSignal;
     }
 }
 
@@ -13654,6 +13911,8 @@ void AQaiConveyorWorld::SetupInferenceCapture()
         Capture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
         const bool bUseAuthoredWideCamera =
             InferenceCameraVariant.Equals(TEXT("authored-wide"), ESearchCase::IgnoreCase);
+        const bool bUseParcelBeltCamera =
+            InferenceCameraVariant.Equals(TEXT("parcel-belt"), ESearchCase::IgnoreCase);
         if (bUseAuthoredWideCamera)
         {
             // The controlled classification run favoured the earlier
@@ -13677,6 +13936,14 @@ void AQaiConveyorWorld::SetupInferenceCapture()
             const float HorizontalProjectionOffset =
                 2.0f * DetectorHorizontalApertureOffsetMm / DetectorHorizontalApertureMm;
             Capture->CustomProjectionMatrix.M[2][0] = -HorizontalProjectionOffset;
+        }
+        else if (bUseParcelBeltCamera)
+        {
+            // A natural moderately wide lens keeps the complete roller loop
+            // large in frame without stretching parcels at the image edges.
+            constexpr float DetectorHorizontalFovDegrees = 78.0f;
+            Capture->FOVAngle = DetectorHorizontalFovDegrees;
+            Capture->bUseCustomProjectionMatrix = false;
         }
         else
         {
@@ -13983,7 +14250,7 @@ void AQaiConveyorWorld::CancelActiveInference()
     EncodedFrames.Reset();
     EncodedFrameWidths.Reset();
     EncodedFrameHeights.Reset();
-    EncodedForkliftFrameTransforms.Reset();
+    EncodedParcelSafetySignals.Reset();
     EncodedFrameTextures.Reset();
     EncodedFrameTimes.Reset();
     EncodedFrameCaptureSeconds.Reset();
@@ -13991,8 +14258,6 @@ void AQaiConveyorWorld::CancelActiveInference()
     SubmittedFrameTextures.Reset();
     SubmittedFrameTimes.Reset();
     SubmittedGroundTruthSignal = TEXT("G");
-    bSubmittedForkliftMotion = false;
-    bSubmittedRedOverlap = false;
 }
 
 void AQaiConveyorWorld::TickInferenceCapture(float DeltaSeconds)
@@ -14376,7 +14641,7 @@ void AQaiConveyorWorld::OnFrameEncoded(
         EncodedFrames.Reset();
         EncodedFrameWidths.Reset();
         EncodedFrameHeights.Reset();
-        EncodedForkliftFrameTransforms.Reset();
+        EncodedParcelSafetySignals.Reset();
         EncodedFrameTextures.Reset();
         EncodedFrameTimes.Reset();
         EncodedFrameCaptureSeconds.Reset();
@@ -14386,10 +14651,7 @@ void AQaiConveyorWorld::OnFrameEncoded(
     EncodedFrameTextures.Add(CreateInferencePreviewTexture(Pixels, FrameWidth, FrameHeight));
     EncodedFrameWidths.Add(FrameWidth);
     EncodedFrameHeights.Add(FrameHeight);
-    EncodedForkliftFrameTransforms.Add(
-        Forklifts[0].Root.IsValid()
-            ? Forklifts[0].Root->GetComponentTransform()
-            : FTransform::Identity);
+    EncodedParcelSafetySignals.Add(EvaluateParcelSafetySignal());
     EncodedFrameTimes.Add(FDateTime::Now().ToString(TEXT("%H:%M:%S")));
     EncodedFrameCaptureSeconds.Add(FPlatformTime::Seconds());
     while (EncodedFrames.Num() > 32
@@ -14399,7 +14661,7 @@ void AQaiConveyorWorld::OnFrameEncoded(
         EncodedFrames.RemoveAt(0);
         EncodedFrameWidths.RemoveAt(0);
         EncodedFrameHeights.RemoveAt(0);
-        EncodedForkliftFrameTransforms.RemoveAt(0);
+        EncodedParcelSafetySignals.RemoveAt(0);
         EncodedFrameTextures.RemoveAt(0);
         EncodedFrameTimes.RemoveAt(0);
         EncodedFrameCaptureSeconds.RemoveAt(0);
@@ -14529,17 +14791,17 @@ void AQaiConveyorWorld::SubmitInference()
     const float FramesPerSecond = bEvkRequest && ActualBaselineSeconds > UE_SMALL_NUMBER
         ? static_cast<float>(SelectedIndices.Num() - 1) / static_cast<float>(ActualBaselineSeconds)
         : 1.0f / CaptureIntervalSeconds;
-    // Keep the classifier instructions byte-for-byte equivalent across the
-    // host and EVK backends. The EVK transport is a two-frame lossless video,
-    // but changing the wording with the transport caused a material behavior
-    // difference—especially for the amber/motion decision.
+    // Keep the physical-analysis instructions byte-for-byte equivalent across
+    // host and EVK. Reason2 is substantially more reliable when it describes
+    // parcel support naturally than when a constrained one-letter grammar
+    // forces it to guess a code before it has stated what it sees.
     const FString Prompt = TEXT(
-        "Review the images in chronological order, with the newest image last.\n"
-        "Return R if any part of any forklift is inside the marked red zone.\n"
-        "Otherwise, return A if any forklift is moving at all.\n"
-        "Otherwise, return G.\n"
-        "Ignore human workers, parcels, and the stack light.\n"
-        "Return one letter only: R, A, or G.\n");
+        "These are two chronological views from one fixed camera above a powered roller conveyor; the newest image is last.\n"
+        "Analyze the newest image and consider only cardboard parcels that are on, falling from, or have fallen from the silver rollers.\n"
+        "Describe which parcels are fully supported, which are partly supported and in danger of falling, and which have lost support and fallen or are visibly falling.\n"
+        "Ordinary parcel rotation while following the U-shaped curve is supported motion, not danger.\n"
+        "Use the older image only to track which parcels came from the conveyor. Ignore the forklift, people, shelves, pallets, floor cargo, billboard, and floor colors.\n"
+        "End after a concise physical description; do not use one-letter codes.\n");
 
     // Pin the exact chronological source frames for HUD and diagnostics before
     // media preparation leaves the game thread. Capture continues at 4 FPS
@@ -14552,39 +14814,19 @@ void AQaiConveyorWorld::SubmitInference()
         SubmittedFrameTextures.Add(EncodedFrameTextures[FrameIndex]);
         SubmittedFrameTimes.Add(EncodedFrameTimes[FrameIndex]);
     }
-    // GroundTruthSignal is a live, debounced HUD diagnostic. Label this
-    // request from the exact observations Reason2 receives instead of sampling
-    // an instantaneous Chaos velocity at submit time.
-    bSubmittedRedOverlap = GroundTruthSignal == TEXT("R");
-    bSubmittedForkliftMotion = false;
-    if (EncodedForkliftFrameTransforms.IsValidIndex(OldestIndex)
-        && EncodedForkliftFrameTransforms.IsValidIndex(NewestIndex))
-    {
-        const FTransform& Older = EncodedForkliftFrameTransforms[OldestIndex];
-        const FTransform& Newest = EncodedForkliftFrameTransforms[NewestIndex];
-        const float TranslationDeltaCm = FVector::Dist(
-            Older.GetLocation(), Newest.GetLocation());
-        const float YawDeltaDegrees = FMath::Abs(FMath::FindDeltaAngleDegrees(
-            Older.Rotator().Yaw, Newest.Rotator().Yaw));
-        bSubmittedForkliftMotion = TranslationDeltaCm >= 1.25f
-            || YawDeltaDegrees >= 0.50f;
-        SubmittedGroundTruthSignal = bSubmittedRedOverlap
-            ? TEXT("R")
-            : (bSubmittedForkliftMotion ? TEXT("A") : TEXT("G"));
-        SimulatorLog(FString::Printf(
-            TEXT("inference_visual_tracker frames=%d span_seconds=%.3f translation_delta_cm=%.2f yaw_delta_deg=%.2f moving=%s red_overlap_newest=%s submitted_truth=%s"),
-            SelectedIndices.Num(),
-            ActualBaselineSeconds,
-            TranslationDeltaCm,
-            YawDeltaDegrees,
-            bSubmittedForkliftMotion ? TEXT("true") : TEXT("false"),
-            bSubmittedRedOverlap ? TEXT("true") : TEXT("false"),
-            *SubmittedGroundTruthSignal));
-    }
-    else
-    {
-        SubmittedGroundTruthSignal = bSubmittedRedOverlap ? TEXT("R") : TEXT("G");
-    }
+    // Pin deterministic support truth to the newest submitted RGB frame. It
+    // remains diagnostic metadata only and is never part of the model input.
+    SubmittedGroundTruthSignal = EncodedParcelSafetySignals.IsValidIndex(NewestIndex)
+        ? EncodedParcelSafetySignals[NewestIndex]
+        : GroundTruthSignal;
+    FString SubmittedParcelDetails;
+    EvaluateParcelSafetySignal(&SubmittedParcelDetails);
+    SimulatorLog(FString::Printf(
+        TEXT("inference_parcel_tracker frames=%d span_seconds=%.3f newest_truth=%s %s"),
+        SelectedIndices.Num(),
+        ActualBaselineSeconds,
+        *SubmittedGroundTruthSignal,
+        *SubmittedParcelDetails));
 
     bInferenceBusy = true;
     BackendStatus = bEvkRequest
@@ -14766,10 +15008,8 @@ void AQaiConveyorWorld::DispatchPreparedInference(
     Body->SetNumberField(TEXT("temperature"), 0.0);
     Body->SetNumberField(TEXT("top_k"), 1);
     Body->SetNumberField(TEXT("seed"), 42);
-    Body->SetNumberField(TEXT("max_completion_tokens"), 32);
+    Body->SetNumberField(TEXT("max_completion_tokens"), 256);
     Body->SetBoolField(TEXT("enable_think"), false);
-    Body->SetStringField(TEXT("grammar"), TEXT("root ::= [GAR]"));
-    Body->SetStringField(TEXT("grammar_string"), TEXT("root ::= [GAR]"));
     Body->SetArrayField(TEXT("messages"), {MakeShared<FJsonValueObject>(Message)});
     FString BodyText;
     const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&BodyText);
@@ -14998,17 +15238,95 @@ void AQaiConveyorWorld::HandleModelResponse(const FString& Body, bool bSucceeded
     }
 
     FString Proposed;
-    const FRegexPattern StandaloneSignalPattern(TEXT("(?i)(?:^|[^A-Z])([GAR])(?:[^A-Z]|$)"));
-    FRegexMatcher SignalMatcher(StandaloneSignalPattern, Content);
-    while (SignalMatcher.FindNext())
+    const FString LowerContent = Content.ToLower();
+    const auto ContainsAny = [&LowerContent](std::initializer_list<const TCHAR*> Phrases)
     {
-        Proposed = SignalMatcher.GetCaptureGroup(1).ToUpper();
+        for (const TCHAR* Phrase : Phrases)
+        {
+            if (LowerContent.Contains(Phrase))
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Parse the model's own natural-language physical assessment. Red is
+    // checked first because a genuinely falling parcel may also be described
+    // as tilted; amber is checked before the generic supported vocabulary.
+    if (ContainsAny({
+            TEXT("falling off"),
+            TEXT("has fallen"),
+            TEXT("have fallen"),
+            TEXT("fallen off"),
+            TEXT("lost support"),
+            TEXT("no longer supported"),
+            TEXT("below the conveyor"),
+            TEXT("below the rollers"),
+            TEXT("beside the conveyor"),
+            TEXT("process of falling")}))
+    {
+        Proposed = TEXT("R");
     }
+    else if (ContainsAny({
+                 TEXT("in danger"),
+                 TEXT("partly supported"),
+                 TEXT("partially supported"),
+                 TEXT("about to fall"),
+                 TEXT("closer to the edge"),
+                 TEXT("close to the edge"),
+                 TEXT("near the edge"),
+                 TEXT("overhang"),
+                 TEXT("tilted"),
+                 TEXT("tipping")}))
+    {
+        Proposed = TEXT("A");
+    }
+    else if (ContainsAny({
+                 TEXT("fully supported"),
+                 TEXT("supported by"),
+                 TEXT("securely placed"),
+                 TEXT("placed on the rollers"),
+                 TEXT("positioned on the rollers"),
+                 TEXT("resting on"),
+                 TEXT("resting securely"),
+                 TEXT("stable"),
+                 TEXT("supported")}))
+    {
+        Proposed = TEXT("G");
+    }
+    else
+    {
+        // Compatibility fallback for a backend that still returns an explicit
+        // uppercase code. Deliberately case-sensitive so the article "a" in a
+        // narrative response cannot be mistaken for amber.
+        const FRegexPattern StandaloneSignalPattern(TEXT("(?:^|[^A-Z])([GAR])(?:[^A-Z]|$)"));
+        FRegexMatcher SignalMatcher(StandaloneSignalPattern, Content);
+        while (SignalMatcher.FindNext())
+        {
+            Proposed = SignalMatcher.GetCaptureGroup(1);
+        }
+    }
+
+    FString LoggedDescription = Content;
+    LoggedDescription.ReplaceInline(TEXT("\r"), TEXT(" "));
+    LoggedDescription.ReplaceInline(TEXT("\n"), TEXT(" "));
+    LoggedDescription.ReplaceInline(TEXT("\""), TEXT("'"));
+    LoggedDescription.TrimStartAndEndInline();
+    if (LoggedDescription.Len() > 1000)
+    {
+        LoggedDescription = LoggedDescription.Left(997) + TEXT("...");
+    }
+    SimulatorLog(FString::Printf(
+        TEXT("inference_model_description backend=%s parsed=%s text=\"%s\""),
+        *ActiveBackend,
+        Proposed.IsEmpty() ? TEXT("invalid") : *Proposed,
+        *LoggedDescription));
     if (Proposed.IsEmpty())
     {
         BackendStatus = TEXT("invalid model response");
-        UE_LOG(LogTemp, Warning, TEXT("Reason2 returned no standalone G/A/R signal"));
-        SimulatorLog(FString::Printf(TEXT("inference_invalid_response backend=%s"), *ActiveBackend));
+        UE_LOG(LogTemp, Warning, TEXT("Reason2 returned no recognizable parcel-support assessment"));
+        SimulatorLog(FString::Printf(TEXT("inference_invalid_response backend=%s response_length=%d"), *ActiveBackend, Content.Len()));
         return;
     }
     if (bSaveInferenceFrames)

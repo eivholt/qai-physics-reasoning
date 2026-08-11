@@ -78,7 +78,7 @@ void AQaiConveyorHUD::DrawHUD()
 
     Line(
         FString::Printf(
-            TEXT("REASON2 CONVEYOR SAFETY  |  %d FPS"),
+            TEXT("REASON2 PARCEL SAFETY  |  %d FPS"),
             FMath::RoundToInt(SmoothedFramesPerSecond)),
         FLinearColor(0.35f, 0.78f, 1.0f));
     Line(AQaiConveyorGameMode::GetRenderProfileDisplayName(), FLinearColor(0.55f, 0.82f, 1.0f));
@@ -90,7 +90,7 @@ void AQaiConveyorHUD::DrawHUD()
     }
 
     const FString PhysicsText = FString::Printf(
-        TEXT("Physics %s"),
+        TEXT("Parcel state %s"),
         *SignalLabel(Runtime->GetGroundTruthSignal()));
     const FString SeparatorText = TEXT("  |  ");
     const FString ReasonText = FString::Printf(
