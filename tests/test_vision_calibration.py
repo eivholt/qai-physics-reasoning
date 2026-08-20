@@ -85,7 +85,11 @@ class VisionCalibrationTest(unittest.TestCase):
             ],
         )
 
-    def _write_manifest(self, duplicate: bool = False) -> Path:
+    def _write_manifest(
+        self,
+        duplicate: bool = False,
+        temporal_mode: str | None = None,
+    ) -> Path:
         from PIL import Image
 
         first = self.root / "first.png"
@@ -101,6 +105,11 @@ class VisionCalibrationTest(unittest.TestCase):
             json.dumps(
                 {
                     "schema_version": 1,
+                    **(
+                        {"temporal_mode": temporal_mode}
+                        if temporal_mode is not None
+                        else {}
+                    ),
                     "pairs": [
                         {
                             "id": "pair-0",
@@ -170,6 +179,25 @@ class VisionCalibrationTest(unittest.TestCase):
         manifest = self._write_manifest(duplicate=True)
 
         with self.assertRaisesRegex(ValueError, "duplicate frame content"):
+            resolve_paired_frame_paths(manifest, 1)
+
+    def test_single_frame_mode_accepts_duplicate_frame_content(self) -> None:
+        manifest = self._write_manifest(
+            duplicate=True,
+            temporal_mode="duplicate_single_frame",
+        )
+
+        pairs = resolve_paired_frame_paths(manifest, 1)
+
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(_sha256(pairs[0][0]), _sha256(pairs[0][1]))
+
+    def test_single_frame_mode_rejects_distinct_frame_content(self) -> None:
+        manifest = self._write_manifest(
+            temporal_mode="duplicate_single_frame",
+        )
+
+        with self.assertRaisesRegex(ValueError, "must duplicate one frame"):
             resolve_paired_frame_paths(manifest, 1)
 
     def test_cli_extracts_local_paired_manifest_option(self) -> None:

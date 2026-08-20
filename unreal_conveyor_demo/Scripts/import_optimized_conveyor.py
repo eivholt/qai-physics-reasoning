@@ -34,9 +34,7 @@ AUDIT_PATH = PROJECT_DIR / "Saved" / "ImportAudit" / "optimized_asset_manifest.j
 
 REQUIRED_RUNTIME_NAMES = {
     "Forklift1",
-    "Forklift2",
     "Forklift1Pallet",
-    "Forklift2Pallet",
     "Parcel1",
     "DetectorEndline",
     "Worker1",
@@ -359,22 +357,19 @@ def configure_runtime_bindings() -> dict[str, int]:
     animated_workers = 0
     seated_drivers = 0
     static_driver_component_count = 0
-    dynamic_actor_labels = {"Forklift1", "Forklift2", "Worker1", "Worker2"}
+    dynamic_actor_labels = {"Forklift1", "Worker1", "Worker2"}
     component_tags = {
         "Forklift1": "Qai.Forklift1",
-        "Forklift2": "Qai.Forklift2",
         **{f"Parcel{index}": f"Qai.Parcel{index}" for index in range(1, 9)},
         "Forklift1Pallet": "Qai.Forklift1Pallet",
         "Forklift1Carton": "Qai.Forklift1Carton",
-        "Forklift2Pallet": "Qai.Forklift2Pallet",
-        "Forklift2Carton": "Qai.Forklift2Carton",
         "Worker1": "Qai.Worker1",
         "Worker2": "Qai.Worker2",
         **{f"GreenLens_{index}": f"Qai.Green.{index}" for index in range(3)},
         **{f"AmberLens_{index}": f"Qai.Amber.{index}" for index in range(3)},
         **{f"RedLens_{index}": f"Qai.Red.{index}" for index in range(3)},
     }
-    dynamic_component_prefixes = ("Parcel", "Forklift1", "Forklift2", "Worker1", "Worker2")
+    dynamic_component_prefixes = ("Parcel", "Forklift1", "Worker1", "Worker2")
 
     wheel_names = {
         "left_front_wheel": "LeftFront",
@@ -386,8 +381,8 @@ def configure_runtime_bindings() -> dict[str, int]:
     # UE 5.8 builds the shared USD seated pose in /Engine/Transient but emits a
     # warning instead of assigning it to either referenced driver component.
     # Promote that evaluated clip into the project and bind it explicitly. The
-    # two driver meshes share the same authored skeleton, so one promoted pose
-    # is both smaller and more deterministic than two transient duplicates.
+    # The retained driver uses the authored skeleton, so one promoted pose is
+    # smaller and more deterministic than a transient duplicate.
     driver_animation = None
     for suffix in range(4):
         transient_path = f"/Engine/Transient.AS_SeatedDriverPose_{suffix}"
@@ -424,8 +419,8 @@ def configure_runtime_bindings() -> dict[str, int]:
 
         # USD may put the skeletal component on a generated parent actor whose
         # label is unrelated to the referenced character prim.  Classify the
-        # four people by their authored animation asset instead of actor label.
-        # This also makes the audit prove that both seated-driver clips remain
+        # three people by their authored animation asset instead of actor label.
+        # This also makes the audit prove that the seated-driver clip remains
         # bound after Unreal's USD hierarchy flattening.
         for skeletal_component in actor.get_components_by_class(unreal.SkeletalMeshComponent):
             animation_data = skeletal_component.get_editor_property("animation_data")
@@ -469,9 +464,9 @@ def configure_runtime_bindings() -> dict[str, int]:
             else:
                 animated_workers += 1
 
-        # The two drivers are intentionally pre-skinned to their seated frame
-        # in USD. They do not animate, so importing them as static meshes saves
-        # two skeletons and two per-frame skinning evaluations.
+        # The driver is intentionally pre-skinned to his seated frame in USD.
+        # He does not animate, so importing him as static meshes saves a
+        # skeleton and a per-frame skinning evaluation.
         static_driver_components = []
         for static_component in actor.get_components_by_class(unreal.StaticMeshComponent):
             static_mesh = static_component.get_editor_property("static_mesh")
@@ -505,9 +500,6 @@ def configure_runtime_bindings() -> dict[str, int]:
                     if ancestor_name.startswith("Forklift1"):
                         forklift_index = 1
                         break
-                    if ancestor_name.startswith("Forklift2"):
-                        forklift_index = 2
-                        break
                     cursor = cursor.get_attach_parent()
                 if forklift_index is not None:
                     add_component_tag(component, f"Qai.Forklift{forklift_index}.Wheel.{wheel_role}")
@@ -520,11 +512,6 @@ def configure_runtime_bindings() -> dict[str, int]:
                     ancestor_name = cursor.get_name()
                     if ancestor_name.startswith("Forklift1"):
                         add_component_tag(component, "Qai.Forklift1.Lift")
-                        component.set_mobility(unreal.ComponentMobility.MOVABLE)
-                        tagged_components += 1
-                        break
-                    if ancestor_name.startswith("Forklift2"):
-                        add_component_tag(component, "Qai.Forklift2.Lift")
                         component.set_mobility(unreal.ComponentMobility.MOVABLE)
                         tagged_components += 1
                         break
@@ -610,7 +597,7 @@ def configure_runtime_bindings() -> dict[str, int]:
     if static_driver_component_count:
         if seated_drivers:
             raise RuntimeError("Driver import mixed static and skeletal representations")
-        # Unreal collapses the two drivers into the scene hierarchy. Each exact
+        # Unreal collapses the driver into the scene hierarchy. The exact
         # NVIDIA character reference consists of seven material-part meshes;
         # validate that complete unit instead of relying on discarded Xform
         # actor labels.
@@ -621,8 +608,8 @@ def configure_runtime_bindings() -> dict[str, int]:
                 f"components={static_driver_component_count} parts_per_driver={driver_part_count}"
             )
         seated_drivers = static_driver_component_count // driver_part_count
-    if seated_drivers != 2:
-        raise RuntimeError(f"Expected two authored seated-driver poses, configured {seated_drivers}")
+    if seated_drivers != 1:
+        raise RuntimeError(f"Expected one authored seated-driver pose, configured {seated_drivers}")
     return {
         "tagged_actors": tagged_actors,
         "tagged_components": tagged_components,

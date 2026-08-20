@@ -35,6 +35,7 @@ from qai_hub_models.models.cosmos_reason2_2b.model import (  # noqa: E402
     QAIRT245_COMPAT_MARKER,
     SOURCE_CHECKPOINT_ENV,
     SOURCE_CHECKPOINT_MARKER,
+    W4_FP16_MARKER,
     Cosmos_Reason2_2B_Collection,
     Cosmos_Reason2_2B_PreSplit,
     Cosmos_Reason2_2B_QuantizablePreSplit,
@@ -313,6 +314,25 @@ class SourceCheckpointTest(unittest.TestCase):
         self.assertEqual(spec["pixel_values"].shape, (336, 1536))
         self.assertEqual(spec["position_ids_cos"].shape, (336, 32))
         self.assertEqual(spec["full_attention_mask"].shape, (1, 336, 336))
+
+    def test_mixed_precision_vision_compile_forces_quantized_io(self) -> None:
+        checkpoint = self.root / "mixed"
+        checkpoint.mkdir()
+        (checkpoint / W4_FP16_MARKER).write_text("{}", encoding="utf-8")
+        encoder = Cosmos_Reason2_2B_VisionEncoder.__new__(
+            Cosmos_Reason2_2B_VisionEncoder
+        )
+        torch.nn.Module.__init__(encoder)
+        encoder._checkpoint = str(checkpoint)
+
+        with patch.object(
+            Qwen3VLVisionEncoderBase,
+            "get_hub_compile_options",
+            return_value="--target_runtime qnn_context_binary",
+        ):
+            options = encoder.get_hub_compile_options(None, None)
+
+        self.assertEqual(options.split().count("--quantize_io"), 1)
 
     def test_vision_checkpoint_recovers_recorded_image_size(self) -> None:
         checkpoint = self.root / "vision"

@@ -279,9 +279,14 @@ def _validate_part1_replacement(
             raise ValueError(
                 f"Replacement {TEXT_W8_MARKER} has no export_contract"
             )
+        context_length = export_contract.get("context_length")
+        if not isinstance(context_length, int) or context_length <= 0:
+            raise ValueError(
+                f"Replacement {TEXT_W8_MARKER} export_contract.context_length "
+                f"must be a positive integer; got {context_length!r}"
+            )
         expected_contract = {
             "activation_precision": "FP16",
-            "context_length": 512,
             "sequence_lengths": [128, 1],
             "deepstack_inputs": list(DEEPSTACK_INPUT_ORDER),
             "external_tensor_precision": (

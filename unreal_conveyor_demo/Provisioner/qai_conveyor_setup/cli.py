@@ -8,9 +8,10 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .evk import EVK_PORT, ensure_evk
+from .evk import ensure_evk
 from .host import (
     HOST_MODEL_NAME,
+    HOST_PORT,
     ensure_host_models,
     ensure_host_runtime,
     is_cpu_runtime,
@@ -47,17 +48,22 @@ def parser() -> argparse.ArgumentParser:
     return result
 
 
-def _configured_evk_host() -> str | None:
+def _configured_evk_url() -> str | None:
     runtime = user_data_dir() / "runtime.json"
     if not runtime.is_file():
         return None
     try:
-        url = str(json.loads(runtime.read_text(encoding="utf-8")).get("evk_server_url", ""))
+        url = str(json.loads(runtime.read_text(encoding="utf-8")).get("evk_server_url", "")).strip()
     except (OSError, json.JSONDecodeError):
         return None
-    if "://" in url:
-        url = url.split("://", 1)[1]
-    return url.split(":", 1)[0] or None
+    return url or None
+
+
+def _host_from_url(url: str | None) -> str | None:
+    if not url:
+        return None
+    authority = url.split("://", 1)[-1]
+    return authority.split(":", 1)[0] or None
 
 
 def _find_game(app_dir: Path | None) -> Path:
@@ -131,7 +137,7 @@ def run(argv: list[str] | None = None) -> int:
         with logger.phase("load_release_payload"):
             payload = Payload(logger, root=args.payload_root, app_dir=app_dir)
 
-        host_url = "http://127.0.0.1:18080"
+        host_url = f"http://127.0.0.1:{HOST_PORT}"
         if not args.skip_host:
             with logger.phase("install_host_reason2"):
                 model, projector = ensure_host_models(payload, logger)
@@ -154,13 +160,15 @@ def run(argv: list[str] | None = None) -> int:
 
         evk_url = None
         if not args.skip_evk:
-            configured_evk = args.evk_host or _configured_evk_host()
+            configured_evk_url = _configured_evk_url()
+            configured_evk = args.evk_host or _host_from_url(configured_evk_url)
             if args.command == "launch" and not args.evk_host and not args.require_evk:
                 if configured_evk:
-                    evk_url = f"http://{configured_evk}:{EVK_PORT}"
+                    evk_url = configured_evk_url
                     logger.event(
                         "evk_launch_configuration_reused",
                         host=configured_evk,
+                        url=evk_url,
                         message="Normal launch does not scan or redeploy the EVK; use ensure to repair it",
                     )
                 else:

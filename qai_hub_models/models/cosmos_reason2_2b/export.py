@@ -270,6 +270,18 @@ def build_parser(cli_mode: bool = False) -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--context-length",
+        type=int,
+        choices=(512, 1024, 2048, 4096),
+        default=None,
+        help=(
+            "Compile exactly one decoder context length. This is preferable "
+            "to --full-context-matrix for deployment bundles that use one "
+            "known prompt budget. When omitted, the 512-token smoke profile "
+            "is retained for backward compatibility."
+        ),
+    )
+    parser.add_argument(
         "--components",
         nargs="+",
         choices=EXPORT_COMPONENTS,
@@ -316,6 +328,11 @@ def main(args: argparse.Namespace | None = None) -> None:
         full_context_matrix = bool(
             export_args.pop("full_context_matrix", False)
         )
+        requested_context_length = export_args.pop("context_length", None)
+        if full_context_matrix and requested_context_length is not None:
+            raise ValueError(
+                "--full-context-matrix and --context-length are mutually exclusive"
+            )
         requested_image_size = export_args.pop("image_size")
         profile = _resolve_export_vision_profile(
             checkpoint,
@@ -331,10 +348,14 @@ def main(args: argparse.Namespace | None = None) -> None:
             f"grid {profile.grid_thw}, "
             f"{profile.visual_tokens} visual tokens"
         )
-        Cosmos_Reason2_2B_PartBase.export_context_lengths = list(
-            FULL_EXPORT_CONTEXT_LENGTHS
-            if full_context_matrix
-            else DEFAULT_EXPORT_CONTEXT_LENGTHS
+        Cosmos_Reason2_2B_PartBase.export_context_lengths = (
+            [requested_context_length]
+            if requested_context_length is not None
+            else list(
+                FULL_EXPORT_CONTEXT_LENGTHS
+                if full_context_matrix
+                else DEFAULT_EXPORT_CONTEXT_LENGTHS
+            )
         )
         _install_ordered_linker()
         export_model(MODEL_ID, **export_args)

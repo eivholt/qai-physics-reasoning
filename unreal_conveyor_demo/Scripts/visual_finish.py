@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
+import re
 
 import unreal
 
@@ -18,6 +20,13 @@ BACKDROP_MATERIAL = f"{MATERIAL_FOLDER}/M_PresentationBackdrop"
 DETAIL_SURFACE_MATERIAL = f"{MATERIAL_FOLDER}/M_DetailSurface"
 CLEAR_COAT_MATERIAL = f"{MATERIAL_FOLDER}/M_ForkliftClearCoat"
 ANISOTROPIC_MATERIAL = f"{MATERIAL_FOLDER}/M_AnisotropicMetal"
+BRIDGE_ROLLER_MATERIAL = f"{MATERIAL_FOLDER}/M_BridgeRollerSteelUniform"
+LOW_PROFILE_FRAME_MATERIAL = f"{MATERIAL_FOLDER}/M_LowProfileConveyorFrame"
+A11_TWO_SIDED_FRAME_MATERIAL = f"{MATERIAL_FOLDER}/M_A11TwoSidedConveyorFrame"
+HIDDEN_STRAIGHT_FRAME_MATERIAL = f"{MATERIAL_FOLDER}/M_HiddenStraightFrameSlot"
+A05_LOW_PROFILE_FRAME_MESH = f"{MATERIAL_FOLDER}/SM_StraightWest_FrameLowProfile"
+A08_LOW_PROFILE_FRAME_MESH = f"{MATERIAL_FOLDER}/SM_A08_FrameLowProfile"
+LOW_PROFILE_FRAME_PREFIX = "M_LowProfileFrame_"
 DRAGONWING_FABRIC_MATERIAL = f"{MATERIAL_FOLDER}/M_DragonwingFabric"
 HIDDEN_RACK_CARTON_MATERIAL = f"{MATERIAL_FOLDER}/M_HiddenBakedRackCartons"
 UNIFIED_WALL_MESH = f"{MATERIAL_FOLDER}/SM_UnifiedNorthWall"
@@ -49,6 +58,18 @@ FORKLIFT_BLUE_MI = (
 ROLLER_MI = (
     f"{CONTENT_ROOT}/Scene/warehouse_conveyor_baked/World/CodexPoC/ConveyorSafety/"
     "Conveyor/Modules/ExtensionEast/Looks/MI_Aluminium_Brushed_A"
+)
+BLUE_FRAME_MI = (
+    f"{CONTENT_ROOT}/Scene/warehouse_conveyor_baked/World/CodexPoC/ConveyorSafety/"
+    "Conveyor/Modules/ExtensionEast/Looks/MI_MetalPainted_Blue_Glossy_A"
+)
+STRAIGHT_FRAME_MESH = (
+    f"{CONTENT_ROOT}/Scene/warehouse_conveyor_baked/World/CodexPoC/ConveyorSafety/"
+    "Conveyor/Modules/SM_StraightWest"
+)
+A08_FRAME_MESH = (
+    f"{CONTENT_ROOT}/Scene/warehouse_conveyor_baked/World/CodexPoC/ConveyorSafety/"
+    "Conveyor/Modules/ExtensionWest/SM_ConveyorBelt_A08_02"
 )
 CARD_BOX_A_MI = (
     f"{CONTENT_ROOT}/Scene/warehouse_conveyor_baked/World/CodexPoC/ConveyorSafety/"
@@ -90,6 +111,13 @@ def srgb_channel(value: int) -> float:
 # value expected by Unreal material vector parameters.
 DRAGONWING_PURPLE = unreal.LinearColor(
     srgb_channel(0x32), srgb_channel(0x01), srgb_channel(0x7E), 1.0
+)
+
+# The original NVIDIA diffuse_tint is approximately sRGB #F6B932. It reads
+# ochre after the forklift atlas and fixed warehouse grade, so use the more
+# striking industrial safety yellow sRGB #FFD400 for the selectable variant.
+ISAAC_FORKLIFT_YELLOW = unreal.LinearColor(
+    1.0, 0.658375, 0.0, 1.0
 )
 
 
@@ -139,7 +167,11 @@ def create_textured_master(
     micro_roughness: bool = False,
 ) -> unreal.Material:
     """Create a compact native shader around the exact imported PBR maps."""
-    material = unreal.EditorAssetLibrary.load_asset(asset_path)
+    material = (
+        unreal.EditorAssetLibrary.load_asset(asset_path)
+        if unreal.EditorAssetLibrary.does_asset_exist(asset_path)
+        else None
+    )
     if isinstance(material, unreal.Material):
         # Upgrade pre-existing masters in place. The forklift LPG cylinder is
         # part of the shared body atlas rather than a separable mesh slot, so
@@ -303,6 +335,387 @@ def create_textured_master(
     unreal.MaterialEditingLibrary.recompile_material(material)
     unreal.EditorAssetLibrary.save_loaded_asset(material, only_if_is_dirty=False)
     return material
+
+
+def configure_low_profile_height_clip(material: unreal.Material) -> unreal.Material:
+    """Mask only geometry above the roller crown; keep the source PBR graph."""
+    library = unreal.MaterialEditingLibrary
+    set_property(material, "blend_mode", unreal.BlendMode.BLEND_MASKED)
+    # The inserted A08 bridges expose the reverse side of the authored thin
+    # C-channel flange. Retain the height mask that hides the tall uprights,
+    # but render both sides so the upper lip remains solid from either lane.
+    set_property(material, "two_sided", True)
+    set_property(material, "opacity_mask_clip_value", 0.333)
+
+    # USD's acrylic material uses Unreal's neutral 127grey utility texture for
+    # scalar channels. That texture is authored as linear color, unlike the
+    # grayscale-compressed scalar maps used by the other imported finishes.
+    # Match the texture's declared sampler so the tiny acrylic trim slot does
+    # not lose its shadermap and fall back to the default checker material.
+    for node in library.get_material_expressions(material):
+        if not isinstance(node, unreal.MaterialExpressionTextureSampleParameter2D):
+            continue
+        texture = node.get_editor_property("texture")
+        if isinstance(texture, unreal.Texture) and texture.get_name().lower() == "127grey":
+            set_property(
+                node,
+                "sampler_type",
+                unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR,
+            )
+
+    scalar_parameters = {
+        str(name): node
+        for node in library.get_material_expressions(material)
+        if isinstance(node, unreal.MaterialExpressionScalarParameter)
+        for name in (node.get_editor_property("parameter_name"),)
+    }
+    existing_cutoff = scalar_parameters.get("FrameClipHeightCm")
+    if existing_cutoff is not None:
+        # Keep repeated visual-finish passes deterministic while still allowing
+        # the authored cutoff to be adjusted from this source of truth.
+        set_property(existing_cutoff, "default_value", 79.0)
+        library.recompile_material(material)
+        unreal.EditorAssetLibrary.save_loaded_asset(material, only_if_is_dirty=False)
+        return material
+
+    world_position = expression(material, unreal.MaterialExpressionWorldPosition, -780, 980)
+    cutoff = expression(material, unreal.MaterialExpressionScalarParameter, -780, 1090)
+    set_property(cutoff, "parameter_name", "FrameClipHeightCm")
+    # The imported roller crown is 76.93 cm. Keep roughly 2 cm of clearance so
+    # the authored side rail remains intact but the tall seam uprights vanish.
+    set_property(cutoff, "default_value", 79.0)
+    below_belt = expression(material, unreal.MaterialExpressionSubtract, -520, 1020)
+    connect(cutoff, "", below_belt, "A")
+    connect(world_position, "Z", below_belt, "B")
+    clip_mask = expression(material, unreal.MaterialExpressionSaturate, -270, 1020)
+    connect(below_belt, "", clip_mask, "None")
+    connect_output(clip_mask, "", unreal.MaterialProperty.MP_OPACITY_MASK)
+    library.layout_material_expressions(material)
+    library.recompile_material(material)
+    unreal.EditorAssetLibrary.save_loaded_asset(material, only_if_is_dirty=False)
+    return material
+
+
+def create_low_profile_conveyor_frame_material() -> unreal.Material:
+    """Preserve NVIDIA's blue PBR frame while clipping only above belt height."""
+    source = load_required(BLUE_FRAME_MI, unreal.MaterialInstanceConstant)
+    material = create_textured_master(LOW_PROFILE_FRAME_MATERIAL, source)
+    return configure_low_profile_height_clip(material)
+
+
+def create_a11_two_sided_conveyor_frame_material() -> unreal.Material:
+    """Keep the cropped A11 C-channel flange opaque from its exposed back side."""
+    load_required(LOW_PROFILE_FRAME_MATERIAL, unreal.Material)
+    material = None
+    if unreal.EditorAssetLibrary.does_asset_exist(A11_TWO_SIDED_FRAME_MATERIAL):
+        material = unreal.EditorAssetLibrary.load_asset(A11_TWO_SIDED_FRAME_MATERIAL)
+    if not isinstance(material, unreal.Material):
+        if not unreal.EditorAssetLibrary.duplicate_asset(
+            LOW_PROFILE_FRAME_MATERIAL,
+            A11_TWO_SIDED_FRAME_MATERIAL,
+        ):
+            raise RuntimeError(
+                f"Could not duplicate A11 frame finish: {A11_TWO_SIDED_FRAME_MATERIAL}"
+            )
+        material = unreal.EditorAssetLibrary.load_asset(A11_TWO_SIDED_FRAME_MATERIAL)
+    if not isinstance(material, unreal.Material):
+        raise RuntimeError(f"Could not create {A11_TWO_SIDED_FRAME_MATERIAL}")
+    # The quarter split exposes the reverse side of a thin authored top flange.
+    # Opaque/two-sided rendering closes that visual hole while preserving the
+    # exact NVIDIA geometry and blue painted-metal PBR texture graph. The copied
+    # height-mask graph remains connected but is ignored by the opaque blend.
+    set_property(material, "blend_mode", unreal.BlendMode.BLEND_OPAQUE)
+    set_property(material, "two_sided", True)
+    unreal.MaterialEditingLibrary.recompile_material(material)
+    unreal.EditorAssetLibrary.save_loaded_asset(material, only_if_is_dirty=False)
+    return material
+
+
+def create_hidden_straight_frame_material() -> unreal.Material:
+    """Create a shadow-free mask for the authored frame slot under its overlay."""
+    material = (
+        unreal.EditorAssetLibrary.load_asset(HIDDEN_STRAIGHT_FRAME_MATERIAL)
+        if unreal.EditorAssetLibrary.does_asset_exist(HIDDEN_STRAIGHT_FRAME_MATERIAL)
+        else None
+    )
+    if not isinstance(material, unreal.Material):
+        material = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+            HIDDEN_STRAIGHT_FRAME_MATERIAL.rsplit("/", 1)[-1],
+            MATERIAL_FOLDER,
+            unreal.Material,
+            unreal.MaterialFactoryNew(),
+        )
+    if not isinstance(material, unreal.Material):
+        raise RuntimeError(f"Could not create {HIDDEN_STRAIGHT_FRAME_MATERIAL}")
+    library = unreal.MaterialEditingLibrary
+    library.delete_all_material_expressions(material)
+    set_property(material, "blend_mode", unreal.BlendMode.BLEND_MASKED)
+    set_property(material, "two_sided", True)
+    set_property(material, "opacity_mask_clip_value", 0.5)
+    invisible = expression(material, unreal.MaterialExpressionConstant, -220, 0)
+    set_property(invisible, "r", 0.0)
+    connect_output(invisible, "", unreal.MaterialProperty.MP_OPACITY_MASK)
+    library.recompile_material(material)
+    unreal.EditorAssetLibrary.save_loaded_asset(material, only_if_is_dirty=False)
+    return material
+
+
+def _mesh_id_value(identifier: object) -> int:
+    return int(identifier.get_editor_property("id_value"))  # type: ignore[attr-defined]
+
+
+def create_low_profile_frame_geometry(
+    source_path: str,
+    target_path: str,
+    blue_group: int,
+    opaque_frame_material: unreal.Material,
+) -> dict[str, object]:
+    """Create an Omniverse frame-only derivative without its tall uprights."""
+    source = load_required(source_path, unreal.StaticMesh)
+    if unreal.EditorAssetLibrary.does_asset_exist(target_path):
+        # This path is owned by the visual-finish pass. Recreate it from the
+        # imported source so repeated repairs cannot accumulate mesh edits.
+        if not unreal.EditorAssetLibrary.delete_asset(target_path):
+            raise RuntimeError(f"Could not replace generated mesh: {target_path}")
+    if not unreal.EditorAssetLibrary.duplicate_asset(source_path, target_path):
+        raise RuntimeError(f"Could not duplicate {source_path} to {target_path}")
+    mesh = load_required(target_path, unreal.StaticMesh)
+    description = mesh.get_static_mesh_description(0)
+    if description is None:
+        raise RuntimeError(f"No LOD0 description for {target_path}")
+
+    blue_polygons = list(
+        description.get_polygon_group_polygons(unreal.PolygonGroupID(blue_group))
+    )
+    parent: dict[int, int] = {}
+    rank: dict[int, int] = {}
+
+    def find(value: int) -> int:
+        parent.setdefault(value, value)
+        rank.setdefault(value, 0)
+        while parent[value] != value:
+            parent[value] = parent[parent[value]]
+            value = parent[value]
+        return value
+
+    def union(left: int, right: int) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root == right_root:
+            return
+        if rank[left_root] < rank[right_root]:
+            left_root, right_root = right_root, left_root
+        parent[right_root] = left_root
+        if rank[left_root] == rank[right_root]:
+            rank[left_root] += 1
+
+    polygon_vertices: dict[int, list[int]] = {}
+    for polygon in blue_polygons:
+        polygon_id = _mesh_id_value(polygon)
+        vertices = [
+            _mesh_id_value(vertex)
+            for vertex in description.get_polygon_vertices(polygon)
+        ]
+        if not vertices:
+            continue
+        find(vertices[0])
+        for vertex in vertices[1:]:
+            union(vertices[0], vertex)
+        polygon_vertices[polygon_id] = vertices
+
+    island_max_z: dict[int, float] = {}
+    for vertices in polygon_vertices.values():
+        root = find(vertices[0])
+        maximum = island_max_z.get(root, float("-inf"))
+        for vertex_id in vertices:
+            maximum = max(
+                maximum,
+                description.get_vertex_position(unreal.VertexID(vertex_id)).z,
+            )
+        island_max_z[root] = maximum
+
+    # The continuous C-rails top out at local Z=7981.54 (79.82 cm after the
+    # authored 0.01 scale). Only the isolated uprights reach Z=11413.3.
+    upright_roots = {root for root, maximum in island_max_z.items() if maximum > 8500.0}
+    delete_ids: set[int] = set()
+    for group_index in range(description.get_polygon_group_count()):
+        group_polygons = description.get_polygon_group_polygons(
+            unreal.PolygonGroupID(group_index)
+        )
+        if group_index != blue_group:
+            delete_ids.update(_mesh_id_value(polygon) for polygon in group_polygons)
+    for polygon_id, vertices in polygon_vertices.items():
+        if find(vertices[0]) in upright_roots:
+            delete_ids.add(polygon_id)
+    for polygon_id in sorted(delete_ids, reverse=True):
+        description.delete_polygon(unreal.PolygonID(polygon_id))
+
+    mesh.build_from_static_mesh_descriptions([description])
+    mesh.set_material(blue_group, opaque_frame_material)
+    unreal.EditorAssetLibrary.save_loaded_asset(mesh, only_if_is_dirty=False)
+    return {
+        "source": source.get_path_name(),
+        "generated": mesh.get_path_name(),
+        "blue_group": blue_group,
+        "upright_islands_removed": len(upright_roots),
+        "polygons_removed": len(delete_ids),
+        "collision_source_unchanged": True,
+        "render_overlay_collision": "disabled_at_runtime",
+    }
+
+
+def create_low_profile_frame_overlays(
+    opaque_frame_material: unreal.Material,
+) -> list[dict[str, object]]:
+    return [
+        create_low_profile_frame_geometry(
+            STRAIGHT_FRAME_MESH,
+            A05_LOW_PROFILE_FRAME_MESH,
+            1,
+            opaque_frame_material,
+        ),
+        create_low_profile_frame_geometry(
+            A08_FRAME_MESH,
+            A08_LOW_PROFILE_FRAME_MESH,
+            0,
+            opaque_frame_material,
+        ),
+    ]
+
+
+def create_low_profile_material_copy(
+    source: unreal.MaterialInterface,
+    material_cache: dict[str, unreal.Material],
+) -> unreal.Material:
+    """Build a clipped native copy of one imported Omniverse material slot."""
+    if isinstance(source, unreal.Material) and source.get_path_name().startswith(
+        f"{MATERIAL_FOLDER}/M_LowProfile"
+    ):
+        return configure_low_profile_height_clip(source)
+    if not isinstance(source, unreal.MaterialInstanceConstant):
+        raise RuntimeError(
+            "A conveyor frame slot is not an imported material instance: "
+            f"{source.get_path_name()} ({type(source).__name__})"
+        )
+
+    source_path = source.get_path_name()
+    cached = material_cache.get(source_path)
+    if cached is not None:
+        return cached
+    safe_name = re.sub(r"[^A-Za-z0-9_]", "_", source.get_name())[:48]
+    stable_suffix = hashlib.sha1(source_path.encode("utf-8")).hexdigest()[:8]
+    asset_path = (
+        f"{MATERIAL_FOLDER}/{LOW_PROFILE_FRAME_PREFIX}{safe_name}_{stable_suffix}"
+    )
+    clipped = configure_low_profile_height_clip(
+        create_textured_master(asset_path, source)
+    )
+    material_cache[source_path] = clipped
+    return clipped
+
+
+def assign_low_profile_conveyor_frame_material(material: unreal.Material) -> dict[str, object]:
+    """Clip every non-roller frame slot while preserving its Omniverse finish."""
+    straight_mesh = load_required(STRAIGHT_FRAME_MESH, unreal.StaticMesh)
+    straight_roller_material = load_required(BRIDGE_ROLLER_MATERIAL, unreal.Material)
+    hidden_frame_material = load_required(
+        HIDDEN_STRAIGHT_FRAME_MATERIAL, unreal.Material
+    )
+    # The blue C-frame and the unwanted seam uprights share one source material
+    # slot, so a world-height mask necessarily cuts the flange as well. Hide
+    # that source slot and render the topology-filtered blue frame overlay at
+    # runtime. All source collision and non-blue details remain untouched.
+    a05_slot_count = len(list(straight_mesh.get_editor_property("static_materials")))
+    if a05_slot_count <= 8:
+        raise RuntimeError(
+            "The Omniverse A05 straight lost its roller, blue-frame, or acrylic overlay slot"
+        )
+
+    material_cache: dict[str, unreal.Material] = {}
+    # Keep the accepted merged A05 straight intact. Slot zero is its roller
+    # bank and slot eight is the narrow rubber-band strip. The visually broken
+    # bank is the separate A08 extension and is repaired at runtime instead.
+    a05_materials: dict[int, unreal.Material] = {
+        0: straight_roller_material,
+        1: hidden_frame_material,
+        8: straight_roller_material,
+    }
+    for material_index in range(2, a05_slot_count):
+        if material_index == 8:
+            continue
+        source = straight_mesh.get_material(material_index)
+        if source is None:
+            raise RuntimeError(f"A05 frame material slot {material_index} is empty")
+        a05_materials[material_index] = create_low_profile_material_copy(
+            source, material_cache
+        )
+    for material_index, clipped in a05_materials.items():
+        straight_mesh.set_material(material_index, clipped)
+    unreal.EditorAssetLibrary.save_loaded_asset(straight_mesh, only_if_is_dirty=False)
+
+    assigned_a05: list[str] = []
+    assigned_a08: list[str] = []
+    a08_components: list[unreal.StaticMeshComponent] = []
+    for actor in unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors():
+        for component in actor.get_components_by_class(unreal.StaticMeshComponent):
+            mesh = component.get_editor_property("static_mesh")
+            if mesh == straight_mesh:
+                for material_index, clipped in a05_materials.items():
+                    component.set_material(material_index, clipped)
+                assigned_a05.append(component.get_name())
+            elif mesh is not None and mesh.get_name() == "SM_ConveyorBelt_A08_02":
+                a08_components.append(component)
+
+    if a08_components:
+        a08_template = a08_components[0]
+        a08_mesh = a08_template.get_editor_property("static_mesh")
+        a08_slot_count = len(list(a08_mesh.get_editor_property("static_materials")))
+        # A08's visible blue C-channel and seam uprights likewise share slot
+        # zero. Its filtered overlay restores only the full opaque C-frame.
+        a08_materials: dict[int, unreal.Material] = {0: hidden_frame_material}
+        # A08 rollers are separate mesh components, so every slot on the frame
+        # mesh can use the height mask. This removes the steel/black cap pieces
+        # as well as the blue post body, without altering any collision.
+        for material_index in range(1, a08_slot_count):
+            source = a08_template.get_material(material_index)
+            if source is None:
+                source = a08_mesh.get_material(material_index)
+            if source is None:
+                raise RuntimeError(f"A08 frame material slot {material_index} is empty")
+            a08_materials[material_index] = create_low_profile_material_copy(
+                source, material_cache
+            )
+        for component in a08_components:
+            for material_index, clipped in a08_materials.items():
+                component.set_material(material_index, clipped)
+            assigned_a08.append(component.get_name())
+    else:
+        a08_slot_count = 0
+
+    if len(assigned_a05) < 2 or len(assigned_a08) < 2:
+        raise RuntimeError(
+            "Expected both A05 lanes and both A08 frame templates, assigned "
+            f"a05={assigned_a05} a08={assigned_a08}"
+        )
+    return {
+        "material": material.get_path_name(),
+        "material_slots": {
+            "a05_roller_layers_uniform_steel": [0, 8],
+            "a05_blue_frame_replaced_by_opaque_geometry_overlay": [1],
+            "a05_height_clipped": [
+                index for index in a05_materials.keys() if index not in {0, 1, 8}
+            ],
+            "a08_blue_frame_replaced_by_opaque_geometry_overlay": [0],
+            "a08_height_clipped": list(range(1, a08_slot_count)),
+        },
+        "unique_clipped_pbr_materials": sorted(
+            clipped.get_path_name() for clipped in material_cache.values()
+        ),
+        "clip_height_cm": 79.0,
+        "collision_changed": False,
+        "a05_components": assigned_a05,
+        "a08_components": assigned_a08,
+    }
 
 
 def configure_dragonwing_forklift_paint(material: unreal.Material) -> None:
@@ -505,7 +918,11 @@ def create_textured_instance(
     anisotropy: float | None = None,
 ) -> unreal.MaterialInstanceConstant:
     path = f"{MATERIAL_FOLDER}/{name}"
-    instance = unreal.EditorAssetLibrary.load_asset(path)
+    instance = (
+        unreal.EditorAssetLibrary.load_asset(path)
+        if unreal.EditorAssetLibrary.does_asset_exist(path)
+        else None
+    )
     if not isinstance(instance, unreal.MaterialInstanceConstant):
         instance = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
             name,
@@ -560,17 +977,35 @@ def create_hero_materials() -> dict[str, unreal.MaterialInstanceConstant]:
     anisotropic_master = create_textured_master(
         ANISOTROPIC_MATERIAL, roller, anisotropic=True
     )
+    forklift_clear_coat = create_textured_instance(
+        "MI_ForkliftClearCoat",
+        clear_coat_master,
+        forklift_blue,
+        roughness_scale=0.78,
+        specular=0.56,
+        clear_coat=0.76,
+        clear_coat_roughness=0.13,
+        anisotropy=0.52,
+    )
+    forklift_yellow = create_textured_instance(
+        "MI_ForkliftClearCoat_IsaacYellow",
+        clear_coat_master,
+        forklift_blue,
+        roughness_scale=0.78,
+        specular=0.56,
+        clear_coat=0.76,
+        clear_coat_roughness=0.13,
+        anisotropy=0.52,
+    )
+    unreal.MaterialEditingLibrary.set_material_instance_vector_parameter_value(
+        forklift_yellow, "DragonwingPurple", ISAAC_FORKLIFT_YELLOW
+    )
+    unreal.EditorAssetLibrary.save_loaded_asset(forklift_yellow, only_if_is_dirty=False)
     return {
-        "forklift_clear_coat": create_textured_instance(
-            "MI_ForkliftClearCoat",
-            clear_coat_master,
-            forklift_blue,
-            roughness_scale=0.78,
-            specular=0.56,
-            clear_coat=0.76,
-            clear_coat_roughness=0.13,
-            anisotropy=0.52,
-        ),
+        "forklift_clear_coat": forklift_clear_coat,
+        # Kept unassigned in the level. QaiForkliftPaint=isaac-yellow selects
+        # it at runtime, enabling matched A/B captures from the same build.
+        "forklift_clear_coat_isaac_yellow": forklift_yellow,
         "tire": create_textured_instance(
             "MI_ForkliftTireDetailed",
             detail_master,
@@ -623,6 +1058,72 @@ def create_hero_materials() -> dict[str, unreal.MaterialInstanceConstant]:
             micro_strength=0.12,
         ),
     }
+
+
+def create_bridge_roller_material() -> unreal.Material:
+    """Build a stable steel finish for the non-uniformly scaled A08 rollers.
+
+    The imported brushed-aluminium maps are correct on the native A08 modules,
+    but their UV/tangent response becomes visibly discontinuous when one roller
+    is stretched into the two runtime bridge sections.  Keep NVIDIA's authored
+    roller geometry and replace only that bridge layer with a uniform opaque
+    PBR steel surface.  Explicit instanced-static-mesh usage is important for
+    the cooked client; without it Unreal can substitute its fallback surface.
+    """
+    material = (
+        unreal.EditorAssetLibrary.load_asset(BRIDGE_ROLLER_MATERIAL)
+        if unreal.EditorAssetLibrary.does_asset_exist(BRIDGE_ROLLER_MATERIAL)
+        else None
+    )
+    if not isinstance(material, unreal.Material):
+        material = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+            BRIDGE_ROLLER_MATERIAL.rsplit("/", 1)[-1],
+            MATERIAL_FOLDER,
+            unreal.Material,
+            unreal.MaterialFactoryNew(),
+        )
+    if not isinstance(material, unreal.Material):
+        raise RuntimeError(f"Could not create {BRIDGE_ROLLER_MATERIAL}")
+
+    library = unreal.MaterialEditingLibrary
+    library.delete_all_material_expressions(material)
+    set_property(material, "blend_mode", unreal.BlendMode.BLEND_OPAQUE)
+    set_property(material, "two_sided", False)
+    set_property(material, "used_with_instanced_static_meshes", True)
+
+    steel = expression(material, unreal.MaterialExpressionConstant3Vector, -420, -150)
+    set_property(steel, "constant", unreal.LinearColor(0.52, 0.56, 0.62, 1.0))
+    connect_output(steel, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    metallic = expression(material, unreal.MaterialExpressionConstant, -420, -20)
+    set_property(metallic, "r", 1.0)
+    connect_output(metallic, "", unreal.MaterialProperty.MP_METALLIC)
+    roughness = expression(material, unreal.MaterialExpressionConstant, -420, 110)
+    set_property(roughness, "r", 0.24)
+    connect_output(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    specular = expression(material, unreal.MaterialExpressionConstant, -420, 240)
+    set_property(specular, "r", 0.55)
+    connect_output(specular, "", unreal.MaterialProperty.MP_SPECULAR)
+
+    library.layout_material_expressions(material)
+    library.recompile_material(material)
+    unreal.EditorAssetLibrary.save_loaded_asset(material, only_if_is_dirty=False)
+    return material
+
+
+def repair_low_profile_conveyor_materials() -> list[str]:
+    """Upgrade all existing clipped A05/A08 PBR variants to two-sided."""
+    repaired: list[str] = []
+    for asset_path in unreal.EditorAssetLibrary.list_assets(
+        MATERIAL_FOLDER, recursive=False, include_folder=False
+    ):
+        material = unreal.EditorAssetLibrary.load_asset(asset_path)
+        if not isinstance(material, unreal.Material):
+            continue
+        if not material.get_name().startswith("M_LowProfile"):
+            continue
+        configure_low_profile_height_clip(material)
+        repaired.append(material.get_path_name())
+    return sorted(repaired)
 
 
 def assign_hero_materials(
@@ -1187,8 +1688,13 @@ def configure_fill_lights() -> list[dict[str, object]]:
     fills = (
         ("WarehouseFill_Rack", unreal.Vector(-120.0, 325.0, 245.0), 180.0, 620.0),
         ("WarehouseFill_Loading", unreal.Vector(-330.0, -120.0, 190.0), 120.0, 520.0),
-        ("WarehouseFill_Conveyor", unreal.Vector(420.0, 110.0, 215.0), 160.0, 650.0),
-        ("WarehouseFill_FarBay", unreal.Vector(410.0, -330.0, 185.0), 120.0, 520.0),
+        # The ceiling panels provide the useful broad conveyor illumination.
+        # This point fill's attenuation edge made a misleading white hotspot
+        # on the rear wall where the centre stack light used to be.
+        ("WarehouseFill_Conveyor", unreal.Vector(420.0, 110.0, 215.0), 0.0, 650.0),
+        # This source sits almost exactly where the rear-wall stack light was
+        # mounted and otherwise leaves a standalone white wall hotspot.
+        ("WarehouseFill_FarBay", unreal.Vector(410.0, -330.0, 185.0), 0.0, 520.0),
     )
     report: list[dict[str, object]] = []
     for label, location, intensity, radius in fills:
@@ -1357,6 +1863,15 @@ def create_unified_portal_wall(materials: dict[str, unreal.Material]) -> dict[st
             ).get_actor_label()
         )
 
+    # Keep the rear of each frame embedded in the north wall while extending
+    # the visible tunnel one metre into the occupied room. Runtime placement
+    # uses the same geometry-derived dimensions, so rerunning this finish pass
+    # remains idempotent.
+    portal_back_y = -352.0
+    portal_front_y = -244.0
+    portal_depth = portal_front_y - portal_back_y
+    portal_center_y = (portal_back_y + portal_front_y) * 0.5
+    portal_face_y = portal_front_y + 1.5
     portal_specs = (
         ("Infeed", 232.402, 351.497, materials["infeed"]),
         ("Outfeed", 532.865, 650.0, materials["outfeed"]),
@@ -1366,12 +1881,12 @@ def create_unified_portal_wall(materials: dict[str, unreal.Material]) -> dict[st
         center = (left + right) * 0.5
         width = right - left
         parts = (
-            ("LeftPost", unreal.Vector(left, -338.0, 65.0), unreal.Vector(12.0, 28.0, 130.0), materials["frame"]),
-            ("RightPost", unreal.Vector(right, -338.0, 65.0), unreal.Vector(12.0, 28.0, 130.0), materials["frame"]),
-            ("Header", unreal.Vector(center, -338.0, 139.0), unreal.Vector(width + 24.0, 28.0, 18.0), materials["frame"]),
-            ("Scanner", unreal.Vector(center, -322.5, 127.0), unreal.Vector(width - 18.0, 3.0, 5.0), glow_material),
-            ("LeftGuide", unreal.Vector(left + 7.0, -322.5, 65.0), unreal.Vector(3.0, 3.0, 104.0), glow_material),
-            ("RightGuide", unreal.Vector(right - 7.0, -322.5, 65.0), unreal.Vector(3.0, 3.0, 104.0), glow_material),
+            ("LeftPost", unreal.Vector(left, portal_center_y, 65.0), unreal.Vector(12.0, portal_depth, 130.0), materials["frame"]),
+            ("RightPost", unreal.Vector(right, portal_center_y, 65.0), unreal.Vector(12.0, portal_depth, 130.0), materials["frame"]),
+            ("Header", unreal.Vector(center, portal_center_y, 139.0), unreal.Vector(width + 24.0, portal_depth, 18.0), materials["frame"]),
+            ("Scanner", unreal.Vector(center, portal_face_y, 127.0), unreal.Vector(width - 18.0, 3.0, 5.0), glow_material),
+            ("LeftGuide", unreal.Vector(left + 7.0, portal_face_y, 65.0), unreal.Vector(3.0, 3.0, 104.0), glow_material),
+            ("RightGuide", unreal.Vector(right - 7.0, portal_face_y, 65.0), unreal.Vector(3.0, 3.0, 104.0), glow_material),
         )
         for suffix, location, size, material in parts:
             label = f"SortingPortal_{portal_name}_{suffix}"
@@ -1514,12 +2029,17 @@ def create_qualcomm_wall_billboard(
         set_property(component, "cast_shadow", cast_shadow)
         return actor
 
-    # The wall face is Y=-344. The backing slightly intersects it, while the
-    # white board and logo sit progressively forward to avoid z-fighting.
+    # The wall face is Y=-344. Keep the complete presentation billboard above
+    # the sorting station, with the 570 cm backing's right edge aligned to the
+    # detailed station's authored right edge at approximately X=11 cm. Runtime
+    # repeats this bounds-based alignment for already-cooked levels.
+    billboard_center_x = -274.0
+    # The backing slightly intersects the wall, while the white board and logo
+    # sit progressively forward to avoid z-fighting.
     backing = ensure_actor(
         "QualcommWallBillboard_Back",
         cube,
-        unreal.Vector(80.0, -342.5, 320.0),
+        unreal.Vector(billboard_center_x, -342.5, 320.0),
         unreal.Rotator(),
         unreal.Vector(5.70, 0.05, 1.45),
         portal_materials["frame"],
@@ -1528,7 +2048,7 @@ def create_qualcomm_wall_billboard(
     board = ensure_actor(
         "QualcommWallBillboard_White",
         cube,
-        unreal.Vector(80.0, -339.0, 320.0),
+        unreal.Vector(billboard_center_x, -339.0, 320.0),
         unreal.Rotator(),
         unreal.Vector(5.58, 0.03, 1.33),
         white_material,
@@ -1537,7 +2057,7 @@ def create_qualcomm_wall_billboard(
     logo = ensure_actor(
         "QualcommWallBillboard_Logo",
         plane,
-        unreal.Vector(80.0, -336.8, 320.0),
+        unreal.Vector(billboard_center_x, -336.8, 320.0),
         unreal.Rotator(roll=-90.0, pitch=0.0, yaw=0.0),
         # BasicShapes/Plane maps local +Y downward after the -90 degree wall
         # rotation, so invert that scale to keep the logo text upright.
@@ -1663,6 +2183,17 @@ def apply_visual_finish() -> dict[str, object]:
     material_report = assign_materials(material)
     hero_materials = create_hero_materials()
     hero_material_report = assign_hero_materials(hero_materials)
+    low_profile_frame_material = create_low_profile_conveyor_frame_material()
+    a11_two_sided_frame_material = create_a11_two_sided_conveyor_frame_material()
+    create_hidden_straight_frame_material()
+    low_profile_frame_geometry_report = create_low_profile_frame_overlays(
+        a11_two_sided_frame_material
+    )
+    bridge_roller_material = create_bridge_roller_material()
+    repaired_low_profile_materials = repair_low_profile_conveyor_materials()
+    low_profile_frame_report = assign_low_profile_conveyor_frame_material(
+        low_profile_frame_material
+    )
     dragonwing_materials = create_dragonwing_brand_materials()
     dragonwing_material_report = assign_dragonwing_brand_materials(dragonwing_materials)
     stack_lens_instances = create_stack_lens_materials()
@@ -1679,6 +2210,11 @@ def apply_visual_finish() -> dict[str, object]:
             "assets": {name: value.get_path_name() for name, value in hero_materials.items()},
             "assigned_components": hero_material_report,
         },
+        "bridge_roller_material": bridge_roller_material.get_path_name(),
+        "two_sided_low_profile_materials": repaired_low_profile_materials,
+        "low_profile_straight_frame": low_profile_frame_report,
+        "low_profile_straight_frame_geometry": low_profile_frame_geometry_report,
+        "a11_two_sided_frame": a11_two_sided_frame_material.get_path_name(),
         "dragonwing_branding": {
             "srgb_hex": "#32017E",
             "assets": {name: value.get_path_name() for name, value in dragonwing_materials.items()},

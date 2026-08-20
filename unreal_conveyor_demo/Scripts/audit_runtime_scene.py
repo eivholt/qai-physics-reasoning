@@ -105,8 +105,8 @@ OUTPUT.parent.mkdir(parents=True, exist_ok=True)
 OUTPUT.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 errors: list[str] = []
-if len(wheel_tags) != 8 or len(set(wheel_tags)) != 8:
-    errors.append(f"expected eight unique wheel bindings, found {wheel_tags}")
+if len(wheel_tags) != 4 or len(set(wheel_tags)) != 4:
+    errors.append(f"expected four unique wheel bindings, found {wheel_tags}")
 if len(worker_components) != 2:
     errors.append(f"expected two worker roots, found {len(worker_components)}")
 if len(skeletal_components) != 2:

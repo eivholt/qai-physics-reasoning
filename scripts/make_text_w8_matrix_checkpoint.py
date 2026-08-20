@@ -44,7 +44,8 @@ EXTERNAL_WEIGHTS_FILENAME = "model.data"
 SOURCE_FP16_MARKER = "w4_fp16.json"
 MARKER_FILENAME = "text_w8_matrices.json"
 
-EXPECTED_CONTEXT_LENGTH = 512
+DEFAULT_CONTEXT_LENGTH = 512
+SUPPORTED_CONTEXT_LENGTHS = (512, 1024)
 EXPECTED_CALIBRATION_SEQUENCE_LENGTH = 128
 EXPECTED_LAYER_COUNT = 28
 EXPECTED_LAYERS_PER_PART = 7
@@ -231,11 +232,12 @@ def _prepare_args(
     path: Path,
     *,
     requested_image_size: tuple[int, int] | list[int] | None,
+    expected_context_length: int,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     args = _load_json_object(path)
     expected = {
         "precision": "w4",
-        "context_length": EXPECTED_CONTEXT_LENGTH,
+        "context_length": expected_context_length,
         "calibration_sequence_length": (
             EXPECTED_CALIBRATION_SEQUENCE_LENGTH
         ),
@@ -255,7 +257,7 @@ def _prepare_args(
         raise ValueError(f"{path}: raw_args must be a list of strings")
     raw_expected = {
         "--precision": "w4",
-        "--context-length": str(EXPECTED_CONTEXT_LENGTH),
+        "--context-length": str(expected_context_length),
         "--calibration-sequence-length": str(
             EXPECTED_CALIBRATION_SEQUENCE_LENGTH
         ),
@@ -1257,11 +1259,17 @@ def create_text_w8_matrix_checkpoint(
     parts: tuple[str, ...] | list[str],
     layers: tuple[int, ...] | list[int] | None = None,
     image_size: tuple[int, int] | list[int] | None = None,
+    context_length: int = DEFAULT_CONTEXT_LENGTH,
     copy_function: Callable[[str, str], str] = _hardlink_or_copy,
 ) -> Path:
     """Create one mixed W8/W4 text checkpoint transactionally."""
     selected_parts = _normalize_parts(parts)
     selected_layers = _normalize_layers(selected_parts, layers)
+    if context_length not in SUPPORTED_CONTEXT_LENGTHS:
+        raise ValueError(
+            f"context_length must be one of {SUPPORTED_CONTEXT_LENGTHS}; "
+            f"got {context_length!r}"
+        )
     source = source.expanduser().resolve()
     destination = destination.expanduser().resolve()
     if not source.is_dir():
@@ -1297,6 +1305,7 @@ def create_text_w8_matrix_checkpoint(
     source_args, converted_args, image_size_migration = _prepare_args(
         source / ARGS_FILENAME,
         requested_image_size=image_size,
+        expected_context_length=context_length,
     )
     _validate_fp16_source_marker(source / SOURCE_FP16_MARKER)
     encodings = _load_json_object(source / ENCODINGS_FILENAME)
@@ -1434,7 +1443,7 @@ def create_text_w8_matrix_checkpoint(
             "source_w4_reproduction_required": "exact",
         },
         "export_contract": {
-            "context_length": EXPECTED_CONTEXT_LENGTH,
+            "context_length": context_length,
             "sequence_lengths": [
                 EXPECTED_CALIBRATION_SEQUENCE_LENGTH,
                 1,
@@ -1613,6 +1622,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--context-length",
+        type=int,
+        choices=SUPPORTED_CONTEXT_LENGTHS,
+        default=DEFAULT_CONTEXT_LENGTH,
+        help=(
+            "Expected text context length. The source args.json and raw "
+            "export arguments must both match this value."
+        ),
+    )
+    parser.add_argument(
         "--image-size",
         nargs=2,
         type=int,
@@ -1636,6 +1655,7 @@ def main() -> None:
         parts=args.parts,
         layers=args.layers,
         image_size=args.image_size,
+        context_length=args.context_length,
     )
     marker = _load_json_object(output / MARKER_FILENAME)
     print(

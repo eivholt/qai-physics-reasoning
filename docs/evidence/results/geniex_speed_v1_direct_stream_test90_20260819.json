@@ -1,0 +1,3213 @@
+{
+  "count": 90,
+  "accuracy": 1.0,
+  "per_class_recall": {
+    "SUPPORTED": 1.0,
+    "OVER_EDGE": 1.0,
+    "FALLEN": 1.0
+  },
+  "confusion_matrix": {
+    "SUPPORTED": {
+      "SUPPORTED": 30,
+      "OVER_EDGE": 0,
+      "FALLEN": 0,
+      "INVALID": 0
+    },
+    "OVER_EDGE": {
+      "SUPPORTED": 0,
+      "OVER_EDGE": 30,
+      "FALLEN": 0,
+      "INVALID": 0
+    },
+    "FALLEN": {
+      "SUPPORTED": 0,
+      "OVER_EDGE": 0,
+      "FALLEN": 30,
+      "INVALID": 0
+    }
+  },
+  "endpoint": "http://192.168.1.158:18184",
+  "model": "local/cosmos-reason2-2b",
+  "dataset": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1",
+  "split": "test",
+  "prompt_profile": "evk-speed-v1",
+  "prompt": "Classify cartons at the central silver conveyor lane. Ignore all other objects and lanes. Answer one letter only: G=fully supported; A=touching rollers but at least one-third beyond a blue rail or tipping; R=on the adjacent floor below the rollers.",
+  "image_width": 448,
+  "image_height": 256,
+  "stream": true,
+  "repeat": 1,
+  "selected_count": 90,
+  "mean_server_ms": null,
+  "median_server_ms": null,
+  "mean_latency_ms": 729.8975555554433,
+  "p95_latency_ms": 693.9615640003467,
+  "p99_latency_ms": 796.5593959961552,
+  "cold_start_latency_ms": 4689.447423996171,
+  "mean_warm_latency_ms": 685.4082311909408,
+  "mean_ttft_ms": 631.5836469115716,
+  "mean_warm_ttft_ms": 587.0850539667822,
+  "mean_decode_after_ttft_ms": 98.3139086438718,
+  "rows": [
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000001.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 4689.447423996171,
+      "ttft_ms": 4591.9584189978195,
+      "decode_after_ttft_ms": 97.48900499835145,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000002.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 698.472831005347,
+      "ttft_ms": 599.8305379907833,
+      "decode_after_ttft_ms": 98.64229301456362,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000003.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 690.9843710018322,
+      "ttft_ms": 590.7295399956638,
+      "decode_after_ttft_ms": 100.25483100616839,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000004.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 675.840166004491,
+      "ttft_ms": 579.5087139995303,
+      "decode_after_ttft_ms": 96.33145200496074,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000005.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 681.3022679998539,
+      "ttft_ms": 581.9255639944458,
+      "decode_after_ttft_ms": 99.3767040054081,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000006.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 684.3948220048333,
+      "ttft_ms": 587.9376560042147,
+      "decode_after_ttft_ms": 96.4571660006186,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000007.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 677.6726660027634,
+      "ttft_ms": 578.8180789968465,
+      "decode_after_ttft_ms": 98.85458700591698,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000008.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 679.9474449944682,
+      "ttft_ms": 580.3157839982305,
+      "decode_after_ttft_ms": 99.63166099623777,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000009.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 697.426947997883,
+      "ttft_ms": 597.7015840035165,
+      "decode_after_ttft_ms": 99.72536399436649,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000010.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 680.650706999586,
+      "ttft_ms": 582.4290110031143,
+      "decode_after_ttft_ms": 98.22169599647168,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000011.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 678.5188390058465,
+      "ttft_ms": 580.7781040057307,
+      "decode_after_ttft_ms": 97.74073500011582,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000012.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 693.9615640003467,
+      "ttft_ms": 594.5796590094687,
+      "decode_after_ttft_ms": 99.38190499087796,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000013.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 684.5426059880992,
+      "ttft_ms": 587.0564989891136,
+      "decode_after_ttft_ms": 97.48610699898563,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000014.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 676.490839003236,
+      "ttft_ms": 579.0675680036657,
+      "decode_after_ttft_ms": 97.42327099957038,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000015.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 680.9878399944864,
+      "ttft_ms": 582.5697100081015,
+      "decode_after_ttft_ms": 98.41812998638488,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000016.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 687.1378499927232,
+      "ttft_ms": 587.50083000632,
+      "decode_after_ttft_ms": 99.63701998640317,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000017.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 689.2165830067825,
+      "ttft_ms": 590.330228995299,
+      "decode_after_ttft_ms": 98.88635401148349,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000018.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 678.7160240055528,
+      "ttft_ms": 581.7072990030283,
+      "decode_after_ttft_ms": 97.00872500252444,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000019.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 676.2432560062734,
+      "ttft_ms": 579.0368519956246,
+      "decode_after_ttft_ms": 97.20640401064884,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000020.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 677.7730839967262,
+      "ttft_ms": 580.4538130032597,
+      "decode_after_ttft_ms": 97.31927099346649,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000021.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 675.5787989968667,
+      "ttft_ms": 579.1004330094438,
+      "decode_after_ttft_ms": 96.47836598742288,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000022.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 690.3094870067434,
+      "ttft_ms": 591.8562610022491,
+      "decode_after_ttft_ms": 98.45322600449435,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000023.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 690.2964350010734,
+      "ttft_ms": 590.8993979974184,
+      "decode_after_ttft_ms": 99.39703700365499,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000024.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 680.796686996473,
+      "ttft_ms": 583.9647249958944,
+      "decode_after_ttft_ms": 96.83196200057864,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000025.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 689.1321459988831,
+      "ttft_ms": 589.6722069883253,
+      "decode_after_ttft_ms": 99.45993901055772,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000026.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 677.058869987377,
+      "ttft_ms": 580.1906549895648,
+      "decode_after_ttft_ms": 96.86821499781217,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000027.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 683.7670389941195,
+      "ttft_ms": 584.3130150024081,
+      "decode_after_ttft_ms": 99.45402399171144,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000028.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 688.5433550050948,
+      "ttft_ms": 588.9296170062153,
+      "decode_after_ttft_ms": 99.61373799887951,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000029.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 680.3878900100244,
+      "ttft_ms": 580.6350950006163,
+      "decode_after_ttft_ms": 99.75279500940815,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000030.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 680.2581219963031,
+      "ttft_ms": 582.2791950049577,
+      "decode_after_ttft_ms": 97.97892699134536,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000001.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 680.5469789978815,
+      "ttft_ms": 583.6031869985163,
+      "decode_after_ttft_ms": 96.9437919993652,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000002.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 688.9778949989704,
+      "ttft_ms": 588.4436070045922,
+      "decode_after_ttft_ms": 100.53428799437825,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000003.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 689.0264469984686,
+      "ttft_ms": 589.6912150055869,
+      "decode_after_ttft_ms": 99.33523199288175,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000004.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 685.8517169894185,
+      "ttft_ms": 586.5355340065435,
+      "decode_after_ttft_ms": 99.31618298287503,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000005.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 689.5429129945114,
+      "ttft_ms": 588.4075799986022,
+      "decode_after_ttft_ms": 101.13533299590927,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000006.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 796.5593959961552,
+      "ttft_ms": 699.4526269991184,
+      "decode_after_ttft_ms": 97.10676899703685,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000007.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 677.5565080024535,
+      "ttft_ms": 577.9989899892826,
+      "decode_after_ttft_ms": 99.55751801317092,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000008.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 680.5809469951782,
+      "ttft_ms": 583.2889169978444,
+      "decode_after_ttft_ms": 97.29202999733388,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000009.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 679.4410379952751,
+      "ttft_ms": 581.735381987528,
+      "decode_after_ttft_ms": 97.70565600774717,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000010.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 686.9266169960611,
+      "ttft_ms": 588.104303998989,
+      "decode_after_ttft_ms": 98.822312997072,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000011.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 684.8101869982202,
+      "ttft_ms": 586.3842880062293,
+      "decode_after_ttft_ms": 98.42589899199083,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000012.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 688.7147449888289,
+      "ttft_ms": 590.386491996469,
+      "decode_after_ttft_ms": 98.32825299235992,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000013.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 685.3830049949465,
+      "ttft_ms": 587.2571960062487,
+      "decode_after_ttft_ms": 98.12580898869783,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000014.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 674.9505430052523,
+      "ttft_ms": 578.6242640024284,
+      "decode_after_ttft_ms": 96.32627900282387,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000015.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 674.8788510012673,
+      "ttft_ms": 577.5436779949814,
+      "decode_after_ttft_ms": 97.33517300628591,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000016.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 678.1691130017862,
+      "ttft_ms": 580.4518420045497,
+      "decode_after_ttft_ms": 97.71727099723648,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000017.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 689.1148400027305,
+      "ttft_ms": 590.2211119973799,
+      "decode_after_ttft_ms": 98.89372800535057,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000018.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 692.5620529946173,
+      "ttft_ms": 594.7776000102749,
+      "decode_after_ttft_ms": 97.78445298434235,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000019.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 689.3216159951407,
+      "ttft_ms": 590.740788000403,
+      "decode_after_ttft_ms": 98.58082799473777,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000020.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 686.5807499998482,
+      "ttft_ms": 587.9939490114339,
+      "decode_after_ttft_ms": 98.58680098841432,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000021.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 680.1300100050867,
+      "ttft_ms": 581.7874999920605,
+      "decode_after_ttft_ms": 98.34251001302619,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000022.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 687.6399609900545,
+      "ttft_ms": 588.953490005224,
+      "decode_after_ttft_ms": 98.68647098483052,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000023.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 684.7755400085589,
+      "ttft_ms": 587.5546730094356,
+      "decode_after_ttft_ms": 97.22086699912325,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000024.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 686.6547529934905,
+      "ttft_ms": 588.610366001376,
+      "decode_after_ttft_ms": 98.0443869921146,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000025.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 680.6352760031587,
+      "ttft_ms": 584.0359549911227,
+      "decode_after_ttft_ms": 96.59932101203594,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000026.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 676.2110609997762,
+      "ttft_ms": 577.9523129895097,
+      "decode_after_ttft_ms": 98.25874801026657,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000027.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 689.8176990071079,
+      "ttft_ms": 591.2132520024898,
+      "decode_after_ttft_ms": 98.60444700461812,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000028.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 691.4458990067942,
+      "ttft_ms": 592.764935005107,
+      "decode_after_ttft_ms": 98.68096400168724,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000029.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 687.526665002224,
+      "ttft_ms": 588.7960850086529,
+      "decode_after_ttft_ms": 98.73057999357115,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000030.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 687.2519130120054,
+      "ttft_ms": 587.7026050002314,
+      "decode_after_ttft_ms": 99.54930801177397,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000001.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 687.3635560041294,
+      "ttft_ms": 588.514764996944,
+      "decode_after_ttft_ms": 98.84879100718535,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000002.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 690.8313559979433,
+      "ttft_ms": 591.120214012335,
+      "decode_after_ttft_ms": 99.71114198560826,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000003.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 687.7927860041382,
+      "ttft_ms": 589.8537350003608,
+      "decode_after_ttft_ms": 97.93905100377742,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000004.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 680.0188189954497,
+      "ttft_ms": 583.0555110005662,
+      "decode_after_ttft_ms": 96.96330799488351,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000005.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 676.0425240063341,
+      "ttft_ms": 578.7311419990147,
+      "decode_after_ttft_ms": 97.31138200731948,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000006.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 676.8562469951576,
+      "ttft_ms": 579.3694089952623,
+      "decode_after_ttft_ms": 97.48683799989522,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000007.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 682.9124439973384,
+      "ttft_ms": 584.7226439946098,
+      "decode_after_ttft_ms": 98.18980000272859,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000008.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 679.8817450035131,
+      "ttft_ms": 583.2344619993819,
+      "decode_after_ttft_ms": 96.64728300413117,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000009.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 679.2147840023972,
+      "ttft_ms": 582.3926690063672,
+      "decode_after_ttft_ms": 96.82211499603,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000010.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 678.86814699159,
+      "ttft_ms": 581.6740299924277,
+      "decode_after_ttft_ms": 97.19411699916236,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000011.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 685.360503004631,
+      "ttft_ms": 586.0008910094621,
+      "decode_after_ttft_ms": 99.35961199516896,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000012.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 693.8269759994,
+      "ttft_ms": 593.5153110040119,
+      "decode_after_ttft_ms": 100.31166499538813,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000013.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 682.0436559937662,
+      "ttft_ms": 583.2934970094357,
+      "decode_after_ttft_ms": 98.75015898433048,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000014.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 690.0516330060782,
+      "ttft_ms": 590.4006420023507,
+      "decode_after_ttft_ms": 99.65099100372754,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000015.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 691.8324639991624,
+      "ttft_ms": 591.7334820114775,
+      "decode_after_ttft_ms": 100.09898198768497,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000016.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 680.1565839996329,
+      "ttft_ms": 583.0062860040925,
+      "decode_after_ttft_ms": 97.15029799554031,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000017.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 686.0790210048435,
+      "ttft_ms": 586.5930580039276,
+      "decode_after_ttft_ms": 99.48596300091594,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000018.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 687.4297309987014,
+      "ttft_ms": 588.4894609916955,
+      "decode_after_ttft_ms": 98.94027000700589,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000019.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 680.7924339955207,
+      "ttft_ms": 583.8333120045718,
+      "decode_after_ttft_ms": 96.95912199094892,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000020.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 682.4558840016834,
+      "ttft_ms": 585.0840539933415,
+      "decode_after_ttft_ms": 97.37183000834193,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000021.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 687.3388980020536,
+      "ttft_ms": 588.4940510004526,
+      "decode_after_ttft_ms": 98.84484700160101,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000022.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 678.6442970042117,
+      "ttft_ms": 580.8541549922666,
+      "decode_after_ttft_ms": 97.79014201194514,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000023.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 688.0053860077169,
+      "ttft_ms": 590.2236080000876,
+      "decode_after_ttft_ms": 97.78177800762933,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000024.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 688.2471529970644,
+      "ttft_ms": 588.8634089933475,
+      "decode_after_ttft_ms": 99.38374400371686,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000025.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 689.1732639924157,
+      "ttft_ms": 589.8062080086675,
+      "decode_after_ttft_ms": 99.36705598374829,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000026.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 678.3068730001105,
+      "ttft_ms": 580.7368529931409,
+      "decode_after_ttft_ms": 97.57002000696957,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000027.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 684.4453579979017,
+      "ttft_ms": 586.1250419984572,
+      "decode_after_ttft_ms": 98.32031599944457,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000028.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 680.0728710077237,
+      "ttft_ms": 583.1390899984399,
+      "decode_after_ttft_ms": 96.93378100928385,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000029.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 691.1205950018484,
+      "ttft_ms": 591.8434570048703,
+      "decode_after_ttft_ms": 99.27713799697813,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000030.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 678.1721110019134,
+      "ttft_ms": 580.7339949969901,
+      "decode_after_ttft_ms": 97.43811600492336,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        }
+      }
+    }
+  ],
+  "runtime_context": {
+    "geniex_data_dir": "/home/ubuntu/qai-conveyor/geniex-data/cosmos-reason2-parcel-speed-v1",
+    "geniex_runtime": "/home/ubuntu/geniex-cosmos-v0317-native-video-r1",
+    "qairt_home": "/opt/qairt/2.45.0.260326",
+    "htp_profile": "bundle_default",
+    "bundle_archive_sha256": "795cb18a2407cadb5ec4f0817dcea9fa2709716fd7efb056e6eff3c4464a6c86",
+    "context_length": 512,
+    "port": 18184,
+    "direct_embedded_image": true,
+    "stream": true
+  }
+}

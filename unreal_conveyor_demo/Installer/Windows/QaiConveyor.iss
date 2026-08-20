@@ -34,8 +34,9 @@ RestartApplications=no
 [Files]
 Source: "{#GameSource}\*"; DestDir: "{app}\Game"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#ProvisionerExe}"; DestDir: "{app}\Provisioner"; DestName: "qai-conveyor-setup.exe"; Flags: ignoreversion
-Source: "{#PayloadSource}\*"; DestDir: "{app}\Payload"; Excludes: "EVK\evk-geniex-cosmos-v0317.tar.gz"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#PayloadSource}\EVK\evk-geniex-cosmos-v0317.tar.gz"; DestDir: "{app}\Payload\EVK"; Flags: ignoreversion nocompression
+Source: "{#PayloadSource}\*"; DestDir: "{app}\Payload"; Excludes: "EVK\*.tar.gz"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadSource}\EVK\evk-geniex-runtime-v0317-qairt245.tar.gz"; DestDir: "{app}\Payload\EVK"; Flags: ignoreversion nocompression
+Source: "{#PayloadSource}\EVK\cosmos-reason2-parcel-speed-v1-cl512-256x448-w8text-geniex-qairt245-os19-r1.tar.gz"; DestDir: "{app}\Payload\EVK"; Flags: ignoreversion nocompression
 
 [Icons]
 Name: "{group}\Reason2 Conveyor Safety"; Filename: "{app}\Provisioner\qai-conveyor-setup.exe"; Parameters: "launch --app-dir ""{app}"""; WorkingDir: "{app}"

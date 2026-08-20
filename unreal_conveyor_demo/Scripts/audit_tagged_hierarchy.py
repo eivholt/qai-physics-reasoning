@@ -16,7 +16,7 @@ for actor in unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_le
         tags = [str(tag) for tag in component.get_editor_property("component_tags")]
         name = component.get_name()
         if not tags and name.lower().rsplit("_", 1)[0] not in {
-            "forklift1", "forklift2", "body", "lift"
+            "forklift1", "body", "lift"
         }:
             continue
         parent = component.get_attach_parent()

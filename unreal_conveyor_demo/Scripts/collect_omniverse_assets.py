@@ -30,10 +30,8 @@ DEFAULT_SOURCE = (
 DEFAULT_OUTPUT = PROJECT_DIR / "Content" / "OmniversePayload"
 REQUIRED_PRIMS = (
     "/World/CodexPoC/ConveyorSafety/Forklifts/Forklift1",
-    "/World/CodexPoC/ConveyorSafety/Forklifts/Forklift2",
     "/World/CodexPoC/ConveyorSafety/Conveyor/Parcels/Parcel1",
     "/World/CodexPoC/ConveyorSafety/DynamicCargo/Forklift1Pallet",
-    "/World/CodexPoC/ConveyorSafety/DynamicCargo/Forklift2Pallet",
     "/World/CodexPoC/ConveyorSafety/Cameras/DetectorEndline",
 )
 

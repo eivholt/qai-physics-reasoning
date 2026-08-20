@@ -1,0 +1,2381 @@
+{
+  "count": 90,
+  "accuracy": 0.9111111111111111,
+  "per_class_recall": {
+    "SUPPORTED": 1.0,
+    "OVER_EDGE": 0.9,
+    "FALLEN": 0.8333333333333334
+  },
+  "confusion_matrix": {
+    "SUPPORTED": {
+      "SUPPORTED": 30,
+      "OVER_EDGE": 0,
+      "FALLEN": 0,
+      "INVALID": 0
+    },
+    "OVER_EDGE": {
+      "SUPPORTED": 3,
+      "OVER_EDGE": 27,
+      "FALLEN": 0,
+      "INVALID": 0
+    },
+    "FALLEN": {
+      "SUPPORTED": 4,
+      "OVER_EDGE": 1,
+      "FALLEN": 25,
+      "INVALID": 0
+    }
+  },
+  "endpoint": "http://127.0.0.1:18080",
+  "model": "Cosmos-Reason2-2B-Parcel-FT",
+  "dataset": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1",
+  "split": "test",
+  "prompt_profile": "original",
+  "prompt": "You are a strict warehouse conveyor parcel-safety inspector. Inspect this single current image from one fixed camera. The monitored area is the complete silver U-shaped roller conveyor plus the floor immediately inside its U-shaped loop and within approximately one parcel length outside its rails. Inspect cardboard shipping parcels in that monitored area. Ignore forklift cargo, people, shelves, pallets, sorting tables, billboard, and boxes well outside this immediate conveyor area.\n\nPerform BOTH tests below on every image. Never skip either test and never return NOT_RUN.\nTEST 1 - FALLEN PARCEL. Set fallen_test to YES if any cardboard parcel in the monitored area is visibly (a) airborne away from the rollers, (b) below roller-top height after losing roller support, or (c) resting on the floor inside the U-loop or beside the conveyor's outer rail. A floor parcel in this immediate monitored area is fallen even if it is stationary and no earlier image is available. Do not reinterpret a parcel on the floor as safely supported by the conveyor. Otherwise set fallen_test to NO.\nTEST 2 - UNSTABLE PARCEL. Independently inspect every parcel that still touches the rollers. Set unstable_test to YES only if at least one such parcel is visibly in imminent danger of falling: roughly one third or more of its footprint extends beyond the supported roller surface, or it is visibly tipping over an outer edge. Do not count an already fallen parcel again in this test. Normal rotation through the U-curve, diagonal alignment, ordinary conveyor motion, crowding, and being near an edge while still fully supported are safe. Otherwise set unstable_test to NO.\n\nAfter recording both test answers, apply this strict priority:\n1. If fallen_test=YES: prediction_class_id=0, prediction_label=FALLEN_PARCEL, prediction_answer=RED. This rule wins regardless of unstable_test.\n2. Else if unstable_test=YES: prediction_class_id=1, prediction_label=UNSTABLE_PARCEL, prediction_answer=AMBER.\n3. Else: prediction_class_id=2, prediction_label=SAFE, prediction_answer=GREEN.\nBase both tests only on visible spatial evidence in this image. Do not require motion or an earlier image.\n\nReturn exactly one JSON object and no markdown or extra text. The object must contain all six keys in this order: fallen_test, unstable_test, prediction_class_id, prediction_label, prediction_answer, visible_evidence. fallen_test and unstable_test must each be exactly YES or NO. visible_evidence must be one short sentence naming the parcel and concrete visible spatial evidence; use none when both tests are NO. A missing key, NOT_RUN, or an alternative-list value is invalid.",
+  "image_width": 512,
+  "image_height": 288,
+  "mean_server_ms": null,
+  "median_server_ms": null,
+  "rows": [
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000001.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 591.1342000181321,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000002.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 2399.440900015179,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000003.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1849.6225000126287,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000004.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 2474.9784000159707,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000005.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1778.8983999926131,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000006.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1778.466900024796,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000007.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1543.2569999829866,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000008.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1602.5714999996126,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000009.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1507.8841000213288,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000010.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1761.9644000078551,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000011.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1317.31410001521,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000012.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1459.4572999922093,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000013.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1512.0854999986477,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000014.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1362.550799996825,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000015.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1411.3473999896087,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000016.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1553.4719999996014,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000017.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1563.7660000065807,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000018.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1549.0601000201423,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000019.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1575.67730001756,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000020.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1530.5865999835078,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000021.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1249.120499996934,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000022.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1496.9397000095341,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000023.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1515.0449999782722,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000024.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1227.6249999995343,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000025.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1360.555299994303,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000026.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1408.225000021048,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000027.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1272.9178000008687,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000028.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1330.342799978098,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000029.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1376.111799996579,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\G\\G-s68104-000030.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1200.224200001685,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000001.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1543.118500005221,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000002.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1582.9864999977872,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000003.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1379.2051000054926,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000004.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1441.624300001422,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000005.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1479.6020000067074,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000006.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1261.0041000007186,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000007.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1394.6254000184126,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000008.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1393.9573999959975,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000009.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1299.5562000141945,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000010.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1415.9572000207845,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000011.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1410.3325000032783,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000012.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1287.711599987233,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000013.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 1303.9076999993995,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000014.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 1373.2669999881182,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000015.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 441.4217000012286,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000016.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 410.3150999872014,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000017.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 432.29060000157915,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000018.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 429.2141000041738,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000019.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 385.1435999968089,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000020.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 409.2579999996815,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000021.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 423.5917999758385,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000022.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 440.6883000046946,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000023.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 415.2732999937143,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000024.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 405.72000000975095,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000025.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 417.57950000464916,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000026.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 402.08960001473315,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000027.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 424.27560000214726,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000028.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 409.119300020393,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000029.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 401.02640000986867,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\A\\A-s68104-000030.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 400.3337000031024,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000001.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 411.3470000156667,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000002.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 410.59419998782687,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000003.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 433.58640000224113,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000004.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 422.7256999874953,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000005.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 429.67540002427995,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000006.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 443.9270999864675,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000007.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 429.00610002106987,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000008.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 409.3935000128113,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000009.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 407.83100001863204,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000010.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 419.62919998331927,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000011.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 430.04380000638776,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000012.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 407.9749000084121,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000013.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 408.94890000345185,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000014.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 420.64379999646917,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000015.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 362.39799999748357,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000016.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 419.7977000148967,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000017.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 415.478200011421,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000018.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 408.1984999938868,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000019.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 381.7079000000376,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000020.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 413.37169997859746,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000021.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 413.14520000014454,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000022.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 358.05490001803264,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000023.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 420.3204999794252,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000024.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 424.945899983868,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000025.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\",\"prediction_class_id\":2,\"prediction_label\":\"SAFE\",\"prediction_answer\":\"GREEN\",\"visible_evidence\":\"none\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN",
+        "visible_evidence": "none"
+      },
+      "wall_ms": 394.7033000004012,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 36,
+        "prompt_tokens": 1626,
+        "total_tokens": 1662,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000026.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 437.9408000095282,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000027.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 425.42720001074485,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000028.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 416.0564999911003,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000029.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\",\"prediction_class_id\":0,\"prediction_label\":\"FALLEN_PARCEL\",\"prediction_answer\":\"RED\",\"visible_evidence\":\"A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor.\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED",
+        "visible_evidence": "A monitored cardboard parcel has lost roller support and is below roller-top height on the immediately adjacent floor."
+      },
+      "wall_ms": 419.94639998301864,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 59,
+        "prompt_tokens": 1626,
+        "total_tokens": 1685,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "unreal_conveyor_demo\\Saved\\Diagnostics\\ParcelEvaluation\\reason2-ft-parcel-v18-occlusion-safe-test\\parcel-quarter-cell-occlusion-safe\\exact-v1\\test\\R\\R-s68104-000030.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\",\"prediction_class_id\":1,\"prediction_label\":\"UNSTABLE_PARCEL\",\"prediction_answer\":\"AMBER\",\"visible_evidence\":\"A monitored cardboard parcel is tipping over an outer edge while still touching the rollers.\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER",
+        "visible_evidence": "A monitored cardboard parcel is tipping over an outer edge while still touching the rollers."
+      },
+      "wall_ms": 408.0899999826215,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 56,
+        "prompt_tokens": 1626,
+        "total_tokens": 1682,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    }
+  ]
+}

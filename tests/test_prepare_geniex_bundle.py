@@ -137,6 +137,7 @@ def _write_part1_replacement(
     auxiliary_first: bool = False,
     include_marker: bool = True,
     include_text_w8_marker: bool = False,
+    context_length: int = 512,
     visual_mask_shape: list[int] | None = None,
     visual_mask_dtype: str = "bool",
 ) -> None:
@@ -201,7 +202,7 @@ def _write_part1_replacement(
                     "selected_parts": ["part1_of_4"],
                     "export_contract": {
                         "activation_precision": "FP16",
-                        "context_length": 512,
+                        "context_length": context_length,
                         "sequence_lengths": [128, 1],
                         "deepstack_inputs": [
                             "visual_pos_masks",
@@ -555,6 +556,36 @@ class PrepareGenieXBundleTests(unittest.TestCase):
                     "sha256"
                 ],
                 hashlib.sha256(marker_bytes).hexdigest(),
+            )
+
+    def test_accepts_w8_part1_with_larger_context_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            replacement = root / "replacement"
+            destination = root / "destination"
+            source.mkdir()
+            replacement.mkdir()
+            _write_fixture(source, full_deepstack=True)
+            _write_part1_replacement(
+                replacement,
+                include_text_w8_marker=True,
+                context_length=1024,
+                visual_mask_shape=[1, 128],
+                visual_mask_dtype="bool",
+            )
+
+            prepare_bundle(
+                source,
+                destination,
+                part1_replacement_bundle=replacement,
+            )
+
+            marker = json.loads(
+                (destination / TEXT_W8_MARKER).read_text()
+            )
+            self.assertEqual(
+                marker["export_contract"]["context_length"], 1024
             )
 
     def test_rejects_w8_marker_without_metadata_entry(self) -> None:

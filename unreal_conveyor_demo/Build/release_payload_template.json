@@ -1,32 +1,49 @@
 {
   "schema_version": 1,
+  "candidate_model_release": {
+    "release_id": "parcel-speed-v1-448x256-20260819",
+    "status": "accepted_geniex_production",
+    "installer_rebuild_required": false,
+    "inventory": "../../docs/evidence/results/geniex_speed_v1_direct_stream_test90_20260819.json",
+    "default_host_artifact": "host-parcel-speed-v1-q8",
+    "default_evk_artifact": "evk-parcel-speed-v1-geniex"
+  },
   "artifacts": [
     {
-      "id": "host-model-bf16",
-      "filename": "Cosmos-Reason2-2B-BF16.gguf",
-      "path": "Models/Cosmos-Reason2-2B-BF16.gguf",
+      "id": "host-parcel-speed-v1-q8",
+      "filename": "Cosmos-Reason2-2B-Parcel-Speed-v1-Q8_0.gguf",
+      "path": "Models/ParcelSpeedV1/Cosmos-Reason2-2B-Parcel-Speed-v1-Q8_0.gguf",
       "required": true,
-      "bytes": 4069680800,
-      "sha256": "b61833984940aa27e0d6a5c27fe550d24a0fbcf36acd2263ff21586242d6b7ef",
-      "description": "Exact unsplit BF16 Cosmos Reason2 2B GGUF validated by the Omniverse conveyor demo"
+      "bytes": 1834427488,
+      "sha256": "106fe2e4a8ef60677a168dc44a45bd69fccc4a28f549925ba1c72d9e1561e85c",
+      "description": "Promoted speed-v1 Q8 host model; frozen 448x256 one-token contract"
     },
     {
-      "id": "vision-projector-f16",
-      "filename": "mmproj-Cosmos-Reason2-2B-F16.gguf",
-      "path": "Models/mmproj-Cosmos-Reason2-2B-F16.gguf",
+      "id": "host-parcel-speed-v1-projector-f16",
+      "filename": "mmproj-Cosmos-Reason2-2B-Parcel-Speed-v1-F16.gguf",
+      "path": "Models/ParcelSpeedV1/mmproj-Cosmos-Reason2-2B-Parcel-Speed-v1-F16.gguf",
       "required": true,
-      "bytes": 819395424,
-      "sha256": "43df50be60fd6c9075548cd6d759e21253a3c62da69055bab7864cc64aa00c2c",
-      "description": "Exact F16 multimodal projector validated by the Omniverse conveyor demo"
+      "bytes": 819394880,
+      "sha256": "2fbf583701911b1ac67a03ee1ed03c066ae8f83aba1b3df31c7386ac96cd260a",
+      "description": "F16 multimodal projector paired with the promoted speed-v1 host model"
     },
     {
-      "id": "evk-geniex-bundle",
-      "filename": "evk-geniex-cosmos-v0317.tar.gz",
-      "path": "EVK/evk-geniex-cosmos-v0317.tar.gz",
+      "id": "evk-parcel-speed-v1-geniex",
+      "filename": "cosmos-reason2-parcel-speed-v1-cl512-256x448-w8text-geniex-qairt245-os19-r1.tar.gz",
+      "path": "EVK/cosmos-reason2-parcel-speed-v1-cl512-256x448-w8text-geniex-qairt245-os19-r1.tar.gz",
       "required": true,
-      "bytes": 1902613511,
-      "sha256": "89a7262a017e92338768a9f0c8336971a7f497b3a8d5290bedaf4b3501e6bc82",
-      "description": "Patched GenieX v0.3.17 ARM64 runtime and exact local Cosmos Q4_0/F16 GGUF files for IQ-9075"
+      "bytes": 2480561704,
+      "sha256": "795cb18a2407cadb5ec4f0817dcea9fa2709716fd7efb056e6eff3c4464a6c86",
+      "description": "Promoted CL512 full-DeepStack W8 QAIRT graph for direct-image GenieX serving"
+    },
+    {
+      "id": "evk-geniex-runtime",
+      "filename": "evk-geniex-runtime-v0317-qairt245.tar.gz",
+      "path": "EVK/evk-geniex-runtime-v0317-qairt245.tar.gz",
+      "required": true,
+      "bytes": 103940482,
+      "sha256": "f90cb5557c196c8cc28ccd97ee331cd0d82f15c327643c15eaa728f687e4256a",
+      "description": "GenieX v0.3.17 ARM64 runtime only; model graphs are supplied by the speed-v1 artifact"
     },
     {
       "id": "host-runtime-windows-bin",

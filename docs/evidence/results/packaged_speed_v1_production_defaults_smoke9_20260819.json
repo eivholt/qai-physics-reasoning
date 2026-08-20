@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "timestamp_utc": "2026-08-19T21:04:05.6878113Z",
+  "client": "C:\\Users\\eivho\\repos\\qai-physics-reasoning\\unreal_conveyor_demo\\Saved\\Packaged\\SpeedV1Production\\Windows\\QaiConveyor.exe",
+  "package_sha256": "9d4d79209fae3d9ddd3ff4c9a8c2acf408cdb04d899d10902cdc546df7dd3b7b",
+  "evk_server": "http://192.168.1.158:18183",
+  "evk_model": "local/cosmos-reason2-2b",
+  "prompt_profile": "speed-v1",
+  "image_width": 448,
+  "image_height": 256,
+  "runtime_defaults": true,
+  "cases": 9,
+  "correct": 9,
+  "simulator_log": "C:\\Users\\eivho\\AppData\\Local\\QaiConveyorDemo\\Logs\\simulator-20260819T210345Z-46944.log",
+  "result_lines": [
+    "2026-08-19T21:03:48.013Z parcel_evaluation_result id=G-01 expected=G predicted=G correct=true latency_ms=664 fallen= unstable= class_id=-1 label=omitted answer=omitted evidence=\"\" prompt=speed-v1 camera=parcel-quarter-cell-occlusion-safe",
+    "2026-08-19T21:03:50.017Z parcel_evaluation_result id=G-02 expected=G predicted=G correct=true latency_ms=627 fallen= unstable= class_id=-1 label=omitted answer=omitted evidence=\"\" prompt=speed-v1 camera=parcel-quarter-cell-occlusion-safe",
+    "2026-08-19T21:03:52.034Z parcel_evaluation_result id=G-03 expected=G predicted=G correct=true latency_ms=643 fallen= unstable= class_id=-1 label=omitted answer=omitted evidence=\"\" prompt=speed-v1 camera=parcel-quarter-cell-occlusion-safe",
+    "2026-08-19T21:03:54.051Z parcel_evaluation_result id=A-01 expected=A predicted=A correct=true latency_ms=644 fallen= unstable= class_id=-1 label=omitted answer=omitted evidence=\"\" prompt=speed-v1 camera=parcel-quarter-cell-occlusion-safe",
+    "2026-08-19T21:03:56.084Z parcel_evaluation_result id=A-02 expected=A predicted=A correct=true latency_ms=645 fallen= unstable= class_id=-1 label=omitted answer=omitted evidence=\"\" prompt=speed-v1 camera=parcel-quarter-cell-occlusion-safe",
+    "2026-08-19T21:03:58.075Z parcel_evaluation_result id=A-03 expected=A predicted=A correct=true latency_ms=627 fallen= unstable= class_id=-1 label=omitted answer=omitted evidence=\"\" prompt=speed-v1 camera=parcel-quarter-cell-occlusion-safe",
+    "2026-08-19T21:04:00.091Z parcel_evaluation_result id=R-01 expected=R predicted=R correct=true latency_ms=644 fallen= unstable= class_id=-1 label=omitted answer=omitted evidence=\"\" prompt=speed-v1 camera=parcel-quarter-cell-occlusion-safe",
+    "2026-08-19T21:04:02.111Z parcel_evaluation_result id=R-02 expected=R predicted=R correct=true latency_ms=627 fallen= unstable= class_id=-1 label=omitted answer=omitted evidence=\"\" prompt=speed-v1 camera=parcel-quarter-cell-occlusion-safe",
+    "2026-08-19T21:04:04.101Z parcel_evaluation_result id=R-03 expected=R predicted=R correct=true latency_ms=627 fallen= unstable= class_id=-1 label=omitted answer=omitted evidence=\"\" prompt=speed-v1 camera=parcel-quarter-cell-occlusion-safe"
+  ]
+}

@@ -264,3 +264,5 @@ __marimo__/
 credentials.json
 tmp/
 resources/DP25-73418-2_RevB/
+*.uasset
+resources/*.mp4

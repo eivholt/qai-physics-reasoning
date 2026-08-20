@@ -14,4 +14,5 @@ public:
 
 private:
     double SmoothedFramesPerSecond = 0.0;
+    float ControlHelpDrawerAlpha = 1.0f;
 };

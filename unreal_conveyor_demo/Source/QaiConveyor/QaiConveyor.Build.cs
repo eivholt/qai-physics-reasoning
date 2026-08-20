@@ -11,11 +11,13 @@ public class QaiConveyor : ModuleRules
             "Core",
             "CoreUObject",
             "Engine",
+            "PhysicsCore",
             "InputCore",
             "HTTP",
             "Json",
             "JsonUtilities",
             "ImageWrapper",
+            "ProceduralMeshComponent",
             "RenderCore",
             "RHI",
             "Slate"

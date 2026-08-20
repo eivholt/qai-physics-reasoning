@@ -8,7 +8,7 @@
 
 **Model:** [nvidia/Cosmos-Reason2-2B](https://huggingface.co/nvidia/Cosmos-Reason2-2B) running on device NPU
 
-Physical-aware Visual Language Models can, in addition to identifying objects, reason whats happening in a camera feed and even what's likely to happen. As edge devices get more capable and we are able to compress these models, new possibilities arise in traditional sensor applications. However, experimenting and testing new ideas can be impractical and require for instance actors, forklifts and a warehouse.
+Physics-aware Visual Language Models can do more than identify objects—they can reason about what’s happening in a camera feed and even predict what’s likely to happen next! As edge devices become more capable and model compression improves, new possibilities are emerging for traditional sensor applications. However, experimenting with and validating new ideas can be impractical, often requiring real-world setups with actors, forklifts, warehouses, and other physical infrastructure.
 
 ## Live simulation
 
@@ -18,11 +18,11 @@ This tutorial runs a live warehouse in Isaac Sim 6.0.1, continuously sends
 clean security-camera images to Cosmos-Reason2-2B on a Dragonwing IQ-9075 EVK,
 and lets model output change a simulated robot's active navigation route.
 
-In this demonstration the model running on EVK only ever sees camera feed and a prompt.
+In this demonstration the model running on EVK only ever sees camera feed and a prompt, it has no other knowledge about placement of actors in the simulation.
 
 ## Demo
 
-In this demo we explore if an AI supervisor, extra eyes in the sky, could optimize autonomous logistics vehicles by communicating potential congestions or hazards the AMRs are unable to detect in time. The supervisor could have as many cameras as needed, placed at strategic point. To test this out a rudamentary warehouse was constructed in Isaac Sim, using standard assets. An autonomous vehicle, RobotBlue, was placed in an aisle and configured to use path finding to reach an endpoint. Several alternatice paths were defined and the supervisor is able to signal that an alternative route is better if it sees a potential congestion in the standard route.
+In this demo we explore if an AI supervisor, extra eyes in the sky, could optimize autonomous logistics vehicles by communicating potential congestions or hazards the Autonomous Mobile Robots (AMR) are unable to detect in time. The supervisor could have as many cameras as needed, placed at strategic point. To test this out a rudamentary warehouse was constructed in Isaac Sim, using standard assets. An autonomous vehicle, RobotBlue, was placed in an aisle and configured to use path finding to reach an endpoint. Several alternatice paths were defined and the supervisor is able to signal that an alternative route is better, if it sees a potential congestion in the standard route.
 
 This tutorial does not cover steps in creating a simulation in Omniverse. One may opt to leave this to a coding agent, see appendix for setting up a MCP bridge with Omniverse APIs.
 

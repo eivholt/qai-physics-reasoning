@@ -5,8 +5,9 @@
 #include "QaiConveyorWorld.generated.h"
 
 class ASceneCapture2D;
+class UHierarchicalInstancedStaticMeshComponent;
+class UInstancedStaticMeshComponent;
 class ARectLight;
-class ASpotLight;
 class AExponentialHeightFog;
 class ALocalFogVolume;
 class FRHIGPUTextureReadback;
@@ -14,10 +15,11 @@ class IHttpRequest;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UMaterialBillboardComponent;
+class UCanvas;
+class ULineBatchComponent;
 class ULocalFogVolumeComponent;
 class UPointLightComponent;
 class UStaticMeshComponent;
-class USpotLightComponent;
 class UPrimitiveComponent;
 class URectLightComponent;
 class USceneComponent;
@@ -42,12 +44,15 @@ public:
     virtual void Tick(float DeltaSeconds) override;
 
     void DriveActiveForklift(float Throttle, float Steer, float Lift, bool bBrake, float DeltaSeconds);
-    void CycleForklift(int32 Direction = 1);
     void SelectForklift(int32 Index);
     void ResetScene();
     void ToggleBackend();
     void ToggleInference();
+    void ToggleLumen();
+    void ToggleRayTracing();
     void ToggleCollisionDebug();
+    void ToggleSensorViewOverlay();
+    void DrawCollisionDebugOverlay(UCanvas* Canvas);
 
     FVector GetActiveForkliftLocation() const;
     FVector GetEvkLocation() const;
@@ -57,6 +62,7 @@ public:
     const FString& GetStageStatus() const { return StageStatus; }
     const FString& GetStageError() const { return StageError; }
     const FString& GetGroundTruthSignal() const { return GroundTruthSignal; }
+    const FString& GetSubmittedGroundTruthSignal() const { return SubmittedGroundTruthSignal; }
     const FString& GetModelSignal() const { return ModelSignal; }
     const FString& GetRawModelSignal() const { return RawModelSignal; }
     const FString& GetBackendName() const { return ActiveBackend; }
@@ -70,12 +76,18 @@ public:
     int32 GetCollisionBlockCount() const { return CollisionBlockCount; }
     int32 GetCollisionProxyCount() const { return CollisionObstacles.Num(); }
     bool IsCollisionDebugEnabled() const { return bDrawCollisionDebug; }
+    bool IsSensorViewOverlayEnabled() const { return bDrawSensorViewOverlay; }
     int32 GetSubmittedInferenceFrameCount() const { return SubmittedFrameTextures.Num(); }
     UTexture2D* GetSubmittedInferenceFrame(int32 Index) const;
     FString GetSubmittedInferenceFrameTime(int32 Index) const;
+    int32 GetModelAnswerPropertyCount() const { return ModelAnswerPropertyNames.Num(); }
+    FString GetModelAnswerPropertyName(int32 Index) const;
+    FString GetModelAnswerPropertyValue(int32 Index) const;
     void RecordControllerInput(const FString& Details);
 
 private:
+    void ApplyRuntimeRenderFeatureStateToCapture();
+
     struct FFittedCollisionBox
     {
         enum class EShape : uint8
@@ -192,6 +204,13 @@ private:
         FVector ChassisInertiaTensorKgCm2 = FVector(10000000.0f);
         bool bWheelClimbActive = false;
         bool bForkReactionActive = false;
+        // The normal Chaos perimeter wall remains authoritative. This latch is
+        // only for the matching planar failsafe used if a fast/tipped compound
+        // body crosses that wall in a single solver step.
+        bool bOpenBoundaryContainmentActive = false;
+        bool bVerticalStabilizerActive = false;
+        int32 VerticalStabilizerActivationCount = 0;
+        float StartupDampingRemainingSeconds = 0.0f;
         float LastBlockedDriveSign = 0.0f;
         FString LastBlockedObstacle;
     };
@@ -210,6 +229,7 @@ private:
         FTransform InitialVisualRelativeTransform = FTransform::Identity;
         TArray<FVector> Waypoints;
         TArray<float> DwellSeconds;
+        bool bClosedLoop = false;
         FQuat HeadingOffset = FQuat::Identity;
         int32 DestinationIndex = 1;
         int32 RouteDirection = 1;
@@ -225,6 +245,9 @@ private:
         float MaximumVisualTurnRateDegreesPerSecond = 0.0f;
         float RouteReversalCooldownSeconds = 0.0f;
         float WorkerYieldRemainingSeconds = 0.0f;
+        float ForkliftYieldRemainingSeconds = 0.0f;
+        bool bForkliftContactActive = false;
+        int32 ForkliftContactCount = 0;
         int32 SeparationEvents = 0;
         int32 RightOfWayYieldCount = 0;
     };
@@ -285,10 +308,10 @@ private:
 
     void LoadRuntimeConfig();
     void BindNativeComponents();
+    int32 RemoveUnusedAuthoredForklift();
     AActor* FindTaggedActor(const FName Tag) const;
     USceneComponent* FindTaggedComponent(const FName Tag) const;
     static void MakeMovable(USceneComponent* Component);
-    bool WouldForkliftsOverlap(int32 MovingIndex, const FVector& CandidateLocation, const FRotator& CandidateRotation) const;
     bool WouldForkliftCollide(
         int32 MovingIndex,
         const FVector& CandidateLocation,
@@ -296,12 +319,14 @@ private:
         FString& OutObstacle) const;
     bool CanWorkerOccupy(int32 MovingIndex, const FVector& CandidateLocation) const;
     float GetWorkerStaticClearanceCm(const FVector& CandidateLocation) const;
+    float GetWorkerLoosePalletClearanceCm(const FVector& CandidateLocation) const;
     int32 BuildCollisionGuard();
     bool ValidateCollisionGuard();
     void LogStageBindingFailure(const FString& Details);
     void UpdateCollisionStatus(int32 ForkliftIndex, const FString& Obstacle);
-    void DrawCollisionDebug() const;
+    void BuildCollisionDebugLines(ULineBatchComponent* Lines) const;
     bool ApplyWestShelfPlacement();
+    bool ConfigureConveyorLayout();
     void ConfigureForkliftMastMaterials();
     void ApplyForkliftPaintVariant();
     bool ConfigureInferenceScene();
@@ -309,10 +334,15 @@ private:
     void FixedSimulationStep(float StepSeconds);
     void TickResolutionDataset(float DeltaSeconds);
     void ApplyResolutionDatasetVariant();
+    void TickParcelEvaluation(float DeltaSeconds);
+    void ApplyParcelEvaluationCase();
+    FString BuildParcelInferencePrompt() const;
     void SimulateForklifts(float StepSeconds);
     void SimulateDynamicBoxes(float StepSeconds);
     void SimulateConveyor(float StepSeconds);
     void ConfigureAuthoritativeChaosPhysics();
+    void ConfigureBlackBeltVisual();
+    void ConfigureStaticRenderOptimizations();
     void ConfigureChaosPhysics();
     void SimulateChaosForklifts(float DeltaSeconds);
     void SimulateChaosConveyor(float StepSeconds);
@@ -321,10 +351,15 @@ private:
     void SyncChaosTelemetry();
     void SimulateWorkers(float StepSeconds);
     void UpdateCargo(FForkliftRuntime& Forklift);
-    FString EvaluateParcelSafetySignal(FString* OutDetails = nullptr) const;
-    void UpdateSafetySignal();
+    FString EvaluateParcelSafetySignal(
+        FString* OutDetails = nullptr,
+        bool bVisibleToInferenceCameraOnly = false,
+        int32 RequiredVisibleParcelIndex = INDEX_NONE) const;
+    void UpdateSafetySignal(float EvaluationSeconds = -1.0f);
     void UpdateStackLights();
-    void TickStackLightRig(float DeltaSeconds);
+    void TickStackLightRig(float DeltaSeconds, bool bForceUpdate = false);
+    void UpdateSensorViewSurfaceProjection(float DeltaSeconds);
+    void SetStackLightSensorIsolation(bool bIsolated);
     void ConfigureStackLightRig();
     void ConfigureEvkProp();
     void TickEvkLeds(float DeltaSeconds);
@@ -349,20 +384,10 @@ private:
         int32 FrameWidth,
         int32 FrameHeight);
     void SubmitInference();
+    void SubmitLocationSupportFollowup();
     void DispatchPreparedInference(
         TArray<FString> EncodedMediaItems,
         TArray<FString> MediaMimeTypes,
-        FString Prompt,
-        FString TransportName,
-        TArray<int32> SelectedIndices,
-        double ActualWindowSeconds,
-        int32 MediaWidth,
-        int32 MediaHeight,
-        int64 MediaBytes,
-        uint32 RequestGeneration);
-    void UploadEvkMediaAndDispatch(
-        FString EncodedMedia,
-        FString MediaMimeType,
         FString Prompt,
         FString TransportName,
         TArray<int32> SelectedIndices,
@@ -385,16 +410,24 @@ private:
     TSharedPtr<FRHIGPUTextureReadback> CaptureReadback;
     TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> InferenceRequest;
     TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> ProbeRequest;
+    // PNG resize/compression and EVK media preparation use the shared worker
+    // pool. EndPlay drains these jobs before engine/image modules are torn
+    // down; a weak UObject pointer alone does not protect module lifetime.
+    FThreadSafeCounter ActiveInferenceWorkerTasks;
     uint32 InferenceCaptureGeneration = 1;
     uint32 PendingCaptureGeneration = 0;
-    int32 CaptureRenderWidth = 512;
-    int32 CaptureRenderHeight = 288;
-    int32 HostCaptureWidth = 512;
-    int32 HostCaptureHeight = 288;
+    FString PendingCaptureParcelSafetySignal = TEXT("G");
+    FString PendingCaptureParcelSafetyDetails;
+    int32 CaptureRenderWidth = 448;
+    int32 CaptureRenderHeight = 256;
+    int32 HostCaptureWidth = 448;
+    int32 HostCaptureHeight = 256;
+    int32 EvkCaptureWidth = 448;
+    int32 EvkCaptureHeight = 256;
     int32 PendingCaptureOutputWidth = 384;
     int32 PendingCaptureOutputHeight = 216;
 
-    FForkliftRuntime Forklifts[2];
+    FForkliftRuntime Forklifts[1];
     TArray<TWeakObjectPtr<USceneComponent>> Parcels;
     TArray<FTransform> ParcelInitialTransforms;
     TArray<float> ParcelPhases;
@@ -419,8 +452,6 @@ private:
     TArray<TWeakObjectPtr<UMaterialBillboardComponent>> StackBillboardComponents[3];
     TArray<TWeakObjectPtr<UMaterialInstanceDynamic>> StackBillboardMaterials[3];
     TArray<TWeakObjectPtr<ULocalFogVolumeComponent>> StackHaloFogComponents[3];
-    TArray<TWeakObjectPtr<USpotLightComponent>> StackWallSpotLights[3];
-    TArray<TWeakObjectPtr<USpotLightComponent>> StackRoomSpotLights[3];
     TArray<TWeakObjectPtr<UPointLightComponent>> StackEmitterLights[3];
     TArray<TWeakObjectPtr<URectLightComponent>> StackWashLights;
     TArray<float> StackWashMultipliers;
@@ -433,12 +464,6 @@ private:
 
     UPROPERTY()
     TArray<TObjectPtr<ALocalFogVolume>> RuntimeStackHaloActors;
-
-    UPROPERTY()
-    TArray<TObjectPtr<ASpotLight>> RuntimeStackWallSpotActors;
-
-    UPROPERTY()
-    TArray<TObjectPtr<ASpotLight>> RuntimeStackRoomSpotActors;
 
     UPROPERTY()
     TArray<TObjectPtr<UMaterialBillboardComponent>> RuntimeStackBillboards;
@@ -457,6 +482,30 @@ private:
 
     UPROPERTY()
     TArray<TObjectPtr<UStaticMeshComponent>> RuntimeSafetyBorderComponents;
+
+    UPROPERTY()
+    TObjectPtr<UInstancedStaticMeshComponent> RuntimeConveyorTurnRollers;
+
+    UPROPERTY()
+    TObjectPtr<UInstancedStaticMeshComponent> RuntimeConveyorStraightRollers;
+
+    UPROPERTY()
+    TArray<TObjectPtr<UStaticMeshComponent>> RuntimeConveyorStraightFrameOverlays;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> RuntimeStaticMeshInstances;
+
+    UPROPERTY()
+    TArray<TObjectPtr<UStaticMeshComponent>> RuntimeConveyorTurnQuarters;
+
+    UPROPERTY()
+    TArray<TObjectPtr<UStaticMeshComponent>> RuntimeConveyorTurnBridges;
+
+    UPROPERTY()
+    TObjectPtr<UStaticMeshComponent> RuntimeConveyorCenteringArm;
+
+    UPROPERTY()
+    TObjectPtr<UStaticMeshComponent> RuntimeConveyorCenteringArmCurveExtension;
 
     UPROPERTY()
     TArray<TObjectPtr<UMaterialInstanceDynamic>> RuntimeInferenceSceneMaterials;
@@ -498,6 +547,13 @@ private:
     TArray<TObjectPtr<UPhysicsConstraintComponent>> RuntimeChaosConstraints;
     UPROPERTY(Transient)
     TArray<TObjectPtr<UBoxComponent>> RuntimeChaosConveyorBodies;
+    // Dataset generation moves the invisible Chaos proxies, while safety
+    // evaluation and rendered-pixel checks operate on the corresponding
+    // logical parcel and imported visual tree. Keep those relationships
+    // explicit: relying on independently filtered array indices can silently
+    // pair a label with another carton when one import is missing.
+    TArray<int32> RuntimeChaosConveyorParcelIndices;
+    TArray<TWeakObjectPtr<USceneComponent>> RuntimeChaosConveyorVisualRoots;
     UPROPERTY(Transient)
     TArray<TObjectPtr<UStaticMeshComponent>> RuntimeChaosRollerColliders;
     UPROPERTY(Transient)
@@ -520,26 +576,27 @@ private:
     float ParcelSafetyCandidateSeconds = 0.0f;
     FString RawModelSignal = TEXT("-");
     FString ModelSignal = TEXT("-");
+    FString ModelSignalCandidate = TEXT("-");
+    int32 ModelSignalCandidateCount = 0;
     FString BackendStatus = TEXT("not checked");
     FString ActiveBackend = TEXT("host");
     FString ActiveModel;
-    FString HostServerUrl = TEXT("http://127.0.0.1:18080");
-    FString HostModel = TEXT("Cosmos-Reason2-2B-BF16.gguf");
-    FString EvkServerUrl = TEXT("http://127.0.0.1:18181");
-    FString EvkMediaBridgeUrl;
+    FString HostServerUrl = TEXT("http://127.0.0.1:18084");
+    FString HostModel = TEXT("Cosmos-Reason2-2B-Parcel-Speed-v1");
+    FString EvkServerUrl = TEXT("http://127.0.0.1:18183");
     FString EvkModel = TEXT("local/cosmos-reason2-2b");
+    TArray<FString> ModelAnswerPropertyNames;
+    TArray<FString> ModelAnswerPropertyValues;
 
     TArray<FString> EncodedFrames;
-    // The host submits two original lossless PNGs about two seconds apart.
-    // The EVK path selects the same two chronological observations as host
-    // inference across the two-second buffer, then creates its pixel-lossless
-    // RGB H.264 clip for the native-video endpoint.
+    // Both backends classify the newest lossless PNG observation directly.
     TArray<int32> EncodedFrameWidths;
     TArray<int32> EncodedFrameHeights;
     // Deterministic parcel support state sampled at the same instant as each
     // RGB frame. It is diagnostic ground truth only and is never sent to the
     // model.
     TArray<FString> EncodedParcelSafetySignals;
+    TArray<FString> EncodedParcelSafetyDetails;
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTexture2D>> EncodedFrameTextures;
     TArray<FString> EncodedFrameTimes;
@@ -551,15 +608,17 @@ private:
     TArray<TObjectPtr<UTexture2D>> SubmittedFrameTextures;
     TArray<FString> SubmittedFrameTimes;
     FString SubmittedGroundTruthSignal = TEXT("G");
+    FString SubmittedGroundTruthDetails;
+    FString PendingPrimaryParcelLocation;
     float CommandThrottle = 0.0f;
     float CommandSteer = 0.0f;
     float CommandLift = 0.0f;
-    float FixedAccumulator = 0.0f;
+    float WorkerDecisionAccumulator = 0.0f;
+    float SafetyEvaluationAccumulator = 0.0f;
     float ComponentBindAccumulator = 0.25f;
     float CaptureAccumulator = 0.0f;
     float CaptureIntervalSeconds = 0.25f;
-    float HostTemporalBaselineSeconds = 2.0f;
-    float EvkTemporalBaselineSeconds = 2.0f;
+    float SensorViewProjectionAccumulator = 0.05f;
     float BackendProbeAccumulator = 0.0f;
     // Runtime validation control. Zero stops the physical conveyor motor and
     // its initial/reset velocities without hiding any belt or parcel geometry.
@@ -569,6 +628,7 @@ private:
     float StackSignalWeights[3] = {0.0f, 0.0f, 0.0f};
     float StackTargetWeights[3] = {0.0f, 0.0f, 0.0f};
     double RequestStartSeconds = 0.0;
+    double LocationFusionStartSeconds = 0.0;
     double LastInferenceMilliseconds = 0.0;
     double LastStageFailureLogSeconds = -60.0;
     double LastBackendProbeLogSeconds = -60.0;
@@ -576,18 +636,26 @@ private:
     int32 ActiveForklift = 0;
     int32 CollisionBlockCount = 0;
     int32 InferenceSuccessCount = 0;
+    int32 InferenceInvalidVerdictCount = 0;
+    // Rows are camera-observable ground truth G/A/R; columns are Reason2 G/A/R.
+    int32 InferenceConfusionMatrix[3][3] = {};
     int32 ParcelImpactCount = 0;
     int32 ParcelForkContactCount = 0;
     int32 CaptureFrameCount = 0;
-    int32 EvkTemporalFrameCount = 2;
     bool bCommandBrake = false;
     bool bDrawCollisionDebug = false;
+    bool bDrawSensorViewOverlay = true;
+    UPROPERTY(Transient)
+    TObjectPtr<ULineBatchComponent> CollisionDebugLineBuffer;
+    UPROPERTY(Transient)
+    TObjectPtr<ULineBatchComponent> SensorViewProjectionLines;
     bool bStageReady = false;
     bool bInferenceEnabled = true;
     bool bBackendHealthy = false;
     bool bCaptureReadbackPending = false;
     bool bEncodingFrame = false;
     bool bInferenceBusy = false;
+    bool bLocationSupportFollowupActive = false;
     bool bIsShuttingDown = false;
     bool bLoggedFirstCapture = false;
     bool bLoggedFirstReadback = false;
@@ -598,7 +666,7 @@ private:
     bool bLoggedCaptureUnavailable = false;
     bool bLoggedChaosConveyorDrive = false;
     bool bSaveInferenceFrames = false;
-    FString FfmpegExecutableOverride;
+    bool bCaptureFpsOverridden = false;
     bool bHasLoggedBackendProbe = false;
     bool bLastLoggedBackendHttpReady = false;
     bool bLastLoggedBackendModelReady = false;
@@ -617,7 +685,6 @@ private:
     bool bForkWedgeTestInitialized = false;
     bool bResetLiftTest = false;
     bool bResetLiftTestTriggered = false;
-    bool bHudScreenshotTest = false;
     bool bWorkerSoakTest = false;
     bool bWorkerSoakTestReported = false;
     bool bRuntimeMotionTestCaptured = false;
@@ -629,6 +696,15 @@ private:
     bool bResolutionDatasetHideWorkers = false;
     bool bResolutionDatasetHideParcels = false;
     bool bResolutionDatasetAutoExit = false;
+    bool bParcelEvaluation = false;
+    bool bParcelEvaluationCaptureOnly = false;
+    bool bParcelEvaluationAutoExit = false;
+    bool bParcelEvaluationSoloParcel = false;
+    bool bParcelEvaluationRandomized = false;
+    bool bParcelEvaluationPromptNoise = false;
+    bool bParcelEvaluationMatchedBoundarySweeps = false;
+    bool bParcelEvaluationBilateral = false;
+    bool bBlackBeltVisual = false;
     bool bInteractiveValidationUnloaded = false;
     bool bInteractiveValidationUnloadedApplied = false;
     bool bInteractiveDriveValidation = false;
@@ -636,21 +712,33 @@ private:
     float InteractiveDriveValidationPhaseSeconds = 0.0f;
     int32 InteractiveDriveValidationLastTelemetrySecond = INDEX_NONE;
     FString ResolutionDatasetVariant = TEXT("baseline");
+    FString ParcelEvaluationName = TEXT("parcel-balanced-v1");
+    FString ParcelEvaluationSplit = TEXT("test");
+    FString ParcelEvaluationCameraPolicy = TEXT("runtime-neighborhood");
+    // The promoted GPU and EVK models share the frozen lane-scoped one-token
+    // speed-v1 contract. Older experiment profiles remain opt-in.
+    FString ParcelPromptProfile = TEXT("speed-v1");
+    FString SubmittedPromptProfile = TEXT("speed-v1");
+    FString PendingCascadeStage;
     // Optional sensor-only scene ablation. "minimal" renders only the active
     // forklift, room shell/floors, red safety mat/border, and conveyor. Extra
     // comma-separated groups can be restored without changing game physics.
     FString InferenceAblationVariant = TEXT("full");
-    // Sensor optics/composition experiment. "authored-wide" uses the original
-    // Omniverse DetectorEndline lens/off-axis projection and moves that fixed
-    // camera backward for coverage without changing player view or physics.
-    FString InferenceCameraVariant = TEXT("parcel-belt");
+    // Match the fixed 62-degree end-oblique camera used to generate the
+    // fine-tuning images. Other camera variants remain opt-in evaluation tools.
+    FString InferenceCameraVariant = TEXT("parcel-quarter-cell-occlusion-safe");
     FString ForkliftPaintVariant = TEXT("isaac-yellow");
     int32 ResolutionDatasetFramesPerSignal = 10;
+    int32 ParcelEvaluationCasesPerSignal = 10;
+    int32 ParcelEvaluationSeed = 1337;
     bool bStackLightRigInitialized = false;
+    bool bExcludeStackLightColorsFromInference = true;
     bool bLoggedFirstParcelContact = false;
     bool bWestShelfPlacementApplied = false;
     bool bForkliftMastMaterialsConfigured = false;
     bool bInferenceSceneConfigured = false;
+    bool bConveyorLayoutConfigured = false;
+    bool bStaticRenderOptimizationsConfigured = false;
     bool bChaosPhysicsActive = false;
     float ChaosConveyorStartupGraceSeconds = 0.0f;
     float ChaosConveyorMotorRampSeconds = 0.0f;
@@ -675,6 +763,8 @@ private:
     float WorkerSoakTestElapsed = 0.0f;
     float WorkerMinimumStaticClearanceCm[2] = {
         TNumericLimits<float>::Max(), TNumericLimits<float>::Max()};
+    float WorkerMinimumLoosePalletClearanceCm[2] = {
+        TNumericLimits<float>::Max(), TNumericLimits<float>::Max()};
     float WorkerMinimumPairClearanceCm = TNumericLimits<float>::Max();
     float WorkerConflictElapsedSeconds = 0.0f;
     int32 WorkerRightOfWayIndex = INDEX_NONE;
@@ -689,5 +779,19 @@ private:
     FTransform ResolutionDatasetInitialForkliftTransform = FTransform::Identity;
     FTransform ResolutionDatasetInitialChaosChassis = FTransform::Identity;
     FTransform ResolutionDatasetInitialChaosCarriage = FTransform::Identity;
+    TArray<FTransform> ParcelEvaluationInitialTransforms;
+    FTransform ParcelEvaluationInitialCameraTransform = FTransform::Identity;
+    float ParcelEvaluationCaseElapsed = 0.0f;
+    int32 ParcelEvaluationCaseIndex = INDEX_NONE;
+    int32 ParcelEvaluationCaseRetryIndex = 0;
+    int32 ParcelEvaluationCompletedCases = 0;
+    bool bParcelEvaluationInitialized = false;
+    bool bParcelEvaluationCaseCaptured = false;
+    bool bParcelEvaluationCaseAnswered = false;
+    bool bParcelEvaluationCaseObservable = true;
+    bool bParcelEvaluationCaseRejected = false;
+    FString ParcelEvaluationExpectedSignal = TEXT("G");
+    FString ParcelEvaluationCaseId;
+    FString ParcelEvaluationCaseMetadataJson;
     FString LastLoggedStackSignal;
 };

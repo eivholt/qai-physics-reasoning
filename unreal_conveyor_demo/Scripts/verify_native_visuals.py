@@ -340,6 +340,7 @@ if isinstance(qualcomm_billboard_logo, unreal.Material):
     )
 hero_material_names = {
     "MI_ForkliftClearCoat": "forklift_clear_coat",
+    "MI_ForkliftClearCoat_IsaacYellow": "forklift_clear_coat_isaac_yellow",
     "MI_ForkliftTireDetailed": "tire",
     "MI_AnisotropicRoller": "roller",
     "MI_BrushedSortingTable": "sorting_table",
@@ -390,6 +391,7 @@ dragonwing_fabric_used_with_skeletal_mesh = bool(
     and dragonwing_fabric.get_editor_property("used_with_skeletal_mesh")
 )
 forklift_brand_parameter_names: list[str] = []
+isaac_yellow_forklift_color: list[float] = []
 forklift_clear_coat = unreal.EditorAssetLibrary.load_asset(
     f"{CONTENT_ROOT}/VisualFinish/M_ForkliftClearCoat"
 )
@@ -402,6 +404,16 @@ if isinstance(forklift_clear_coat, unreal.Material):
         str(name)
         for name in unreal.MaterialEditingLibrary.get_vector_parameter_names(forklift_clear_coat)
     )
+isaac_yellow_forklift = unreal.EditorAssetLibrary.load_asset(
+    f"{CONTENT_ROOT}/VisualFinish/MI_ForkliftClearCoat_IsaacYellow"
+)
+if isinstance(isaac_yellow_forklift, unreal.MaterialInstanceConstant):
+    color = unreal.MaterialEditingLibrary.get_material_instance_vector_parameter_value(
+        isaac_yellow_forklift, "DragonwingPurple"
+    )
+    isaac_yellow_forklift_color = [
+        float(color.r), float(color.g), float(color.b), float(color.a)
+    ]
 if isinstance(stack_lens_shader, unreal.Material):
     for name, material_property in (
         ("base_color", unreal.MaterialProperty.MP_BASE_COLOR),
@@ -648,6 +660,7 @@ report = {
     "dragonwing_brand_colors": dragonwing_brand_colors,
     "dragonwing_fabric_used_with_skeletal_mesh": dragonwing_fabric_used_with_skeletal_mesh,
     "forklift_brand_parameter_names": sorted(set(forklift_brand_parameter_names)),
+    "isaac_yellow_forklift_color": isaac_yellow_forklift_color,
     "stack_lens_inputs": stack_lens_inputs,
     "stack_lens_parameters": sorted(set(stack_lens_parameters)),
     "stack_lens_assignments": stack_lens_assignments,
@@ -779,6 +792,8 @@ if (
     errors.append(f"ceiling soft-shadow budget is invalid: {ceiling_lights}")
 expected_assignments = {
     "forklift_clear_coat": 2,
+    # Available for runtime A/B selection, intentionally not level-assigned.
+    "forklift_clear_coat_isaac_yellow": 0,
     "tire": 8,
     "roller": 78,
     "sorting_table": 5,
@@ -852,7 +867,25 @@ if not required_forklift_brand_parameters.issubset(forklift_brand_parameter_name
     errors.append(
         f"Dragonwing forklift paint shader parameters are incomplete: {forklift_brand_parameter_names}"
     )
-for name in ("forklift_clear_coat", "tire", "cardboard_a", "cardboard_d"):
+expected_isaac_yellow_linear = [0.9189189, 0.48398682, 0.03193154, 1.0]
+if (
+    len(isaac_yellow_forklift_color) != 4
+    or any(
+        abs(actual - expected) > 1.0e-5
+        for actual, expected in zip(isaac_yellow_forklift_color, expected_isaac_yellow_linear)
+    )
+):
+    errors.append(
+        "original Isaac yellow forklift material is missing or has the wrong authored tint: "
+        f"{isaac_yellow_forklift_color}"
+    )
+for name in (
+    "forklift_clear_coat",
+    "forklift_clear_coat_isaac_yellow",
+    "tire",
+    "cardboard_a",
+    "cardboard_d",
+):
     size = hero_texture_sizes.get(name, [0, 0])
     if max(size) < 1024:
         errors.append(f"{name} base-color bake is below hero resolution: {size}")
@@ -936,7 +969,7 @@ if (
         row["collision"] != "<CollisionEnabled.NO_COLLISION: 0>"
         for row in qualcomm_billboard_parts
     )
-    or billboard_logo.get("location") != [80.0, -336.8, 320.0]
+    or billboard_logo.get("location") != [-260.0, -336.8, 320.0]
     or billboard_logo.get("rotation") != [-90.0, 0.0, 0.0]
     or billboard_logo.get("scale") != [5.2, -1.306, 1.0]
 ):
@@ -950,13 +983,13 @@ for color_name, assignments in stack_lens_assignments.items():
     if len(assignments) != 3 or any(not material.endswith(suffix) for material in assignments):
         errors.append(f"{color_name} stack-lens assignments are invalid: {assignments}")
 # The port deliberately keeps exactly the two walking workers as skeletal
-# characters. Both seated drivers are retained as seven pre-skinned static
-# material-part meshes each, avoiding idle runtime skeletons.
+# characters. The remaining seated driver is retained as seven pre-skinned
+# static material-part meshes, avoiding an idle runtime skeleton.
 if skeletal_meshes != 2:
     errors.append(f"expected 2 required worker skeletal meshes, found {skeletal_meshes}")
-if static_driver_components != 14:
+if static_driver_components != 7:
     errors.append(
-        f"expected 14 static seated-driver components, found {static_driver_components}"
+        f"expected 7 static seated-driver components, found {static_driver_components}"
     )
 # Guard the exact PBR set so a future import cannot silently drop textures.
 if textured_materials < 30 or texture_parameters < 110:

@@ -28,6 +28,22 @@ public:
     /** True when Ultra is using hardware ray traced Lumen for secondary bounce/reflections. */
     static bool UsesHardwareLumen();
 
+    /** True when Lumen GI/reflections are enabled for the active session. */
+    static bool IsRuntimeLumenEnabled();
+
+    /** True when the global on-demand ray-tracing scene is currently enabled. */
+    static bool IsRuntimeRayTracingEnabled();
+
+    /** True when this RHI/project can change r.RayTracing.Enable without a restart. */
+    static bool SupportsRuntimeRayTracingToggle();
+
+    /** Toggle Lumen GI/reflections while retaining a raster/SSR fallback. */
+    static bool ToggleRuntimeLumen();
+
+    /** Toggle the global on-demand ray-tracing scene. Returns the applied state. */
+    static bool ToggleRuntimeRayTracing();
+
 private:
     static void ApplyHardwareRenderProfile();
+    static void ApplyInteractiveWindowDefaults();
 };

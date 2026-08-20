@@ -39,7 +39,6 @@ def main() -> None:
         removed = []
         for path in (
             "/World/CodexPoC/ConveyorSafety/Forklifts/Forklift1/body/DriverMount",
-            "/World/CodexPoC/ConveyorSafety/Forklifts/Forklift2/body/DriverMount",
             "/World/CodexPoC/ConveyorSafety/Workers/DriverAnimations",
         ):
             prim = stage.GetPrimAtPath(path)

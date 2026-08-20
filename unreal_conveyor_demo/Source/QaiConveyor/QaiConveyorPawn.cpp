@@ -3,6 +3,8 @@
 #include "Camera/CameraComponent.h"
 #include "EngineUtils.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Engine/Engine.h"
+#include "GameFramework/GameUserSettings.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "InputCoreTypes.h"
@@ -17,10 +19,12 @@
 
 namespace QaiCameraTuning
 {
-    constexpr float IntroArmLengthCm = 62.0f;
+    // Pull the opening EVK product shot 50 cm farther out than the original
+    // 184 cm framing without changing its viewing angle or lens.
+    constexpr float IntroArmLengthCm = 234.0f;
     constexpr float IntroYawDegrees = -42.0f;
     constexpr float IntroPitchDegrees = 55.0f;
-    constexpr float IntroFieldOfView = 32.0f;
+    constexpr float IntroFieldOfView = 36.0f;
     constexpr float IntroFocusHeightCm = 1.5f;
     constexpr float TransitionSeconds = 1.55f;
     constexpr float GameplayArmLengthCm = 350.0f;
@@ -32,8 +36,15 @@ namespace QaiCameraTuning
     // Digital keys should turn the steering linkage progressively instead of
     // teleporting it from centre to full lock. Return is slightly quicker so
     // releasing a key still feels responsive.
-    constexpr float KeyboardSteerRisePerSecond = 2.35f;
-    constexpr float KeyboardSteerReturnPerSecond = 3.25f;
+    constexpr float KeyboardSteerRisePerSecond = 4.50f;
+    constexpr float KeyboardSteerReturnPerSecond = 5.50f;
+
+    bool IsDesktopWindowSwitchKey(const FKey& Key)
+    {
+        return Key == EKeys::LeftAlt
+            || Key == EKeys::RightAlt
+            || Key == EKeys::Tab;
+    }
 
     FVector2D ApplyRadialStickDeadZone(float X, float Y)
     {
@@ -177,6 +188,17 @@ void AQaiConveyorPawn::BeginPlay()
             OrbitPitch = 25.0f;
             Camera->FieldOfView = 54.0f;
         }
+        else if (CameraPreset.Equals(TEXT("conveyorseam"), ESearchCase::IgnoreCase))
+        {
+            // QA view centred on the authored A08/A05 join.  Keep this close
+            // preset available so roller/material regressions cannot be signed
+            // off from a whole-room screenshot again.
+            DiagnosticCameraTarget = FVector(292.0f, -120.0f, 76.0f);
+            SpringArm->TargetArmLength = 350.0f;
+            OrbitYaw = -18.0f;
+            OrbitPitch = 35.0f;
+            Camera->FieldOfView = 42.0f;
+        }
         else if (CameraPreset.Equals(TEXT("evktop"), ESearchCase::IgnoreCase)
             || CameraPreset.Equals(TEXT("iq9top"), ESearchCase::IgnoreCase))
         {
@@ -292,6 +314,7 @@ void AQaiConveyorPawn::FindRuntime()
 void AQaiConveyorPawn::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    UserInputIdleSeconds += DeltaSeconds;
     FindRuntime();
     if (!bInputModeApplied)
     {
@@ -336,6 +359,18 @@ void AQaiConveyorPawn::Tick(float DeltaSeconds)
         AppliedSteer,
         AppliedLift,
         bAppliedBrake);
+
+    // Use the already dead-zoned values so controller drift cannot keep the
+    // contextual control drawer hidden while the demo is unattended.
+    if (FMath::Abs(AppliedThrottle) >= 0.08f
+        || FMath::Abs(AppliedSteer) >= 0.12f
+        || FMath::Abs(AppliedLift) >= 0.08f
+        || FMath::Abs(AppliedCameraYaw) >= QaiCameraTuning::OrbitStickDeadZone
+        || FMath::Abs(AppliedCameraPitch) >= QaiCameraTuning::OrbitStickDeadZone
+        || bAppliedBrake)
+    {
+        MarkUserActivity();
+    }
 
     if (bIntroCameraActive || bIntroCameraTransitionActive)
     {
@@ -463,7 +498,7 @@ void AQaiConveyorPawn::UpdateIntroCamera(float DeltaSeconds)
         {
             bIntroCameraInitialized = true;
             Runtime->RecordControllerInput(FString::Printf(
-                TEXT("intro_camera_ready subject=IQ9_EVK arm_cm=%.0f yaw=%.0f pitch=%.0f fov=%.0f dismiss=any_button"),
+                TEXT("intro_camera_ready subject=IQ9_EVK arm_cm=%.0f yaw=%.0f pitch=%.0f fov=%.0f dismiss=any_button_except_alt_tab"),
                 QaiCameraTuning::IntroArmLengthCm,
                 QaiCameraTuning::IntroYawDegrees,
                 QaiCameraTuning::IntroPitchDegrees,
@@ -562,9 +597,31 @@ bool AQaiConveyorPawn::HandleIntroInput()
     return bIntroCameraTransitionActive;
 }
 
-void AQaiConveyorPawn::AnyInputPressed()
+void AQaiConveyorPawn::AnyInputPressed(FKey PressedKey)
 {
+    // Alt+Tab is part of the recording workflow, not an instruction to leave
+    // the EVK product shot. AnyKey sees the initial Alt press before Windows
+    // changes applications, so filter both modifier variants and Tab while
+    // the intro is active. Outside the intro they remain ordinary activity,
+    // and Alt+Enter still toggles fullscreen because Enter is not filtered.
+    if (bIntroCameraActive
+        && QaiCameraTuning::IsDesktopWindowSwitchKey(PressedKey))
+    {
+        if (Runtime)
+        {
+            Runtime->RecordControllerInput(FString::Printf(
+                TEXT("intro_camera_input_ignored key=%s reason=desktop_window_switch"),
+                *PressedKey.ToString()));
+        }
+        return;
+    }
+    MarkUserActivity();
     HandleIntroInput();
+}
+
+void AQaiConveyorPawn::MarkUserActivity()
+{
+    UserInputIdleSeconds = 0.0f;
 }
 
 void AQaiConveyorPawn::PollGamepadFallback(
@@ -609,6 +666,10 @@ void AQaiConveyorPawn::PollGamepadFallback(
                 || FMath::Abs(RightY) > 0.25f
                 || LeftTrigger > 0.12f
                 || RightTrigger > 0.12f;
+            if (Pressed != 0 || bMeaningfulAnalogInput)
+            {
+                MarkUserActivity();
+            }
             if ((Pressed != 0 || bMeaningfulAnalogInput) && HandleIntroInput())
             {
                 OutThrottle = 0.0f;
@@ -632,7 +693,7 @@ void AQaiConveyorPawn::PollGamepadFallback(
             {
                 if ((Pressed & static_cast<uint64>(GameInputGamepadB)) != 0)
                 {
-                    Runtime->CycleForklift();
+                    Runtime->ToggleBackend();
                 }
                 if ((Pressed & static_cast<uint64>(GameInputGamepadX)) != 0)
                 {
@@ -641,14 +702,6 @@ void AQaiConveyorPawn::PollGamepadFallback(
                 if ((Pressed & static_cast<uint64>(GameInputGamepadY)) != 0)
                 {
                     CycleView();
-                }
-                if ((Pressed & static_cast<uint64>(GameInputGamepadLeftShoulder)) != 0)
-                {
-                    Runtime->CycleForklift(-1);
-                }
-                if ((Pressed & static_cast<uint64>(GameInputGamepadRightShoulder)) != 0)
-                {
-                    Runtime->CycleForklift(1);
                 }
                 if ((Pressed & static_cast<uint64>(GameInputGamepadMenu)) != 0)
                 {
@@ -906,15 +959,29 @@ void AQaiConveyorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
     PlayerInputComponent->BindAxis(TEXT("CameraZoom"), this, &AQaiConveyorPawn::InputCameraZoom);
     PlayerInputComponent->BindAction(TEXT("Brake"), IE_Pressed, this, &AQaiConveyorPawn::BrakePressed);
     PlayerInputComponent->BindAction(TEXT("Brake"), IE_Released, this, &AQaiConveyorPawn::BrakeReleased);
-    PlayerInputComponent->BindAction(TEXT("CycleForklift"), IE_Pressed, this, &AQaiConveyorPawn::CycleForklift);
-    PlayerInputComponent->BindAction(TEXT("PreviousForklift"), IE_Pressed, this, &AQaiConveyorPawn::PreviousForklift);
-    PlayerInputComponent->BindAction(TEXT("NextForklift"), IE_Pressed, this, &AQaiConveyorPawn::NextForklift);
-    PlayerInputComponent->BindAction(TEXT("Forklift1"), IE_Pressed, this, &AQaiConveyorPawn::SelectForklift1);
-    PlayerInputComponent->BindAction(TEXT("Forklift2"), IE_Pressed, this, &AQaiConveyorPawn::SelectForklift2);
     PlayerInputComponent->BindAction(TEXT("ResetScene"), IE_Pressed, this, &AQaiConveyorPawn::ResetScene);
     PlayerInputComponent->BindAction(TEXT("CycleView"), IE_Pressed, this, &AQaiConveyorPawn::CycleView);
     PlayerInputComponent->BindAction(TEXT("ToggleBackend"), IE_Pressed, this, &AQaiConveyorPawn::ToggleBackend);
     PlayerInputComponent->BindAction(TEXT("ToggleInference"), IE_Pressed, this, &AQaiConveyorPawn::ToggleInference);
+    // Bind the render toggles directly so binary-only updates remain usable with an
+    // already cooked build whose input configuration predates these controls.
+    PlayerInputComponent->BindKey(EKeys::F6, IE_Pressed, this, &AQaiConveyorPawn::ToggleLumen);
+    PlayerInputComponent->BindKey(EKeys::F7, IE_Pressed, this, &AQaiConveyorPawn::ToggleRayTracing);
+    PlayerInputComponent->BindKey(
+        EKeys::F9,
+        IE_Pressed,
+        this,
+        &AQaiConveyorPawn::ToggleSensorViewOverlay);
+    PlayerInputComponent->BindKey(
+        EKeys::F11,
+        IE_Pressed,
+        this,
+        &AQaiConveyorPawn::ToggleFullscreen);
+    PlayerInputComponent->BindKey(
+        FInputChord(EKeys::Enter, false, false, true, false),
+        IE_Pressed,
+        this,
+        &AQaiConveyorPawn::ToggleFullscreen);
     PlayerInputComponent->BindAction(TEXT("ToggleCollisionDebug"), IE_Pressed, this, &AQaiConveyorPawn::ToggleCollisionDebug);
     PlayerInputComponent->BindAction(TEXT("Quit"), IE_Pressed, this, &AQaiConveyorPawn::QuitDemo);
 }
@@ -951,6 +1018,10 @@ void AQaiConveyorPawn::InputLift(float Value)
 
 void AQaiConveyorPawn::InputCameraYawMouse(float Value)
 {
+    if (FMath::Abs(Value) > KINDA_SMALL_NUMBER)
+    {
+        MarkUserActivity();
+    }
     if (!bIntroCameraActive && !bIntroCameraTransitionActive)
     {
         OrbitYaw = FRotator::NormalizeAxis(OrbitYaw + Value * 2.0f);
@@ -959,6 +1030,10 @@ void AQaiConveyorPawn::InputCameraYawMouse(float Value)
 
 void AQaiConveyorPawn::InputCameraPitchMouse(float Value)
 {
+    if (FMath::Abs(Value) > KINDA_SMALL_NUMBER)
+    {
+        MarkUserActivity();
+    }
     if (!bIntroCameraActive && !bIntroCameraTransitionActive)
     {
         OrbitPitch = FMath::Clamp(OrbitPitch + Value * 1.6f, 10.0f, 70.0f);
@@ -991,6 +1066,7 @@ void AQaiConveyorPawn::InputCameraZoom(float Value)
 {
     if (FMath::Abs(Value) > KINDA_SMALL_NUMBER)
     {
+        MarkUserActivity();
         if (HandleIntroInput())
         {
             return;
@@ -1000,11 +1076,6 @@ void AQaiConveyorPawn::InputCameraZoom(float Value)
 }
 void AQaiConveyorPawn::BrakePressed() { if (!HandleIntroInput()) bBrake = true; }
 void AQaiConveyorPawn::BrakeReleased() { bBrake = false; }
-void AQaiConveyorPawn::CycleForklift() { if (!HandleIntroInput() && Runtime) Runtime->CycleForklift(); }
-void AQaiConveyorPawn::PreviousForklift() { if (!HandleIntroInput() && Runtime) Runtime->CycleForklift(-1); }
-void AQaiConveyorPawn::NextForklift() { if (!HandleIntroInput() && Runtime) Runtime->CycleForklift(1); }
-void AQaiConveyorPawn::SelectForklift1() { if (!HandleIntroInput() && Runtime) Runtime->SelectForklift(0); }
-void AQaiConveyorPawn::SelectForklift2() { if (!HandleIntroInput() && Runtime) Runtime->SelectForklift(1); }
 void AQaiConveyorPawn::ResetScene()
 {
     if (HandleIntroInput())
@@ -1024,7 +1095,33 @@ void AQaiConveyorPawn::ResetScene()
 }
 void AQaiConveyorPawn::ToggleBackend() { if (!HandleIntroInput() && Runtime) Runtime->ToggleBackend(); }
 void AQaiConveyorPawn::ToggleInference() { if (!HandleIntroInput() && Runtime) Runtime->ToggleInference(); }
+void AQaiConveyorPawn::ToggleLumen() { if (!HandleIntroInput() && Runtime) Runtime->ToggleLumen(); }
+void AQaiConveyorPawn::ToggleRayTracing() { if (!HandleIntroInput() && Runtime) Runtime->ToggleRayTracing(); }
 void AQaiConveyorPawn::ToggleCollisionDebug() { if (!HandleIntroInput() && Runtime) Runtime->ToggleCollisionDebug(); }
+void AQaiConveyorPawn::ToggleSensorViewOverlay() { if (Runtime) Runtime->ToggleSensorViewOverlay(); }
+
+void AQaiConveyorPawn::ToggleFullscreen()
+{
+    UGameUserSettings* Settings = GEngine ? GEngine->GetGameUserSettings() : nullptr;
+    if (!Settings)
+    {
+        return;
+    }
+
+    const bool bEnterFullscreen =
+        Settings->GetFullscreenMode() == EWindowMode::Windowed;
+    Settings->SetFullscreenMode(
+        bEnterFullscreen
+            ? EWindowMode::WindowedFullscreen
+            : EWindowMode::Windowed);
+    Settings->ApplyResolutionSettings(false);
+    Settings->ConfirmVideoMode();
+    UE_LOG(
+        LogTemp,
+        Display,
+        TEXT("window_mode_toggle mode=%s shortcuts=F11+AltEnter"),
+        bEnterFullscreen ? TEXT("borderless_fullscreen") : TEXT("windowed"));
+}
 
 void AQaiConveyorPawn::CycleView()
 {
@@ -1045,16 +1142,13 @@ void AQaiConveyorPawn::QuitDemo()
     }
 #if WITH_EDITOR
     // `UnrealEditor.exe -game` deliberately sets GIsEditor=false even though
-    // this is still an editor build. UE 5.8 then faults in editor-only TEDS
-    // teardown after the game has otherwise shut down cleanly. All editor
-    // target launches are disposable iteration processes, so bypass that
-    // teardown regardless of the runtime GIsEditor value. Packaged targets
-    // compile this branch out and continue through QuitGame below.
+    // this is still an editor build. Request a normal close so EndPlay can
+    // cancel HTTP, drain capture workers, and release renderer resources.
     if (Runtime)
     {
-        Runtime->RecordControllerInput(TEXT("exit_requested source=escape mode=editor_target_forced_workaround"));
+        Runtime->RecordControllerInput(TEXT("exit_requested source=escape mode=editor_target_graceful"));
     }
-    FPlatformMisc::RequestExit(true);
+    FPlatformMisc::RequestExit(false);
     return;
 #else
     UKismetSystemLibrary::QuitGame(this, Cast<APlayerController>(GetController()), EQuitPreference::Quit, false);

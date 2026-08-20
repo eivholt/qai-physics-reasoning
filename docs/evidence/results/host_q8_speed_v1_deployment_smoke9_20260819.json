@@ -1,0 +1,304 @@
+{
+  "count": 9,
+  "accuracy": 1.0,
+  "per_class_recall": {
+    "SUPPORTED": 1.0,
+    "OVER_EDGE": 1.0,
+    "FALLEN": 1.0
+  },
+  "confusion_matrix": {
+    "SUPPORTED": {
+      "SUPPORTED": 3,
+      "OVER_EDGE": 0,
+      "FALLEN": 0,
+      "INVALID": 0
+    },
+    "OVER_EDGE": {
+      "SUPPORTED": 0,
+      "OVER_EDGE": 3,
+      "FALLEN": 0,
+      "INVALID": 0
+    },
+    "FALLEN": {
+      "SUPPORTED": 0,
+      "OVER_EDGE": 0,
+      "FALLEN": 3,
+      "INVALID": 0
+    }
+  },
+  "endpoint": "http://127.0.0.1:18084",
+  "model": "Cosmos-Reason2-2B-Parcel-Speed-v1",
+  "dataset": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1",
+  "split": "test",
+  "prompt_profile": "evk-speed-v1",
+  "prompt": "Classify cartons at the central silver conveyor lane. Ignore all other objects and lanes. Answer one letter only: G=fully supported; A=touching rollers but at least one-third beyond a blue rail or tipping; R=on the adjacent floor below the rollers.",
+  "image_width": 448,
+  "image_height": 256,
+  "stream": false,
+  "repeat": 1,
+  "selected_count": 9,
+  "mean_server_ms": null,
+  "median_server_ms": null,
+  "mean_latency_ms": 87.90155755640525,
+  "p95_latency_ms": 257.7456330182031,
+  "p99_latency_ms": 257.7456330182031,
+  "cold_start_latency_ms": 257.7456330182031,
+  "mean_warm_latency_ms": 66.67104812368052,
+  "mean_ttft_ms": null,
+  "mean_warm_ttft_ms": null,
+  "mean_decode_after_ttft_ms": null,
+  "rows": [
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000001.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 257.7456330182031,
+      "ttft_ms": null,
+      "decode_after_ttft_ms": null,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 1,
+        "prompt_tokens": 177,
+        "total_tokens": 178,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000002.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 80.94243699451908,
+      "ttft_ms": null,
+      "decode_after_ttft_ms": null,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 1,
+        "prompt_tokens": 177,
+        "total_tokens": 178,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/G/G-s69201-000003.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "soak_pass": 1,
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "G",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO",
+        "prediction_class_id": 2,
+        "prediction_label": "SAFE",
+        "prediction_answer": "GREEN"
+      },
+      "wall_ms": 66.11060400609858,
+      "ttft_ms": null,
+      "decode_after_ttft_ms": null,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 1,
+        "prompt_tokens": 177,
+        "total_tokens": 178,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000001.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 64.39445598516613,
+      "ttft_ms": null,
+      "decode_after_ttft_ms": null,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 1,
+        "prompt_tokens": 177,
+        "total_tokens": 178,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000002.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 61.335203994531184,
+      "ttft_ms": null,
+      "decode_after_ttft_ms": null,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 1,
+        "prompt_tokens": 177,
+        "total_tokens": 178,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/A/A-s69201-000003.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "soak_pass": 1,
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "A",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES",
+        "prediction_class_id": 1,
+        "prediction_label": "UNSTABLE_PARCEL",
+        "prediction_answer": "AMBER"
+      },
+      "wall_ms": 63.37967800209299,
+      "ttft_ms": null,
+      "decode_after_ttft_ms": null,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 1,
+        "prompt_tokens": 177,
+        "total_tokens": 178,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000001.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 64.6713050082326,
+      "ttft_ms": null,
+      "decode_after_ttft_ms": null,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 1,
+        "prompt_tokens": 177,
+        "total_tokens": 178,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000002.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 67.25465701310895,
+      "ttft_ms": null,
+      "decode_after_ttft_ms": null,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 1,
+        "prompt_tokens": 177,
+        "total_tokens": 178,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-test-r1/parcel-quarter-cell-occlusion-safe/exact-v1/test/R/R-s69201-000003.png",
+      "code": "R",
+      "label": "FALLEN",
+      "soak_pass": 1,
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "R",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO",
+        "prediction_class_id": 0,
+        "prediction_label": "FALLEN_PARCEL",
+        "prediction_answer": "RED"
+      },
+      "wall_ms": 65.28004398569465,
+      "ttft_ms": null,
+      "decode_after_ttft_ms": null,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 1,
+        "prompt_tokens": 177,
+        "total_tokens": 178,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    }
+  ]
+}

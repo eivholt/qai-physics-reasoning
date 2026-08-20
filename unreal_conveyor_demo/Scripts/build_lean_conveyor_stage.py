@@ -26,11 +26,8 @@ DEFAULT_OUTPUT = PROJECT_DIR / "Saved" / "LeanStage" / "warehouse_conveyor_runti
 REQUIRED_PRIMS = (
     "/World/CodexPoC/ConveyorSafety/Conveyor/Parcels/Parcel1",
     "/World/CodexPoC/ConveyorSafety/Forklifts/Forklift1",
-    "/World/CodexPoC/ConveyorSafety/Forklifts/Forklift2",
     "/World/CodexPoC/ConveyorSafety/Forklifts/Forklift1/body/DriverMount",
-    "/World/CodexPoC/ConveyorSafety/Forklifts/Forklift2/body/DriverMount",
     "/World/CodexPoC/ConveyorSafety/DynamicCargo/Forklift1Pallet",
-    "/World/CodexPoC/ConveyorSafety/DynamicCargo/Forklift2Pallet",
     "/World/CodexPoC/ConveyorSafety/Cameras/DetectorEndline",
     "/World/CodexPoC/ConveyorSafety/Workers/Worker1",
     "/World/CodexPoC/ConveyorSafety/Workers/Worker2",
@@ -45,8 +42,14 @@ REQUIRED_PRIMS = (
 PRUNED_BRANCHES = (
     "/Render",
     "/World/CodexPoC/ConveyorSafety/FloorInset",
-    # Keep the two walking workers, the two authored seated forklift drivers,
-    # and only the clips those four visible people actually bind.
+    # The client has one interactive forklift. Remove the unused authored
+    # vehicle and its separate cargo before flattening/importing so their mesh,
+    # material, skeleton, collision, and animation resources are not cooked.
+    "/World/CodexPoC/ConveyorSafety/Forklifts/Forklift2",
+    "/World/CodexPoC/ConveyorSafety/DynamicCargo/Forklift2Pallet",
+    "/World/CodexPoC/ConveyorSafety/DynamicCargo/Forklift2Carton",
+    # Keep the two walking workers, the one seated forklift driver, and only
+    # the clips those three visible people actually bind.
     "/World/CodexPoC/ConveyorSafety/Workers/HumanMotionLibrary",
     "/World/CodexPoC/ConveyorSafety/Workers/RetargetedAnimations/WalkForward",
     "/World/CodexPoC/ConveyorSafety/Workers/RetargetedAnimations/WalkForward_01",

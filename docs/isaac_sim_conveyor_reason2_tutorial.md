@@ -1,892 +1,598 @@
-# Live Cosmos Reason2 forklift safety in Isaac Sim
+# Cosmos Reason2 conveyor demo: from Isaac/Omniverse to packaged Unreal
 
-This tutorial runs a user-controllable factory/logistics demonstration in
-Isaac Sim 6.0.1. One focused official Isaac forklift shares a tightened room
-with a continuous animated conveyor, looping cartons, two realistic belt
-workers, one stocked rack, and three synchronized model-driven stack lights. The
-other two articulated forklifts and two background workers are disabled in
-this detector-focused revision.
+This tutorial describes the current parcel-safety demonstration as of
+2026-08-20. The project began as a live Isaac Sim warehouse experiment. Isaac
+Sim and NVIDIA Omniverse remain the source of the warehouse and conveyor
+assets, but the interactive release is now a packaged Unreal Engine 5.8
+application with native Chaos physics and two interchangeable Reason2
+backends.
 
-Cosmos Reason2-2B applies this policy:
+The current release is a narrow visual classifier, not the earlier forklift
+clearance prototype. A fixed sensor observes one straight conveyor lane and
+asks whether its cartons are safe, over an edge, or fallen. The same image and
+prompt contract run on an RTX host GPU and a Dragonwing IQ-9075 EVK NPU.
 
-- **GREEN** — no forklift is inside the red zone and every forklift is still.
-- **AMBER** — at least one forklift is moving anywhere in the room.
-- **RED** — any part of any forklift is already in the red zone.
+## Current release at a glance
 
-Workers are deliberately allowed beside and inside the marked area. They may
-stand at the conveyor and touch parcels, but never affect the signal.
+| Part | Current implementation |
+|---|---|
+| Interactive client | Unreal Engine 5.8.1, Win64 Shipping |
+| Scene source | NVIDIA Omniverse warehouse, forklift, worker, rack, and conveyor assets |
+| Monitored area | One central silver straight conveyor lane |
+| Input | One lossless 448 × 256 PNG from a fixed 62-degree end-oblique camera |
+| Task | `G` fully supported, `A` over-edge/tipping, `R` fallen |
+| Host | `Cosmos-Reason2-2B-Parcel-Speed-v1`, llama.cpp, port 18084 |
+| EVK | `local/cosmos-reason2-2b`, GenieX + QAIRT on the NPU, port 18183 |
+| Inference strategy | Read one trained next-token decision instead of generating a reasoned answer |
+| Rendering | D3D12, hardware Lumen and ray tracing enabled by default |
+| Default window | 1600 × 900 windowed; F11 or Alt+Enter toggles fullscreen |
+| Release executable | `unreal_conveyor_demo/Saved/Packaged/Win64/Windows/QaiConveyor.exe` |
 
-> This is an experimental physical-AI demo, not a certified safety controller.
-> A real installation still needs calibrated detection, coverage for
-> occlusion and camera failure, and an independent deterministic interlock.
+The current build retains only one drivable forklift. The unused second
+forklift, its bindings, and its runtime resources have been removed.
 
 ## Architecture
 
-The selected detector is a low, wide camera just beyond the open south end of
-the room, facing the far end of the conveyor. It sees the complete focused
-route, rack, marked zone, conveyor, and both workers in one frame.
-
 ```mermaid
 flowchart LR
-    PAD["Xbox controller"] --> DRIVE["Rear-steer Ackermann controller"]
-    DRIVE --> FORKLIFTS["One focused ForkliftC articulation"]
-    FORKLIFTS --> CAMERA["Wide south end-line camera"]
-    WORKERS["Animated Isaac workers"] --> CAMERA
-    BELT["Continuous conveyor + looping cartons"] --> CAMERA
-    CAMERA --> WINDOW["Previous + current RGB frames"]
-    WINDOW --> R2["Cosmos Reason2-2B"]
-    WINDOW --> VISION["Per-mesh semantic boxes + RGB red mask"]
-    R2 --> PARSER["Constrained GREEN / AMBER / RED"]
-    PARSER --> TOWER["Model-driven stack light"]
-    VISION --> VERIFY["Conditional RED / AMBER visual questions"]
-    VERIFY --> R2
-    VISION --> DEBUG["Omniverse inference trace widget"]
-    R2 --> DEBUG
+    U[Unreal player view and Chaos simulation]
+    C[Fixed single-lane sensor capture]
+    P[Lossless 448 x 256 PNG]
+    R[Shared speed-v1 prompt]
+    H[Host llama.cpp<br/>RTX GPU :18084]
+    E[GenieX + QAIRT<br/>IQ-9075 NPU :18183]
+    T[One token: G, A, or R]
+    M[Deterministic UI and stack-light mapping]
+
+    U --> C --> P --> R
+    R --> H --> T
+    R --> E --> T
+    T --> M
 ```
 
-The image-space front end:
+The capture, prompt, parser, class mapping, and operator presentation are
+shared. Pressing B or Start changes only the endpoint and model identity. This
+makes the comparison about execution hardware rather than prompt drift.
 
-1. segments the marked red region from the current RGB frame;
-2. reads tight per-mesh semantic boxes from both forklifts' visible geometry,
-   retaining one union box per vehicle only for motion tracking;
-3. uses RGB vehicle recovery only if the semantic actor is missing;
-4. matches the forklift to the preceding frame;
-5. measures camera-pixel velocity; and
-6. retains projected-entry timing as a diagnostic for comparison with the
-   earlier direction-aware policy.
+Exactly one request may be in flight. Live capture is demand-driven and pauses
+while the model is busy. Without an explicit benchmark override, the client
+allows up to 1.5 new host observations per second and 0.75 EVK observations per
+second. Simulation and presentation rendering continue independently.
 
-The previous and current images are sent directly to Reason2 so it can infer
-motion. Its boxes, overlap flags, motion result, and proposed signal
-are not model inputs. A current red-box overlap may trigger a second binary
-visual request. Visible forklift motion may similarly trigger a two-frame
-AMBER question when the primary answer misses it. These requests receive only
-RGB images and their visual questions—never coordinates, overlap facts,
-controller input, metric clearance, or validation labels.
+## Parcel-safety policy
 
-The complete prompt is intentionally short:
+The client classifies the most unsafe monitored carton:
+
+| Token | UI state | Meaning |
+|---|---|---|
+| `G` | GREEN / SAFE | Every monitored carton is fully supported by the rollers. Rotation and diagonal yaw are safe while the bottom remains supported. |
+| `A` | AMBER / UNSTABLE_PARCEL | A carton still touches the rollers, but roughly one third or more extends beyond a blue rail, or the carton is visibly tipping. |
+| `R` | RED / FALLEN_PARCEL | A carton is on the adjacent floor below roller-top height. RED has priority over AMBER. |
+
+Workers, the forklift, wooden pallets, shelving, lights, and the separated
+return lane are not classification targets. The helmetless worker deliberately
+walks partly through the sensor view to demonstrate that ordinary scene
+context is ignored.
+
+The HUD shows two states:
+
+- **Simulator state** is the deterministic Chaos ground truth used to evaluate
+  the demo.
+- **Reason2** is the confirmed model decision that drives the presentation
+  stack lights.
+
+The client requires two consecutive matching model observations before it
+changes the confirmed Reason2 state. This suppresses one-frame flicker without
+silently replacing the model decision with simulator geometry.
+
+## Exact production prompt
+
+Both GPU and EVK receive this exact user message:
 
 ```text
-Review the images in chronological order, with the newest image last.
-Return R if any part of any forklift is inside the marked red zone.
-Otherwise, return A if any forklift is moving at all.
-Otherwise, return G.
-Ignore human workers, parcels, and the stack light.
-Return one letter only: R, A, or G.
+Classify cartons at the central silver conveyor lane. Ignore all other objects and lanes. Answer one letter only: G=fully supported; A=touching rollers but at least one-third beyond a blue rail or tipping; R=on the adjacent floor below the rollers.
 ```
 
-The primary prompt is retained because the focused benchmark classified
-stationary GREEN and short-window AMBER reliably. If the camera-space box
-overlaps red but the primary response is not RED, Reason2 receives this
-latest-frame confirmation:
+There is no system message and no secondary prompt in the production
+`speed-v1` profile. Each request uses:
 
 ```text
-Return R if any tire, body, mast, or fork of the forklift touches or covers the
-red-painted floor beside the conveyor. Otherwise return G.
-Ignore people, parcels, and the stack light.
-Return one letter only: R or G.
+temperature: 0
+top_k: 1
+seed: 42
+enable_think: false
+max_completion_tokens: 1
 ```
 
-The front end decides only whether a conditional visual question is worth asking;
-Reason2 still decides the applied signal. Both raw answers are shown in the
-debug widget.
+The lossless PNG is embedded directly as a `data:image/png;base64,...` item in
+an OpenAI-compatible `/v1/chat/completions` request. The text is the second and
+final content item. The host and EVK receive the same content ordering.
 
-For visible motion that the three-way prompt does not classify as AMBER,
-Reason2 receives the same two chronological RGB frames with:
+### Why a one-token logit decision is faster
+
+A general vision-language model normally behaves like a writer. After it has
+processed the image and prompt, it predicts the first word or symbol, appends
+that result to its context, runs the text decoder again for the next token,
+and repeats. A reasoned explanation or six-field JSON object can therefore
+require dozens or hundreds of sequential decoder steps. Each step depends on
+the preceding step, so they cannot all be calculated at once.
+
+Before choosing a token, the model assigns every possible next token a numeric
+score called a **logit**. A higher logit means that token is currently a more
+likely continuation. A softmax can turn the logits into probabilities, but
+the ordering is already sufficient for a deterministic classification.
+
+SpeedV1 turns this next-token choice into the task's decision surface. During
+fine-tuning, every image is completed with exactly one class token:
 
 ```text
-The images are chronological. Decide whether any forklift moved between them.
-Return A if any forklift moved at all, in any direction. Otherwise return G.
-Ignore people, parcels, and the stack light.
-Return one letter only: A or G.
+safe image       -> G
+over-edge image  -> A
+fallen image     -> R
 ```
 
-An AMBER answer is accepted only while the visual tracker also confirms
-forklift motion. A RED answer is accepted only while at least one
-rendered forklift mesh box overlaps red. These consistency gates suppress
-impossible static AMBER and early RED states without sending their facts to
-the model.
+At runtime, `temperature=0` and `top_k=1` select the token with the highest
+logit, and `max_completion_tokens=1` stops immediately afterward. Fine-tuning
+makes `G`, `A`, and `R` the learned valid answers for this exact prompt. The
+API still returns the selected one-letter token; the client does not transfer
+or parse the complete raw logit vector.
 
-The simulator also calculates oriented forklift clearance for evaluation. That
-oracle is logged separately and never overrides the model-driven tower.
+```mermaid
+flowchart TD
+    I[Image and prompt] --> V[Vision encoder and prompt prefill]
+    V --> L[Next-token logits]
+    L --> G[G score]
+    L --> A[A score]
+    L --> R[R score]
+    G --> W[Highest learned score wins]
+    A --> W
+    R --> W
+    W --> S[Return one letter and stop]
+```
 
-## Scene assets and alignment
+The optimization removes the long-answer portion of inference:
 
-The scene root is:
+| General prompting | SpeedV1 production path |
+|---|---|
+| Ask the model to reason and write several fields | Ask one fixed visual classification question |
+| Optionally generate hidden reasoning | `enable_think=false` |
+| Decode an answer token by token | Decode one token |
+| Parse and validate model-written JSON | Map one letter in deterministic client code |
+| Retry or ask a secondary question when fields disagree | No secondary prompt |
+| Spend model time repeating labels and explanation text | Build labels and UI text without the model |
+
+This does not eliminate the vision encoder or initial prompt processing. On
+the EVK those fixed costs still dominate time to first token. It does eliminate
+nearly all autoregressive answer decoding, avoids a second model call, reduces
+transport and parsing, and makes the output much harder to format incorrectly.
+
+The tradeoff is deliberate specialization. This SpeedV1 release should answer
+only the frozen parcel-safety contract; arbitrary warehouse questions still
+need a general Reason2 model and normal generated answers. The runtime does not
+hard-mask the full vocabulary, so an unexpected token is rejected rather than
+silently converted into a safety state.
+
+### What speed did this buy?
+
+There is no perfectly controlled answer-length-only benchmark: SpeedV1 also
+uses a shorter prompt, fewer visual tokens, a new fine-tuned checkpoint, and a
+new EVK serving path. The following measurements are therefore best read as
+**closest practical comparisons**, not as proof that every millisecond came
+from choosing one logit.
+
+The closest host comparison used the same Cosmos Reason2 2B family, BF16
+weights, synchronized 180-image validation task, and perfect 180/180 accuracy:
+
+| Host validation path | Output | Image | Warm mean | Approx. serial throughput |
+|---|---:|---:|---:|---:|
+| Previous v22 compact JSON | 14 tokens | 512 × 288 | 294.3 ms | 3.4 requests/s |
+| SpeedV1 BF16 | 1 token | 448 × 256 | 58.9 ms | 17.0 requests/s |
+
+That is approximately **5.0× faster**, or an **80% latency reduction**. It is
+the most useful comparison for a reader, but it combines one-token output with
+the smaller 112-visual-token input and the SpeedV1 fine-tune.
+
+A broader Q8 historical comparison shows the cost of the original verbose
+contract more dramatically:
+
+| Host Q8 path | Average output | Warm mean | Accuracy on its recorded panel |
+|---|---:|---:|---:|
+| Older six-field JSON | 48.6 tokens | 939.2 ms | 91.1% |
+| SpeedV1 one-letter answer | 1 token | 64.6 ms | 100% |
+
+This is **14.5× faster** in the recorded runs, but it is not an A/B test: the
+checkpoint, prompt, input geometry, runtime build, and evaluation panel also
+changed. It demonstrates the overall direction of the work rather than the
+isolated value of one-token decoding.
+
+On the EVK, the accepted pre-SpeedV1 path averaged 1,701.0 ms per request. The
+promoted 360-request SpeedV1 soak averaged 687.3 ms warm, improving serial
+throughput from roughly 0.59 to 1.46 requests per second: about **2.5× faster**
+and a **60% latency reduction**. This is likewise an end-to-end release
+comparison, including GenieX, resident QAIRT graphs, direct PNG transport,
+CL512 context, and fewer visual tokens.
+
+The streamed EVK measurements also expose the remaining floor:
 
 ```text
-/World/CodexPoC/ConveyorSafety
+image encoding + prompt prefill + first-token readiness: about 589 ms
+returning the selected one-token answer after TTFT:     about  98 ms
+total warm request:                                    about 687 ms
 ```
 
-It contains:
+At the measured EVK decode rate, every additional serial output token would
+cost roughly another 0.1 seconds. A 14-token JSON answer could therefore add
+about 1.3 seconds beyond the first-token result if decoding scaled linearly.
+That last number is an explanatory extrapolation, not a same-build benchmark,
+but it shows why avoiding generated prose and JSON matters much more on the
+edge NPU than on the RTX host.
 
-- an extended oval built from two Digital Twin `ConveyorBelt_A05` modules,
-  two Isaac `ConveyorBelt_A08` modules, and two `ConveyorBelt_A11`
-  180-degree turns;
-- eight randomized official Isaac cartons transported as rigid bodies;
-- one official Isaac `ForkliftC` articulation with an independent rigid-body
-  pallet and enlarged carton stack plus a seated construction-worker driver;
-- two official construction-worker characters with Human Motion Library
-  animation;
-- Simple Warehouse racks, frames, stocked cartons, and an official packing
-  table with one simple static box collider;
-- a compact factory shell, lighting, and one unambiguous red floor region;
-- six detector experiment cameras plus a presentation camera; and
-- three physical green/amber/red stack lights at the user-authored placements.
-
-The three towers use a realistic 0.216 scale and have no oversized bases. Each
-pole extends through the red-lens height, and each tower owns a local
-`SceneWash`. A single model-state update changes every lens, glow, and wash,
-so duplicated indicators cannot disagree or leave a wash at an old location.
-All twelve SphereLights (three lens glows plus one wash on each tower) are
-point-treated with a near-zero radius. This keeps their colored illumination
-while preventing RTX from drawing a large gray emitter disk on nearby walls.
-Because those tiny local lights are partly occluded by the poles and mounts,
-three world-space 220,000-intensity DiskLights provide the presentation wash.
-They sit above the normal camera views and cast the active GREEN, AMBER, or RED
-color strongly across the nearby rack, warehouse floor, conveyor, parcels, and
-wall without exposing a light-source disk.
-
-The floor has no yellow boundary, dashed traffic line, or amber occupancy
-band. AMBER represents forklift motion, not a second painted region. The floor
-uses five official Simple Warehouse `SM_floor02` tiles, including their
-`MI_Floor_02b` albedo, normal, mask, and roughness maps, for a worn epoxy
-appearance. Their collisions are disabled; simple floor boxes remain the only
-floor colliders. The fifth tile and a hidden support box continue the floor
-behind the north wall. The safety marking uses an opaque, high-roughness red
-Preview Surface rather than the earlier glossy translucent slab. Its center
-and extents follow the complete oval, so the red floor underlays both straight
-runs and the in-room portions of both turns. Its camera-side edge is exactly
-one design metre beyond the oval, matching the west-side margin instead of
-leaving excess red foreground. The north wall is split into three aligned box
-prims: a left panel, a 1.30 m-high center plinth, and an upper lintel. Two
-cutaways follow the extended parallel conveyor lanes, which continue behind
-the wall and out of sight. The east wall remains omitted for the open demo
-view.
-
-The controlled vehicles are the articulated `ForkliftC` robots used by Isaac
-Sim's own mobile-robot controller example. The drive loop sends rear-steer
-Ackermann targets to `left_rotator_joint` and `right_rotator_joint`, and
-independent angular-velocity targets to all four wheel joints. The configured
-geometry is a 1.65 m wheelbase, 1.05 m track, 0.325 m front-wheel radius, and
-0.255 m rear-wheel radius. Throttle ramps at 1.00 m/s², service braking reaches
-1.50 m/s², steering is rate-limited to 1.20 rad/s, and speed is capped at
-1.00 m/s. This realistic indoor pace also keeps adjacent-frame displacement
-small enough for Reason2 to associate the same vehicle. The controller
-produces wheel rotation, asymmetric inside/outside steering, inertia, rear
-swing, and contact response instead of directly translating a USD transform.
-Operator steering is inverted at the input boundary: requesting a left turn
-deflects the rear wheels right and rotates the forklift nose left, as expected
-for a counterbalanced rear-steer vehicle.
-
-Xbox D-pad Up/Down drives the real `lift_joint`. Its authored 0–2 m prismatic
-range is clamped in software, and its 0.90 m/s maximum speed ramps at
-1.35 m/s². Releasing the D-pad decelerates the hydraulic target smoothly
-before holding the current height; this avoids transferring a one-frame stop
-impulse into the free pallet and carton. The loaded pallet and carton rise
-through fork and pallet contact rather than
-being parented to the mast. The right stick orbits the presentation camera
-around the selected forklift. That camera follows the selected vehicle's body center; detector
-render products remain fixed and are not affected by operator camera movement.
-The Xbox View button cycles close, medium, and wide follow distances of
-5.5 m, 8.0 m, and 11.5 m. Input is edge-triggered, so holding View cannot skip
-multiple distances.
-
-A one-controller-step oriented-box sweep prevents tunneling without creating
-an artificial braking zone. PhysX contact on the conveyor is a continuous,
-closed, low-poly stadium mesh sampled at 32 points. It follows the visible oval
-with a 5 cm surface inset and has no internal curve-junction faces that could
-snag parcels. The rack and floor retain simple box colliders. Collision APIs
-on the decorative conveyor and rack references are disabled,
-so the high-detail production meshes cannot stop a forklift early. Worker and
-software forklift avoidance use 26 cheap straight/curve bounds around the same
-stadium instead of one oversized rectangle, leaving the oval's center island
-open. The short controller sweep only prevents tunneling between physics
-steps.
-
-Each enabled ForkliftC uses only 11 collision prims: two convex-decomposed
-chassis meshes, three lift-link meshes including the two tines, four simple
-wheel cylinders, and two small rear-steer rotator meshes. The bright
-wireframe seen when the vehicle is selected is a render-selection outline,
-not one collider per visible part. Replacing the chassis colliders with
-coarse boxes would save little while risking poorer
-mast, wheel, worker, and conveyor contact, so the stock collision setup is
-retained.
-
-Each forklift carries NVIDIA's official 1.213 × 0.802 × 0.143 m pallet as an
-independent 22 kg rigid body resting on the robot's colliding tines. Its stock
-mesh collision is disabled and replaced by four lightweight box colliders: a
-thin upper deck and three lower runners. The two open channels between runners
-admit the real tines instead of approximating the pallet as a solid slab.
-The pallet is rotated 90° relative to the vehicle: its 0.80 m side runs along
-the forks and its 1.21 m side spans across them for easier fork access.
-An enlarged 0.72 × 0.68 × 0.50 m, 10.5 kg `SM_CardBoxA_01` carton is a second
-rigid body resting on top of the pallet through real contact. It also uses one
-simple box collider. There is no invisible moving support or rigid parenting:
-the pallet and carton can independently slide, tip, hit the environment, and
-fall during abrupt steering or fork movement.
-
-Both load bodies use CCD, eight position-solver iterations, increased angular
-damping, and a 0.75 m/s maximum depenetration velocity. The last setting caps
-the corrective impulse if a tine and pallet collider briefly overlap, so a
-contact correction cannot catapult the complete stack into the air. Linear
-velocity remains free up to 4 m/s, preserving ordinary sliding, tipping, and
-falling behavior.
-
-The 24 shelf cartons use the same independent rigid-body treatment as the
-belt parcels: each official carton visual has a matching simple box collider,
-volume-derived mass, CCD, and damping. Three continuous 3 cm-thick collision
-slabs follow the rack tiers, avoiding seams between the two visual shelf
-assets, a narrow rear guard represents the back, and six slender box colliders
-follow the visible vertical uprights. Every tier is packed from the projected
-width of its four rotated carton profiles, with a 4 cm body-to-body gap and the
-complete row centered between posts. The stock rack mesh collisions stay
-disabled. Cartons therefore rest on the shelves, cannot intersect the beams
-or one another, can be nudged or knocked off by the forks, and land on the
-warehouse floor instead of falling through it.
-
-The eight belt parcels are also independent rigid bodies. A fixed random seed
-varies their length from 0.50–0.82 m, width from 0.32–0.54 m, and height from
-0.22–0.42 m, so the demo has repeatable but visibly different aspect ratios.
-Every parcel has a simple box collider, volume-derived mass, CCD, linear and
-angular damping, and an official `SM_CardBoxD_04` visual reference.
-
-The referenced carton visual also contains a stock triangle-mesh CollisionAPI.
-It is disabled because the surrounding parcel already owns the simple box.
-PhysX validates mesh approximation metadata before it checks
-`collisionEnabled`, so leaving that disabled mesh at approximation `none`
-causes repeated “triangle mesh collision cannot be part of a dynamic body”
-fallback messages. Scene construction therefore authors `convexHull` on every
-disabled visual mesh. The mesh remains disabled; the box is still the only
-active parcel collider.
-
-The oval surface has a zero-friction physics material with PhysX combine mode
-`min`, matching NVIDIA's custom conveyor sample. While a parcel touches the
-belt, the extension applies a world-space tangential force toward 0.55 m/s
-plus a weak centerline correction. It never edits parcel transforms. A
-meaningful outward contact impulse is preserved, and the belt force switches
-off after the box clears the track. Fork tines can therefore push a parcel off
-the conveyor; gravity then drops it onto the warehouse floor's independent
-cube collider.
-
-Workers deliberately remain upright animated characters rather than ragdolls.
-Each one follows a persistent collision-free corridor route at up to 0.55 m/s and
-uses a visibly active gait loop extracted from time codes 154–228 of the
-official Human Motion Library `WalkForward` clips. This skips their near-static
-opening and repeats the matched gait cycle twice per stage loop.
-
-The retargeted walk clips are converted to in-place animation by zeroing the
-horizontal translation of `RL_BoneRoot/Hip` at every loop sample while
-preserving vertical gait motion. The collision-controlled Worker Xform is
-therefore the visible character position; skeleton root motion cannot carry a
-worker through a wall or over the floor edge independently of navigation.
-
-Worker 1 loops in the open rectangle between the oval's west side and the
-rack. Worker 2 starts at the north end of the west rack, walks to the
-northwest side of the oval, pauses for two seconds facing the belt, and
-retraces the route. Both routes detour below the packing table before turning
-toward the belt. The path obstacle includes the table's same simple box and
-the segmented oval envelope, so both workers stop at visible geometry without
-treating the open center island as solid.
-
-The navigator runs A* over a sparse rectilinear graph of the open west-room
-corridors. Conveyor segments, the rack, table, walls, floor edges, loose cargo,
-the other worker, and both live forklift bounds remove intersecting graph
-edges. A blocked edge triggers a new route through an alternate lane. If the
-rendered character still cannot complete the proposed move, its committed
-route position, waypoint index, and dwell timer all remain frozen; after 0.2 s
-the path is discarded and replanned from the visible position.
-
-If the active forklift reaches a worker, the controller adds a damped sideways
-push: the worker can stagger up to 1.25 m, then springs back toward the active
-route segment.
-
-The animation relationship is authored on both the enclosing `SkelRoot` and
-the concrete referenced `Skeleton`. Isaac's skeleton query accepts inherited
-relationships, but Hydra otherwise leaves these construction-worker skins in
-their neutral pose. Direct skeleton binding makes the walk and blocked-idle
-transitions visible in the rendered viewport. Heading changes are limited to
-180 degrees/s, locomotion accelerates and decelerates around corridor turns,
-and separate walk/idle thresholds add transition hysteresis so a momentary
-contact cannot rapidly flip animation sources.
-
-A 0.32 m horizontal capsule footprint constrains both patrol and push motion.
-The worker stops at the visible conveyor body, west shelf rack, north/west
-walls, open floor edges, and the current world-space bounds of the loose
-physics carton. Axis-separated resolution still permits sliding along an
-obstacle when pushed. When no displacement can be accepted, the skeleton
-switches to its retargeted idle clip instead of walking in place; it resumes
-the walk clip automatically when the obstacle moves or the route clears. The
-worker assets themselves remain non-rigid, avoiding an unstable full-body
-ragdoll or a rigid wedge between the forklift and conveyor. Worker contact
-still has no effect on the Reason2 safety label.
-
-The Human Motion Library does not include a forklift-specific driving clip.
-The driver therefore uses the compatible `SitAndStandChair` sequence's
-`SitLoop` annotation. The construction-worker assets use a 101-joint
-`RL_BoneRoot` rig, whereas the motion library uses an 81-joint `Root/Pelvis`
-rig, so a direct USD animation binding would leave the worker in a T-pose.
-Scene construction first runs Isaac's `CreateRetargetAnimationsCommand`, then
-samples time code 422—the middle of the stable seated interval—into a static
-`SeatedDriverPose`. It removes the retargeted actor's horizontal
-walk-to-chair displacement and preserves the seated height. The mount is
-placed 62 cm behind the body origin and 77 cm high, clearing the molded seat
-back while keeping the hips on the ForkliftC cushion. It uses a -90-degree
-local yaw so the driver faces the ForkliftC controls and mast. A -20-degree
-root rotation at `RL_BoneRoot/Hip` pitches the entire character toward the
-steering wheel, keeping torso, pelvis, arms, and legs rigidly aligned. The same
-retargeting step prepares `WalkForward`, `WalkForward_01`, `Idle`, and
-`IdleTired` for the two floor workers.
-
-The driver mount is a child of the articulated body, so it follows steering
-and driving without repeatedly standing or sliding toward an imaginary chair.
-Driver geometry is explicitly excluded from the `safety_forklift_*` semantic
-label and remains ignored by the detector, just like the two floor workers.
-
-The important production assets are:
+The model emits only `G`, `A`, or `R`. The answer panel displays the mapped
+`prediction_answer`, and the client derives the corresponding internal signal
+and stack-light state deterministically. The logical mapping is:
 
 ```text
-NVIDIA/Assets/DigitalTwin/Assets/Warehouse/Equipment/Conveyors/
-  ConveyorBelt_A/ConveyorBelt_A05_PR_NVD_01.usd
-  ConveyorBelt_A/ConveyorBelt_A11_PR_NVD_01.usd
-Isaac/Props/Conveyors/ConveyorBelt_A08.usd
-Isaac/Props/PackingTable/packing_table.usd
-Isaac/Robots/IsaacSim/ForkliftC/forklift_c.usd
-Isaac/Environments/Simple_Warehouse/Props/SM_RackShelf_01.usd
-Isaac/Environments/Simple_Warehouse/Props/SM_RackFrame_03.usd
-Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxD_04.usd
-Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_01.usd
-Isaac/People/Characters/male_adult_construction_01_new
-Isaac/People/Characters/male_adult_construction_03
-Isaac/People/Characters/male_adult_construction_05_new
-Isaac/People/MotionLibrary/HumanMotionLibrary.usd
+R -> fallen_test=YES, unstable_test=NO, class_id=0,
+     label=FALLEN_PARCEL, answer=RED
+A -> fallen_test=NO, unstable_test=YES, class_id=1,
+     label=UNSTABLE_PARCEL, answer=AMBER
+G -> fallen_test=NO, unstable_test=NO, class_id=2,
+     label=SAFE, answer=GREEN
 ```
 
-The vehicle parameters and joint mapping follow NVIDIA's
-[ForkliftC mobile-robot controller example](https://docs.isaacsim.omniverse.nvidia.com/6.0.1/robot_simulation/mobile_robot_controllers.html).
-The implementation uses the
-[experimental Ackermann controller API](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/py/source/extensions/isaacsim.robot.experimental.wheeled_robots/docs/index.html)
-and creates independent copies through the
-[Isaac Sim Cloner API](https://docs.isaacsim.omniverse.nvidia.com/latest/py/source/extensions/isaacsim.core.cloner/docs/index.html).
+Older prompt profiles remain available only for controlled ablations through
+`-QaiParcelPrompt=...`; they are not runtime UI modes and are not part of the
+released model contract.
 
-An A05 supplies the south 2.0 m of each straight lane. A05's roller center is
-authored at local `X=0.5014 m`; both references compensate for that offset. An
-A08 continues each lane north by 2.719 m, and A11 supplies the two 180-degree
-turns. The A08 assets require an explicit placement matrix because their
-authored transform-op stack is incompatible with `XformCommonAPI`. The
-resulting aligned oval uses:
+## Scene and sensor progress
 
-```text
-center:                  (4.42, 1.268030) m
-center-line radius:      1.50 m
-straight half-length:    2.351374 m
-track half-width:        0.55 m
-belt surface height:     0.76 m
-west/east lane x:        2.92 / 5.92 m
-north/south join y:      3.619404 / -1.083344 m
-```
+### Omniverse conveyor
 
-The continuous collider is inset to a 0.50 m half-width so the rendered
-forklift reaches plausible visual contact. See NVIDIA's
-[Conveyor Belt Utility documentation](https://docs.isaacsim.omniverse.nvidia.com/latest/digital_twin/warehouse_logistics/ext_isaacsim_asset_gen_conveyor.html)
-and the Isaac 6.0 `standalone_examples/conveyor_belt` sample for the
-contact-velocity-field pattern.
+The visible conveyor is assembled from imported NVIDIA Omniverse conveyor
+modules, including the A05, A08, and A11 families. The two end turns use the
+Omniverse quarter-turn geometry. The widened return lane requires short
+transition bridges; those bridges reuse imported conveyor geometry and the
+same anisotropic steel presentation material rather than exposed Unreal basic
+shapes.
 
-The verified scene checkpoint is:
+The current layout includes these corrections:
 
-```text
-artifacts/isaac_sim_checkpoints/reason2_conveyor_safety_stable_cargo_r38.usda
-```
+- the divider wall was removed;
+- the unmonitored straight return lane was moved 260 cm farther right so it no
+  longer enters the sensor crop;
+- the wall, second portal, turns, physical path, support projection, and
+  conveyor forces were extended to match the wider loop;
+- portals protrude approximately one metre from the wall and have structural
+  bounding-box colliders for parcels, props, workers, and the forklift;
+- each stack light is centred on a portal roof with wall clearance;
+- repeated roller materials are rebound at runtime so custom bridge and A08
+  rollers use the same anisotropic steel finish; and
+- tall straight-section uprights are visually clipped at roller height while
+  their collision remains unchanged, leaving a clear parcel-manipulation view.
 
-### Clone portability and asset storage
+The physical centring guide is behind the left portal so it does not become a
+visual AMBER cue. Its low arm begins just above the rollers, extends around the
+inside of the curve, and removes only velocity directed into the guide. A
+localized, acceleration-limited centring assist carries parcels past the
+corner without globally snapping them to the belt centre or congesting the
+portal.
 
-The verified r38 checkpoint is committed through Git LFS. Install Git LFS
-before cloning, or fetch the large objects after cloning:
+### Forklift, props, and workers
+
+The forklift now starts near the sorting area, faces the monitored lane, and
+has working forks, wheels, contacts, and portal collisions. Its spawn height
+was reduced. Startup damping, supported-body vertical damping, and an upward
+velocity cap arrest the occasional multi-second launch without making normal
+driving rigid. The safety mat is only 0.2 cm thick and does not block the
+wheels.
+
+The loose pallet is retained in the scene by the left wall near the shelves.
+Worker routes avoid the pallet stack, traverse the thin mat, connect the shelf
+and conveyor areas, and include a short sensor-view dwell for the helmetless
+worker.
+
+### Sensor view
+
+The production camera variant is
+`parcel-quarter-cell-occlusion-safe`. It matches the synchronized v22 training
+view: a fixed 62-degree end-oblique composition of the one monitored lane.
+Parcels initially spawn near the centre of that lane, so the untouched state
+starts GREEN.
+
+The sensor capture excludes presentation-only elements that could leak the
+answer, including collision debug, the F9 view visualization, and stack-light
+colour. Unmonitored dynamic pallet and forklift primitives inside the
+projection are also hidden from the inference capture. The player still sees
+the complete warehouse scene.
+
+F9 draws a depth-tested red laser-style representation of the sensor boundary
+on the surfaces it intersects. It uses corner brackets and a centre reticle,
+does not draw through walls, and is explicitly hidden from the inference
+capture.
+
+## Build and run
+
+### Prerequisites
+
+For development and packaging:
+
+- Windows 11;
+- Unreal Engine 5.8.1 at `C:\Program Files\Epic Games\UE_5.8`;
+- an RTX-capable GPU and current NVIDIA driver for the default D3D12 render
+  profile; and
+- Python 3 for setup, diagnostics, and dataset scripts.
+
+For EVK inference, the host must also reach an IQ-9075 EVK over SSH and port
+18183. The accepted setup uses EVK OS 1.9 and QAIRT 2.45.0.260326.
+
+### Package the Shipping client
+
+From the repository root:
 
 ```powershell
-git lfs install
-git clone https://github.com/eivholt/qai-physics-reasoning.git
-cd qai-physics-reasoning
-git lfs pull
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\unreal_conveyor_demo\Scripts\package_windows_client.ps1 `
+  -SmokeTest
 ```
 
-The checkpoint contains the complete project-authored scene layer: layout,
-transforms, materials, cameras, lights, semantics, physics configuration, and
-custom colliders. It has no absolute workstation paths. Its 15 production
-asset dependencies are HTTPS references to the official Isaac Sim 6.0 asset
-CDN, including the forklifts, workers, conveyors, cartons, pallet, packing
-table, rack, and floor. Those NVIDIA assets are deliberately not copied into
-this repository; Isaac Sim downloads and caches them when the stage first
-opens. A new machine therefore needs internet access for its first scene load.
+The script builds Shipping, cooks with the UE 5.8.1 commandlet timing
+workaround, stages the pak, and runs a bounded motion smoke test. The cook is
+single-threaded only as a workaround; the packaged client remains normally
+threaded and retains D3D12, SM6, hardware Lumen, and ray tracing.
 
-Model weights, compiled EVK bundles, host llama.cpp builds, captured inference
-runs, and historical USD checkpoints are also excluded. They are much larger,
-are reproducible or separately licensed, and are obtained by the host and EVK
-setup sections of this tutorial. The repository is cloneable and runnable,
-but it is not intended to be an offline redistribution of NVIDIA model or
-Isaac asset payloads.
-
-## Camera choice
-
-The live detector uses `detector_endline`:
+The default output is:
 
 ```text
-eye:    (1.37, -6.10, 2.45)
-target: (1.37, 0.10, 0.80)
-focal length: 9.5 mm
-horizontal aperture offset: -3.0 mm
-capture: 512 × 288 host / 384 × 216 EVK
+unreal_conveyor_demo/Saved/Packaged/Win64/Windows/QaiConveyor.exe
 ```
 
-The eye and target share the red zone's `x=2.70 m` aisle boundary, making that
-edge project as a nearly vertical line into the horizon instead of a widening
-perspective wedge. This reduces false early RED calls caused by distant fork
-tips covering a diagonal patch of red floor. A shifted sensor window retains
-the complete forklift, west rack, both workers, and conveyor. The low pose
-still preserves a conventional side profile of the cab, wheels, mast, forks,
-and load.
+### Provision and launch a development package
 
-A true orthographic isometric camera was evaluated from
-`(-7.0, -7.0, 7.8)` using a 140 × 78.75 aperture. The raw three-way prompt
-scored 7/9 on isometric versus 4/9 on endline: isometric solved RED 3/3 but
-both cameras solved AMBER only 1/3. With conditional visual questions,
-endline AMBER and RED each scored 5/5, while isometric AMBER scored 0/5.
-Therefore `detector_endline` remains the live default and
-`detector_isometric` remains an explicit benchmark camera.
-
-The stack light casts a strong colored glow onto nearby geometry. The prompt
-explicitly says that its color is prior model output rather than hazard
-evidence. Each response records
-`stack_light_signal_at_capture` and `possible_stack_light_color_bias` so the
-demo can expose a feedback-bias warning without hiding the physical indicator.
-Active-forklift selection halos remain hidden from detector frames because
-they are operator UI rather than physical scene lighting.
-
-One camera is sufficient for this bounded demo because the one route and the
-complete zone are visible. A production installation should use additional
-coverage where racks, loads, or other vehicles can occlude a forklift.
-
-## Prerequisites
-
-- Windows with Isaac Sim 6.0.1 at
-  `C:\NVIDIA\isaac-sim-standalone-6.0.1`;
-- Python 3 from PowerShell;
-- an Xbox-compatible controller;
-- a CUDA host for BF16 iteration; and
-- access to the IQ-9075 EVK for final inference.
-
-Run NVIDIA setup once:
+The provisioner validates the hash-pinned payload, installs or reuses the
+SpeedV1 host model and llama.cpp runtime, writes `runtime.json`, optionally
+deploys GenieX to the EVK, and launches the game.
 
 ```powershell
-& "C:\NVIDIA\isaac-sim-standalone-6.0.1\post_install.bat"
-& "C:\NVIDIA\isaac-sim-standalone-6.0.1\isaac-sim.compatibility_check.bat"
+python .\unreal_conveyor_demo\Provisioner\qai_conveyor_setup.py ensure `
+  --app-dir .\unreal_conveyor_demo\Saved\Packaged\Win64\Windows `
+  --payload-root .\unreal_conveyor_demo\Provisioner\Payload `
+  --evk-host 192.168.1.158 `
+  --require-evk
+
+python .\unreal_conveyor_demo\Provisioner\qai_conveyor_setup.py launch `
+  --app-dir .\unreal_conveyor_demo\Saved\Packaged\Win64\Windows `
+  --payload-root .\unreal_conveyor_demo\Provisioner\Payload
 ```
 
-## 1. Start the host Reason2 server
+Normal `launch` reuses the configured EVK endpoint and does not scan or
+redeploy it. Run `ensure` when the EVK installation needs repair.
 
-Use the RTX host for fast scene and prompt iteration:
+For host-only development under WSL, the repository launcher starts the
+release-specific GPU endpoint:
 
 ```bash
-cd /mnt/c/path/to/qai-physics-reasoning
-bash scripts/start_host_cosmos_reason2_server.sh
+./scripts/start_host_cosmos_reason2_server.sh
 ```
 
-The endpoint is:
+Verify the endpoints before testing:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:18084/v1/models
+Invoke-RestMethod http://192.168.1.158:18183/v1/models
+```
+
+The host response must contain `Cosmos-Reason2-2B-Parcel-Speed-v1`; the EVK
+response must contain `local/cosmos-reason2-2b`.
+
+### Runtime configuration and overrides
+
+The provisioner writes:
 
 ```text
-http://127.0.0.1:18080
-Cosmos-Reason2-2B-BF16.gguf
+%LOCALAPPDATA%/QaiConveyorDemo/runtime.json
 ```
 
-Verify it:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:18080/health
-```
-
-The observed host loop was approximately 0.30–0.43 seconds per model request.
-Only one host Reason2 server is required. Isaac Sim accounts for the rest of
-the large GPU-memory allocation; do not start a second llama server.
-
-## 2. Start Isaac Sim and create the scene
-
-```powershell
-.\integrations\isaac_sim_mcp\launch_isaac_sim_poc.ps1
-
-python .\integrations\isaac_sim_mcp\server.py --check-isaac
-
-python .\integrations\isaac_sim_mcp\server.py `
-  --tool isaac_create_conveyor_safety_scene `
-  --arguments '{"new_stage":true,"start_playing":false}'
-
-python .\integrations\isaac_sim_mcp\server.py `
-  --tool isaac_enable_conveyor_safety `
-  --arguments '{}'
-```
-
-Keep port 8226 bound to localhost. The Isaac Python bridge must not be exposed
-to another network.
-
-The scene starts paused. Pressing **Play** starts rigid-parcel belt physics,
-collision-aware worker patrols, and inference. **Pause** or **Stop** prevents
-new captures after the current request finishes. Capture uses
-`pause_timeline=False`, so it does not silently cancel Play or undo a user
-Pause.
-
-## 3. Select the inference backend
-
-The current inference backend is persisted in:
+Its normal defaults are host inference enabled, host port 18084, EVK port
+18183, and 448 × 256 capture for both backends. Useful one-run overrides are:
 
 ```text
-artifacts/isaac_sim_conveyor_safety/inference_backend.txt
+-Backend=host|evk
+-HostServer=http://127.0.0.1:18084
+-HostModel=Cosmos-Reason2-2B-Parcel-Speed-v1
+-EvkServer=http://192.168.1.158:18183
+-EvkModel=local/cosmos-reason2-2b
+-NoInference
 ```
 
-For host iteration:
+Use capture-size and prompt overrides only for explicit experiments. Changing
+them breaks the frozen production input contract.
 
-```powershell
-Set-Content `
-  .\artifacts\isaac_sim_conveyor_safety\inference_backend.txt `
-  host
-```
-
-For the final EVK demo:
-
-```powershell
-Set-Content `
-  .\artifacts\isaac_sim_conveyor_safety\inference_backend.txt `
-  evk
-```
-
-The easier live-demo path is to press **Xbox X** or click the **Inference
-target** button in the Reason2 debug panel. The active rolling runner is
-replaced, while Isaac Sim remains in Play, and the next request uses the newly
-selected HOST or EVK endpoint. The choice is written to the file above and is
-restored on the next extension startup.
-
-Hot-reload the extension only when changing the file manually:
-
-```powershell
-python .\integrations\isaac_sim_mcp\server.py `
-  --tool isaac_enable_conveyor_safety `
-  --arguments '{}'
-```
-
-Backend-specific environment variables configure both sides of the toggle:
-
-```powershell
-$env:QAI_CONVEYOR_HOST_SERVER_URL = "http://127.0.0.1:18080"
-$env:QAI_CONVEYOR_HOST_MODEL = "Cosmos-Reason2-2B-BF16.gguf"
-$env:QAI_CONVEYOR_EVK_SERVER_URL = "http://127.0.0.1:18181"
-$env:QAI_CONVEYOR_EVK_MODEL = "local/cosmos-reason2-2b:Q4_0"
-```
-
-The original `QAI_CONVEYOR_SERVER_URL` and `QAI_CONVEYOR_MODEL` variables
-still override the backend selected at extension startup.
-
-## 4. Drive with Xbox
+## Controls and HUD
 
 | Input | Action |
 |---|---|
-| Left stick up/down | Forward/reverse |
-| Left stick left/right | Steer |
-| LB/RB | Select the previous/next forklift |
-| D-pad up/down | Raise/lower forks |
-| Right stick | Orbit the presentation camera around the selected forklift |
-| View button | Cycle presentation distance: 5.5 m, 10.0 m, 15.0 m |
-| X | Toggle live Reason2 inference between host GPU and EVK |
-| Y | Reset the selected forklift's loose carton onto its forks |
-| W/S | Keyboard throttle fallback |
-| A/D | Keyboard steering fallback |
-| I/K | Keyboard fork up/down fallback |
-| R | Keyboard cargo-reset fallback |
+| WASD or arrows | Drive and steer |
+| Xbox RT/LT | Forward/reverse |
+| Xbox left stick | Steer |
+| Q/E or D-pad up/down | Raise/lower forks |
+| Space or Xbox A | Brake |
+| X | Reset the scene |
+| Mouse or right stick | Orbit camera |
+| Mouse wheel or View | Zoom/cycle view preset |
+| B or Start | Switch host GPU / EVK NPU |
+| I | Toggle inference |
+| F6 | Toggle Lumen |
+| F7 | Toggle runtime ray tracing |
+| F8 | Toggle collision diagnostics |
+| F9 | Toggle the red sensor-view projection |
+| F11 or Alt+Enter | Toggle fullscreen |
 
-The selected forklift has a colored presentation halo. LB/RB and the Q/E
-keyboard fallback switch between the two opposing vehicles. The panel reports
-requested and acceleration-limited speed plus the active fork height.
+The always-visible status block clearly labels `HOST GPU` or `EVK NPU`, the
+model identity, busy state, and latency. The current inference image and model
+answer are aligned at the lower left. UI backgrounds are translucent, while
+text and the preview image remain opaque.
 
-The debug panel reports that the conveyor and rack hard colliders are active.
-The earlier software look-ahead brake is disabled, so it cannot zero throttle
-before contact. The forklift can still enter the one-metre warning zone and
-produce RED, while the simple PhysX proxy boxes prevent penetration. Worker
-asset colliders are disabled; the damped scripted push and capsule obstacle
-resolver keep workers movable without letting them enter the conveyor, rack,
-walls, floor edge, or loose rigid carton.
+The controls are an independent drawer. Any user input retracts it off-screen;
+after ten idle seconds it eases back into view to help an unattended viewer
+without covering the active demonstration.
 
-Drive a forklift toward the conveyor:
+## Model training and measured result
 
-1. stationary and clear produces **GREEN**;
-2. movement in any direction while outside the zone produces **AMBER**; and
-3. crossing the marked boundary produces **RED**.
+SpeedV1 was trained from the synchronized v22 Unreal sensor corpus:
 
-A stationary forklift just outside the red zone remains GREEN. Amber is based
-only on forklift motion, not direction or a fixed outer distance band.
+- 3,000 balanced training images: 1,000 GREEN, 1,000 AMBER, and 1,000 RED;
+- matched scene triplets that change support geometry while preserving parcel
+  identity, camera, lighting, and distractors;
+- substantial safe and unsafe parcel yaw variation, including boxes displaced
+  by fork contact;
+- AMBER examples covering horizontal overhang, mild tilt, and active tipping
+  on both sides of the lane; and
+- the exact production camera, 448 × 256 input, user-only prompt, and one-token
+  completion.
 
-## 5. Read the Omniverse debug widget
+This training target is what makes the one-token optimization reliable: the
+model learned to place the correct class token at the top of its next-token
+logits instead of learning to compose a long answer whose fields happen to
+contain the same decision.
 
-Open **Window → Reason2 Conveyor Safety**. The dockable panel shows:
+The adapter completed one epoch with training loss 0.0275541. Frozen host
+gates passed 180/180 validation and 90/90 independent test images, with perfect
+per-class recall. The released Q8 host conversion retained those gates and is
+smaller than BF16.
 
-- controller connection, active forklift, throttle, and steering;
-- model stack-light state and validation-only clearance;
-- backend, model, phase, request ID, and live inference timer;
-- previous and current rolling input images;
-- the exact prompt sent for the current request;
-- raw model output;
-- last inference time; and
-- the current applied stack-light status.
+The final full-DeepStack CL512/W8 QAIRT bundle passed:
 
-The panel reads the atomically updated file:
+| Gate | Result |
+|---|---:|
+| Host validation | 180/180 |
+| Host independent test | 90/90 |
+| EVK direct-image gate | 90/90 |
+| EVK sustained soak | 360/360 |
+| Packaged EVK in-scene smoke | 9/9 |
+| Packaged host in-scene smoke | 9/9 |
 
-```text
-artifacts/isaac_sim_conveyor_safety/live_status.json
-```
+Representative warm performance on the accepted artifacts:
 
-The tower is still model-driven. Ground truth appears only as a validation row.
+| Backend | Measured latency |
+|---|---:|
+| Host Q8 direct model | about 66.7 ms mean |
+| Packaged host client | about 113 ms client-observed mean |
+| EVK GenieX direct-image test | 685.4 ms mean, 694.0 ms p95 |
+| EVK 360-request soak | 687.3 ms mean, 691.0 ms p95 |
 
-## 6. Rolling inference behavior
+The preceding one-token section compares these figures with the earlier JSON
+paths and separates measured results from explanatory estimates.
 
-The runner keeps exactly one model request in flight:
+The promoted EVK service is `qai-conveyor-geniex.service`. It runs one resident
+GenieX v0.3.17 QAIRT worker on port 18183 and accepts the embedded PNG directly.
+The former media bridge, file polling, forced connection close, and active
+legacy Genie deployment were removed after the accuracy, soak, and packaged
+client gates passed. One labelled rollback remains outside the active payload.
 
-1. capture the newest end-line frame;
-2. add it to a two-frame rolling window;
-3. send the chronological rolling images and the short visual policy;
-4. independently derive overlap and visible motion for scoring, and issue a
-   conditional RGB-only RED or AMBER question only when warranted;
-5. apply the model response and read post-application state in one Isaac
-   call; and
-6. immediately capture the next frame.
+## Resource and stability work
 
-The detector keeps one render product, RGB annotator, and tight-bounding-box
-annotator attached across frames. Semantic labels are applied only to visible
-forklift geometry. Per-mesh boxes prevent an empty corner of a large union box
-from producing early red overlap, while the union center tracks velocity. The
-render resources are replaced only when the stage, camera, or resolution
-changes. Between captures, the persistent render product's Hydra texture has
-updates disabled; it is re-enabled only around the single Replicator step.
-This preserves warm render resources without paying for a second continuous
-RTX view. Repeated model signals update inference metadata without rewriting
-lens colors or light attributes. The widget similarly changes an image's
-`source_url` only when that input path changes.
+The current client includes six deliberate runtime savings:
 
-The two most recent source frames are retained in `input_image_paths` and shown
-in the widget. The live status file keeps only the most recent 20 responses,
-while run artifacts preserve the complete evidence when a bounded run exits.
+1. demand-driven sensor capture stops while inference is busy;
+2. settled stack lights do no per-frame render-state work, and 18 permanently
+   dark spotlights were removed;
+3. tiny non-contributing geometry is excluded from the ray-tracing scene;
+4. repeated static meshes use hierarchical instancing with clustered frustum
+   and 30–45 m distance culling;
+5. worker decisions run at 30 Hz and safety evaluation at 15 Hz rather than on
+   every 120 Hz physics step, while skeletal poses tick only when rendered; and
+6. non-Ultra tiers use coarser fog grids, HZB fog culling, and smaller local
+   shadow budgets.
 
-Artifacts are written below:
+On the RTX path, animated workers and drivers are rasterized but excluded from
+the hardware ray-tracing acceleration structure. Hardware Lumen still traces
+the static warehouse. D3D12 asynchronous compute is disabled and the first RT
+material pipeline compiles synchronously to avoid the observed RTX 5090
+multi-queue timing crash without disabling Lumen or ray tracing.
 
-```text
-artifacts/isaac_sim_conveyor_safety/frames/
-artifacts/isaac_sim_conveyor_safety/runs/<run-id>/
-artifacts/isaac_sim_conveyor_safety/live_status.json
-artifacts/isaac_sim_conveyor_safety/auto_inference/reason2_runner.log
-artifacts/isaac_sim_conveyor_safety/auto_inference/evk_tunnel.log
-```
+When GPU saturation slows presentation frames, Chaos still advances with
+bounded substeps. The forklift also has startup damping, suspension damping,
+idle driveline drag, and a supported-body vertical stabilizer so rendering
+load does not turn a small contact error into a prolonged bounce.
 
-## 7. Run on the IQ-9075 EVK
+## Verification and distribution
 
-Start the persistent GenieX service:
-
-```powershell
-scp .\scripts\start_evk_geniex_isaac_service.sh `
-  ubuntu@192.168.1.158:/tmp/start_evk_geniex_isaac_service.sh
-
-ssh ubuntu@192.168.1.158 `
-  "bash /tmp/start_evk_geniex_isaac_service.sh"
-```
-
-The extension opens the localhost tunnel on Play. For manual inspection:
-
-```powershell
-ssh -N -L 18181:127.0.0.1:18181 ubuntu@192.168.1.158
-Invoke-RestMethod http://127.0.0.1:18181/v1/models
-```
-
-The EVK contract is:
-
-```text
-model: local/cosmos-reason2-2b:Q4_0
-image: 384 × 216
-enable_think: false
-output: closed GREEN / AMBER / RED JSON grammar
-detector cadence: at most 1 new frame per second
-request timeout: 15 seconds
-service recycle: after every 35 completed requests
-```
-
-The host runner captures and sends 512 × 288 directly. The EVK runner captures
-and sends 384 × 216 directly, avoiding the earlier 768 × 432 render followed
-by a CPU resize. Rolling-frame data URLs are cached by path, modification time,
-and size, so the previous image is not reread and base64-encoded for the next
-two-frame request. EVK mode also caps new detector renders at 1 FPS. It still
-submits immediately after the previous response when that response already
-takes a second or longer; the cap only delays faster cycles. The presentation
-viewport and simulation physics continue at their independent rates.
-
-The current EVK software image has a known long-soak failure: after roughly
-54 or more continuous vision requests, a request can remain outstanding and
-the next process reports `ggml-hex: dspqueue_read failed: 0x0000002e`. That
-state requires an EVK reboot. The live extension therefore limits each EVK
-runner to 35 responses, restarts GenieX after the runner exits, waits for the
-service to report ready, and then resumes rolling inference. A stalled request
-times out after 15 seconds and triggers the same recycle path rather than
-holding the demo for the previous 120-second timeout.
-
-The presentation and simulation loops are not capped to the detector cadence.
-The main, present, and rendering loops target 60 FPS while PhysX advances at
-30 Hz. Forklift targets are applied at 30 Hz, worker routes at 20 Hz, and belt
-force fields at 15 Hz with staggered phases. Identical steering, wheel, and
-lift targets are not resent. A detector render marks its zero-delta capture
-update so those three dynamic callbacks are skipped during the already
-expensive RTX frame.
-
-On the current RTX 5090 workstation, the resulting scene measured 30.1--33.5
-FPS during normal Play without detector capture, with a typical frame around
-28--31 ms. Host inference measured about 27.7 effective FPS with a 31 ms
-median because the once-per-second off-screen detector render still produces
-an occasional 90--130 ms frame. Disabling all demo-authored dynamic updates
-only reached about 37--39 FPS, confirming that the remaining steady-state cost
-is mostly PhysX, skeletal animation, and presentation rendering rather than
-Python controller code.
-
-Experimental runtime asynchronous rendering improved the local sample by only
-about 2 FPS and was left disabled because Isaac Sim documents possible
-Replicator incompatibilities. `wait_for_render=False` likewise moved the wait
-to the following app update instead of eliminating the RTX work. Fabric was
-not enabled: it avoids USD writeback, but this demo currently reads live USD
-transforms for camera follow, worker contact, collision validation, and
-semantic capture. A Fabric conversion therefore requires moving all live pose
-access to USDRT or tensor APIs as one coordinated refactor.
-
-The steady-state capture benchmark used one render step and one RTX subframe.
-All five measured frames at 768 × 432, 512 × 288, and 384 × 216 retained the
-single semantic forklift box. Median PNG size fell from 362 KB to 178 KB and
-106 KB respectively. The RTX render itself remained 0.140–0.156 s, showing
-that lower resolution reduces transfer cost but is not the primary render
-bottleneck. Host Reason2 returned GREEN in 3/3 requests at every resolution.
-Cached request preparation measured 2.0 ms, 1.3 ms, and 0.9 ms respectively,
-so asynchronous base64 transfer cannot materially improve viewport FPS.
-
-Evidence:
-
-```text
-docs/evidence/isaac_conveyor_capture_performance_r2.json
-```
-
-The earlier direction-aware compact r5 host benchmark on 2026-07-30
-produced:
-
-| State | Primary three-way prompt | Conditional visual question |
-|---|---:|---:|
-| stationary GREEN, endline | 3/3 | not invoked |
-| short-window AMBER, endline | 1/3 | A on 5/5 |
-| current RED overlap, endline | 0/3 | R on 5/5 |
-| stationary GREEN, isometric | 3/3 | not invoked |
-| short-window AMBER, isometric | 1/3 | A on 0/5 |
-| current RED overlap, isometric | 3/3 | R on 5/5 |
-
-The live endline loop logged `G; amber_confirmation=A` and applied AMBER
-with a 1.4 s projected entry, then logged
-`primary=A; red_confirmation=R` and applied RED at the first visibly touching
-pose. Conditional AMBER measured 1.353 s. The 2.234 s RED benchmark cycle
-included a deliberate teleport that rebuilt the render resource; normal
-controller driving keeps it persistent.
-
-Evidence:
-
-```text
-docs/evidence/host_conveyor_reason2_compact_projection_r5.json
-artifacts/isaac_sim_conveyor_safety/camera_evaluation_compact_projection_ablation_r2.json
-```
-
-The simplified any-motion policy was then checked with a lateral displacement
-parallel to the conveyor. Projected red-zone entry remained false, so this
-specifically tested the new meaning of AMBER rather than the earlier approach
-rule. The main three-way request returned G, the conditional motion question
-returned A, and the live loop applied AMBER in 1.329 seconds. On the same
-two-frame pair, the final binary wording returned A in 3/3 requests.
-
-Evidence:
-
-```text
-docs/evidence/host_conveyor_reason2_any_motion_r1.json
-```
-
-The compact r5 scene could not be reverified on the EVK in this session:
-`192.168.1.158` answered ICMP, but SSH and model-service ports 22, 8080, and
-18181 were unavailable. The checked-in backend override therefore remains
-`host` so pressing Play starts a working demo. Switch it to `evk`, restart the
-GenieX service, and hot-reload the extension when those ports recover.
-
-Earlier direction-aware focused r4 EVK results on 2026-07-30:
-
-| State | Primary | Applied | Latency |
-|---|---|---|---:|
-| identical GREEN pair | AMBER | GREEN after motion gate | 3.472 s cold |
-| AMBER, projected entry in 0.9 s | AMBER | AMBER | 0.780 s |
-| RED, present overlap | RED | RED | 0.797 s |
-
-The Play-controlled EVK loop also verified both sides of the AMBER gate:
-static A was applied as GREEN in a 1.335 s cycle, while a 23.1 px/s approach
-with projected entry in 1.7 s was applied as AMBER in a 1.400 s cycle.
-
-Evidence:
-
-```text
-docs/evidence/iq9075_conveyor_reason2_focused_detector_r4.json
-```
-
-## EVK concurrency result
-
-Two valid 384 × 216 requests were started simultaneously:
-
-```text
-request 1: 1.393 s
-request 2: 2.738 s
-total wall time: 2.740 s
-```
-
-The service accepted both connections but serialized model execution. Running
-parallel clients therefore doubles the queued request’s latency without
-increasing throughput. The demo intentionally uses one in-flight request and
-submits the newest rolling window as soon as the prior response returns.
-
-Evidence:
-
-```text
-docs/evidence/iq9075_conveyor_reason2_concurrency_r1.json
-```
-
-## Deterministic inspection
-
-Place a forklift without gamepad input:
+Run the source contract tests:
 
 ```powershell
-python .\integrations\isaac_sim_mcp\server.py `
-  --tool isaac_set_conveyor_safety_forklift_pose `
-  --arguments '{"index":1,"x":-4.8,"y":-3.5,"yaw_degrees":90.0}'
+python -m unittest tests.test_unreal_reason2_contract
+Push-Location .\unreal_conveyor_demo\Provisioner
+try {
+  python -m unittest discover -s tests
+} finally {
+  Pop-Location
+}
 ```
 
-Inspect validation and model state:
+Run the packaged nine-case inference gate against either backend:
 
 ```powershell
-python .\integrations\isaac_sim_mcp\server.py `
-  --tool isaac_get_conveyor_safety_state `
-  --arguments '{}'
+$client = '.\unreal_conveyor_demo\Saved\Packaged\Win64\Windows\QaiConveyor.exe'
+
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\unreal_conveyor_demo\Scripts\smoke_packaged_speed_v1.ps1 `
+  -ClientExecutable $client -Backend host
+
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\unreal_conveyor_demo\Scripts\smoke_packaged_speed_v1.ps1 `
+  -ClientExecutable $client -Backend evk
 ```
 
-Pose tools are useful for GREEN and RED placement. Amber requires consecutive
-frames with visible forklift motion in any direction; a static near-zone pose
-is intentionally not Amber.
+The smoke script requires nine correct classifications, a clean automatic
+exit, and no new Unreal crash report. It also restores the previous user window
+settings.
 
-## Safety interpretation
+For another Windows computer, distribute the complete release rather than
+only `QaiConveyor.exe`: the staged `Game`, hash-pinned `Payload`, and setup
+launcher belong together. The setup launcher installs the correct model and
+runtime, writes the local endpoint configuration, discovers or provisions the
+EVK, and creates a redacted support bundle if setup fails.
 
-- Workers are ignored by policy and excluded from vehicle-scale tracking.
-- Visible-geometry semantic mesh boxes are primary; RGB vehicle recovery is
-  used only for a missing forklift.
-- The physical tower is outside the selected endline detector frame but
-  remains visible in the presentation and isometric views; selection halos do
-  not enter detector captures.
-- Model responses are grammar-constrained. Camera-space overlap can trigger a
-  conditional visual question but never directly sets the tower.
-- Simulator clearance is evaluation-only.
-- A single wide camera is acceptable for this room-scale demonstration, not a
-  substitute for production multi-camera coverage.
-- Keep a conventional independent hard interlock for real machinery.
+Diagnostics and logs live below:
+
+```text
+%LOCALAPPDATA%/QaiConveyorDemo/Logs/
+%LOCALAPPDATA%/QaiConveyorDemo/Support/
+%LOCALAPPDATA%/QaiConveyor/Saved/Crashes/
+```
+
+## Short failure history
+
+- The Isaac live Python loop made capture, physics, and distribution too
+  coupled; the production client moved to native Unreal while retaining the
+  Omniverse assets.
+- Two-frame and secondary-prompt policies were slower and less stable than the
+  visible support relation; production now uses one image and one token.
+- Broad or two-lane sensor views encouraged context errors; the camera and
+  scene were rebuilt around one lane and synchronized training pixels.
+- Early datasets had crop and parcel-interpenetration defects; synchronized
+  v22 replaced them.
+- Legacy Genie upload and polling added latency and failure modes; GenieX now
+  receives the PNG directly and keeps one QAIRT graph resident.
+- Skeletal RT geometry and asynchronous D3D12 queues correlated with client
+  crashes; those paths were isolated while hardware Lumen remained enabled.
+
+## Evidence
+
+The principal release records are:
+
+- [`geniex_speed_v1_direct_stream_test90_20260819.json`](evidence/results/geniex_speed_v1_direct_stream_test90_20260819.json)
+- [`geniex_speed_v1_direct_stream_soak360_20260819.json`](evidence/results/geniex_speed_v1_direct_stream_soak360_20260819.json)
+- [`packaged_speed_v1_final_model_smoke9_20260819.json`](evidence/results/packaged_speed_v1_final_model_smoke9_20260819.json)
+- [`packaged_speed_v1_production_defaults_smoke9_20260819.json`](evidence/results/packaged_speed_v1_production_defaults_smoke9_20260819.json)
+- [`host_q8_speed_v1_deployment_smoke9_20260819.json`](evidence/results/host_q8_speed_v1_deployment_smoke9_20260819.json)
+- [`packaged_host_speed_v1_deployment_defaults_smoke9_20260819.json`](evidence/results/packaged_host_speed_v1_deployment_defaults_smoke9_20260819.json)
+- [`host_bf16_gguf_evk_single_lane_v22_v1_validation180_20260818.json`](evidence/results/host_bf16_gguf_evk_single_lane_v22_v1_validation180_20260818.json)
+- [`host_bf16_speed_v1_validation180_20260819.json`](evidence/results/host_bf16_speed_v1_validation180_20260819.json)
+- [`host_q8_observable_hard_v1_reverified_test90_20260816.json`](evidence/results/host_q8_observable_hard_v1_reverified_test90_20260816.json)
+- [`host_q8_0_speed_v1_test90_20260819.json`](evidence/results/host_q8_0_speed_v1_test90_20260819.json)
+- [`evk_single_lane_v22_v1_candidate_validation90_20260818.json`](evidence/results/evk_single_lane_v22_v1_candidate_validation90_20260818.json)
+
+This is a demonstration and evaluation system. A production conveyor must keep
+an independent, conventional hard safety interlock; the visual model and stack
+lights are not a machinery safety certification.

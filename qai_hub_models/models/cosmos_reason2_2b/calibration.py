@@ -13,6 +13,7 @@ import torch
 
 IMAGE_SUFFIXES = (".jpeg", ".jpg", ".png", ".webp")
 PAIRED_MANIFEST_SCHEMA_VERSION = 1
+SINGLE_FRAME_DUPLICATE_MODE = "duplicate_single_frame"
 VISION_PATCH_SIZE = 16
 VISION_TEMPORAL_PATCH_SIZE = 2
 VISION_INPUT_CHANNELS = 3
@@ -121,6 +122,13 @@ def resolve_paired_frame_paths(
         raise ValueError("num_samples must be positive")
     manifest_path = manifest_path.expanduser().resolve()
     manifest = _load_manifest(manifest_path)
+    temporal_mode = manifest.get("temporal_mode", "distinct_frames")
+    if temporal_mode not in ("distinct_frames", SINGLE_FRAME_DUPLICATE_MODE):
+        raise ValueError(
+            "Paired calibration manifest temporal_mode must be "
+            "distinct_frames or duplicate_single_frame"
+        )
+    allow_duplicate_frame = temporal_mode == SINGLE_FRAME_DUPLICATE_MODE
     pairs = manifest.get("pairs")
     if not isinstance(pairs, list):
         raise ValueError("Paired calibration manifest must contain a pairs list")
@@ -181,7 +189,7 @@ def resolve_paired_frame_paths(
             ).resolve()
             for value in frames
         )
-        if frame_paths[0] == frame_paths[1]:
+        if frame_paths[0] == frame_paths[1] and not allow_duplicate_frame:
             raise ValueError(f"pairs[{index}] repeats the same frame path")
         for frame_path in frame_paths:
             if (
@@ -221,8 +229,13 @@ def resolve_paired_frame_paths(
                     f"pairs[{index}] SHA-256 mismatch for {frame_path}"
                 )
 
-        if actual_hashes[0] == actual_hashes[1]:
+        if actual_hashes[0] == actual_hashes[1] and not allow_duplicate_frame:
             raise ValueError(f"pairs[{index}] contains duplicate frame content")
+        if allow_duplicate_frame and actual_hashes[0] != actual_hashes[1]:
+            raise ValueError(
+                f"pairs[{index}] must duplicate one frame in "
+                f"{SINGLE_FRAME_DUPLICATE_MODE} mode"
+            )
         resolved_pairs.append(frame_paths)
     return resolved_pairs
 
@@ -262,11 +275,15 @@ def load_paired_frame_calibration_data(
         [Path, tuple[int, int] | None], Any
     ] = _default_frame_loader,
 ) -> list[Any]:
-    """Pack local distinct-frame pairs with inference-identical resizing."""
+    """Pack local temporal inputs with inference-identical resizing."""
     if image_height % VISION_PATCH_SIZE or image_width % VISION_PATCH_SIZE:
         raise ValueError(
             f"Image dimensions must be divisible by {VISION_PATCH_SIZE}"
         )
+    manifest = _load_manifest(manifest_path.expanduser().resolve())
+    allow_static_temporal_patch = (
+        manifest.get("temporal_mode") == SINGLE_FRAME_DUPLICATE_MODE
+    )
     frame_pairs = resolve_paired_frame_paths(manifest_path, num_samples)
     processor = processor_loader(hf_repo)
     video_processor = getattr(processor, "video_processor", None)
@@ -345,7 +362,10 @@ def load_paired_frame_calibration_data(
             VISION_PATCH_SIZE,
             VISION_PATCH_SIZE,
         )
-        if torch.equal(temporal[:, :, 0], temporal[:, :, 1]):
+        if (
+            torch.equal(temporal[:, :, 0], temporal[:, :, 1])
+            and not allow_static_temporal_patch
+        ):
             raise ValueError(
                 f"Pair {pair_index} has no temporal difference after packing"
             )

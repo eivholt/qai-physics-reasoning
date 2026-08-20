@@ -585,6 +585,11 @@ Follow the complete
 to launch Isaac Sim, reproduce both camera-only scenarios, inspect the exact
 prompts and model inputs, and build the GIF/MP4 clips.
 
+The companion
+[Unreal conveyor Reason2 tutorial](isaac_sim_conveyor_reason2_tutorial.md)
+documents the interactive port's final camera, one-token prompt contract,
+transport, rendering, physics, release gates, and concise failure history.
+
 ## Expected result and operating limits
 
 The recommended full-NPU encoded-video profile is:
@@ -619,3 +624,22 @@ and `visual_pos_masks` issue, vision-bias repair, precision sweeps, CPU/NPU
 placement study, native-video leak fixes, benchmark evolution, and failure
 guide—continue with the
 [engineering appendix](https://github.com/eivholt/qai-physics-reasoning/blob/main/docs/engineering_appendix.md).
+
+## Presentation acceptance checkpoint (2026-08-16)
+
+The task-specific parcel release was reverified on the IQ-9075 with one
+resident QAIRT worker, direct lossless PNG input, and the 13-token generated
+completion. It reproduced 83.33% overall and 100/60/90% GREEN/AMBER/RED recall
+with about 2.18 seconds in QAIRT execution. A fresh host replay reached 91.11%
+and 100/90/83.33% recall; one RED case moved to AMBER relative to the frozen
+92.22% report.
+
+The Unreal runtime also contained a late sensor-contract regression: host and
+EVK defaulted to different resolutions. Both now use the accepted 512×288
+lossless PNG geometry, protected by a regression test. The editor target
+builds, but final interactive promotion remains blocked by intermittent UE 5.8
+GPU-profiler and DerivedDataCache timing assertions during startup. Do not
+rebuild the installer or install the reboot service until a 512×288 D3D12
+interactive soak completes. Commands, hashes, metrics, crash signatures, and
+the remaining gates are in
+[`reason2_presentation_acceptance_checkpoint_20260816.md`](evidence/reason2_presentation_acceptance_checkpoint_20260816.md).

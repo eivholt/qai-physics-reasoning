@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from qai_conveyor_setup import cli, evk, host
+import windows_setup
 from qai_conveyor_setup.host import write_runtime_config
 from qai_conveyor_setup.logging_support import InstallLogger
 from qai_conveyor_setup.payload import Payload
@@ -144,17 +145,40 @@ class ProvisionerTests(unittest.TestCase):
 
     def test_runtime_config_is_atomic_and_defaults_to_host(self) -> None:
         logger = InstallLogger("test")
-        path = write_runtime_config("http://127.0.0.1:18080", "http://192.168.1.158:18181", logger)
+        path = write_runtime_config("http://127.0.0.1:18084", "http://192.168.1.158:18183", logger)
         config = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(config["backend"], "host")
-        self.assertEqual(config["host_model"], "Cosmos-Reason2-2B-BF16.gguf")
-        self.assertEqual(config["evk_server_url"], "http://192.168.1.158:18181")
+        self.assertEqual(config["host_model"], "Cosmos-Reason2-2B-Parcel-Speed-v1")
+        self.assertEqual(config["evk_server_url"], "http://192.168.1.158:18183")
+        self.assertNotIn("evk_media_bridge_url", config)
         self.assertFalse(path.with_suffix(".json.tmp").exists())
 
+    def test_runtime_config_uses_direct_geniex_endpoint(self) -> None:
+        path = write_runtime_config(
+            "http://127.0.0.1:18084",
+            "http://192.168.1.158:18183",
+            InstallLogger("test"),
+        )
+        config = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(config["evk_server_url"], "http://192.168.1.158:18183")
+        self.assertNotIn("evk_media_bridge_url", config)
+
     def test_host_uses_omniverse_model_and_vision_token_budget(self) -> None:
-        self.assertEqual(host.HOST_MODEL_NAME, "Cosmos-Reason2-2B-BF16.gguf")
-        self.assertEqual(host.PROJECTOR_NAME, "mmproj-Cosmos-Reason2-2B-F16.gguf")
-        self.assertEqual(host.HOST_IMAGE_TOKENS, 1024)
+        self.assertEqual(
+            host.HOST_MODEL_NAME,
+            "Cosmos-Reason2-2B-Parcel-Speed-v1-Q8_0.gguf",
+        )
+        self.assertEqual(
+            host.PROJECTOR_NAME,
+            "mmproj-Cosmos-Reason2-2B-Parcel-Speed-v1-F16.gguf",
+        )
+        self.assertEqual(host.HOST_MODEL_ID, "Cosmos-Reason2-2B-Parcel-Speed-v1")
+        self.assertEqual(host.HOST_PORT, 18084)
+        self.assertEqual(host.HOST_CONTEXT_SIZE, 512)
+        self.assertEqual(host.HOST_IMAGE_TOKENS, 112)
+        source = Path(host.__file__).read_text(encoding="utf-8")
+        self.assertIn('"--flash-attn",\n        "on",', source)
+        self.assertNotIn('"--no-warmup",', source)
 
     def test_explicit_evk_is_prioritized_and_deduplicated(self) -> None:
         logger = InstallLogger("test")
@@ -175,15 +199,6 @@ class ProvisionerTests(unittest.TestCase):
         ):
             self.assertNotIn(marker, model_search_paths(marker.name))
 
-    def test_evk_service_uses_scoped_pid_file_not_process_name_kill(self) -> None:
-        connection = mock.Mock()
-        connection.host = "192.168.1.158"
-        connection.run.side_effect = ["", '{"data":[{"id":"local/cosmos-reason2-2b"}]}']
-        evk._start_lan_service(connection, "/opt/geniex", "/opt/data", InstallLogger("test"))
-        launch_command = connection.run.call_args_list[0].args[0]
-        self.assertIn("geniex-conveyor.pid", launch_command)
-        self.assertNotIn("pkill", launch_command)
-
     def test_evk_model_import_is_local_idempotent_and_atomic(self) -> None:
         command = evk._model_import_command(
             "/opt/qai release/geniex",
@@ -199,15 +214,44 @@ class ProvisionerTests(unittest.TestCase):
         self.assertNotIn("http://", command)
         self.assertNotIn("https://", command)
 
-    def test_ready_explicit_evk_skips_subnet_discovery(self) -> None:
+    def test_speed_payload_deploys_geniex_directly(self) -> None:
         payload = mock.Mock()
         payload.credentials = {}
+        payload.artifacts = {evk.EVK_SPEED_ARTIFACT_ID: {}}
+        connection = mock.Mock()
+        connection.host = "192.168.1.158"
         with (
+            mock.patch.object(evk, "discover_ssh_candidates", return_value=[connection.host]),
+            mock.patch.object(evk, "connect_evk", return_value=connection),
+            mock.patch.object(evk, "_deploy_geniex_service") as deploy,
             mock.patch.object(evk, "direct_model_ready", return_value=True),
-            mock.patch.object(evk, "discover_ssh_candidates", side_effect=AssertionError("unexpected scan")),
         ):
-            url = evk.ensure_evk(payload, InstallLogger("test"), explicit_host="192.168.1.158")
-        self.assertEqual(url, "http://192.168.1.158:18181")
+            url = evk.ensure_evk(payload, InstallLogger("test"), explicit_host=connection.host)
+        self.assertEqual(url, "http://192.168.1.158:18183")
+        deploy.assert_called_once_with(connection, payload, mock.ANY)
+        connection.close.assert_called_once()
+
+    def test_speed_geniex_unit_is_direct_cl512_and_has_qairt_htp_paths(self) -> None:
+        unit = evk._geniex_systemd_unit("/opt/geniex", "/opt/speed-data")
+        self.assertIn("GENIEX_DATADIR=/opt/speed-data", unit)
+        self.assertIn("--host 0.0.0.0:18183", unit)
+        self.assertIn("--compute npu --nctx 512 --ngl -1", unit)
+        self.assertIn("/opt/qairt/2.45.0.260326/lib/aarch64-oe-linux-gcc11.2", unit)
+        self.assertIn("ADSP_LIBRARY_PATH=/opt/qairt/2.45.0.260326/lib/hexagon-v73/unsigned", unit)
+        self.assertNotIn("media-bridge", unit)
+        self.assertNotIn("evk_qairt_http_service", unit)
+        self.assertNotIn("genie-app", unit)
+
+    def test_speed_geniex_runtime_has_one_canonical_install_path(self) -> None:
+        source = Path(evk.__file__).read_text(encoding="utf-8")
+        self.assertEqual(
+            evk.EVK_RUNTIME_DIR,
+            "/home/ubuntu/qai-conveyor/runtime/geniex-v0317-qairt245",
+        )
+        self.assertNotIn("KNOWN_GENIEX_ROOTS", source)
+        self.assertNotIn("/home/ubuntu/geniex-cosmos", source)
+        self.assertIn("runtime_root = _deploy_runtime(connection, payload, logger)", source)
+        self.assertIn("pgrep -xc geniex-grammar", source)
 
     def test_windows_runtime_uses_cpu_without_nvidia_and_when_forced(self) -> None:
         with (
@@ -240,6 +284,15 @@ class ProvisionerTests(unittest.TestCase):
         payload_root.mkdir(parents=True)
         with mock.patch.object(cli.sys, "executable", str(executable_dir / "qai-conveyor-setup.exe")):
             self.assertIn(payload_root, default_payload_candidates())
+
+    def test_double_click_setup_targets_adjacent_game_and_payload(self) -> None:
+        executable = self.root / "release" / "Reason2-Conveyor-Setup.exe"
+        with mock.patch.object(windows_setup.sys, "executable", str(executable)):
+            arguments = windows_setup.default_install_arguments()
+        self.assertEqual(arguments[0], "install")
+        self.assertIn(str(executable.parent / "Game"), arguments)
+        self.assertIn(str(executable.parent / "Payload"), arguments)
+        self.assertIn("192.168.1.158", arguments)
 
 
 if __name__ == "__main__":

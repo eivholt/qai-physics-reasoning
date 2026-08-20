@@ -21,6 +21,8 @@ public:
     virtual void Tick(float DeltaSeconds) override;
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
+    float GetUserInputIdleSeconds() const { return UserInputIdleSeconds; }
+
 private:
     UPROPERTY()
     TObjectPtr<USceneComponent> Root;
@@ -40,6 +42,7 @@ private:
     float CameraYawRateInput = 0.0f;
     float CameraPitchRateInput = 0.0f;
     float KeyboardSteerFiltered = 0.0f;
+    float UserInputIdleSeconds = 10.0f;
     float OrbitYaw = 118.0f;
     float OrbitPitch = 68.0f;
     bool bBrake = false;
@@ -73,18 +76,18 @@ private:
     void InputCameraZoom(float Value);
     void BrakePressed();
     void BrakeReleased();
-    void CycleForklift();
-    void PreviousForklift();
-    void NextForklift();
-    void SelectForklift1();
-    void SelectForklift2();
     void ResetScene();
     void CycleView();
     void ToggleBackend();
     void ToggleInference();
+    void ToggleLumen();
+    void ToggleRayTracing();
     void ToggleCollisionDebug();
+    void ToggleSensorViewOverlay();
+    void ToggleFullscreen();
     void QuitDemo();
-    void AnyInputPressed();
+    void AnyInputPressed(FKey PressedKey);
+    void MarkUserActivity();
     bool HandleIntroInput();
     void BeginIntroCameraTransition();
     void UpdateIntroCamera(float DeltaSeconds);

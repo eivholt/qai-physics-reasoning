@@ -1,0 +1,4001 @@
+{
+  "count": 180,
+  "accuracy": 1.0,
+  "per_class_recall": {
+    "SUPPORTED": 1.0,
+    "OVER_EDGE": 1.0,
+    "FALLEN": 1.0
+  },
+  "confusion_matrix": {
+    "SUPPORTED": {
+      "SUPPORTED": 60,
+      "OVER_EDGE": 0,
+      "FALLEN": 0,
+      "INVALID": 0
+    },
+    "OVER_EDGE": {
+      "SUPPORTED": 0,
+      "OVER_EDGE": 60,
+      "FALLEN": 0,
+      "INVALID": 0
+    },
+    "FALLEN": {
+      "SUPPORTED": 0,
+      "OVER_EDGE": 0,
+      "FALLEN": 60,
+      "INVALID": 0
+    }
+  },
+  "endpoint": "http://127.0.0.1:18082",
+  "model": "Cosmos-Reason2-2B-Parcel-FT",
+  "dataset": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1",
+  "split": "validation",
+  "prompt_profile": "evk-single-lane-v1",
+  "prompt": "Inspect cardboard shipping cartons around the central silver straight roller-conveyor lane in this single image. Ignore the forklift and its cargo, wooden pallets, people, tables, shelves, signs, and the separate conveyor at the right edge.\nFirst inspect the gray floor immediately beside the central lane. fallen_test is YES if one or more cardboard cartons are visibly resting on that floor below roller-top height; a floor carton is fallen, never merely unstable. Otherwise fallen_test is NO.\nThen inspect cartons still touching the central lane's rollers. unstable_test is YES if any such carton has roughly one third or more of its footprint beyond a blue rail or is visibly tipping off; otherwise it is NO. Do not count a fallen floor carton in unstable_test.\nReturn exactly one JSON object beginning with fallen_test and unstable_test. Both values must be YES or NO. No prose or markdown.",
+  "image_width": 512,
+  "image_height": 288,
+  "mean_server_ms": null,
+  "median_server_ms": null,
+  "rows": [
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000001.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 556.9319739988714,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000002.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 308.25446100061527,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000003.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 302.5263189992984,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000004.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 305.20718499974464,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000005.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 309.59552400054235,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000006.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 308.06547999964096,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000007.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 312.11075600003824,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000008.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 316.98957400112704,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000009.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 296.5369710000232,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000010.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 301.2371870008792,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000011.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 304.06099399988307,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000012.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 299.7234779995779,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000013.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 297.5368649986194,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000014.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 305.1027889996476,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000015.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 304.61125600049854,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000016.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 298.94099199918855,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000017.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 303.03672700028983,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000018.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 304.59271399922727,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000019.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 297.39265399985015,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000020.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 300.0345019991073,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000021.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 301.76054799994745,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000022.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 299.4378860003053,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000023.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 307.9268269993918,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000024.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 321.9490030005545,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000025.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 323.0507119988033,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000026.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 327.09670499934873,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000027.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 329.2150760007644,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000028.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 323.0225970000902,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000029.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 321.71383400054765,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000030.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 327.61326899890264,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000031.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 325.65969099960057,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000032.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 328.04419900094217,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000033.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 328.8597250011662,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000034.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 320.8777430008922,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000035.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 332.63274100136186,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000036.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 323.43867300005513,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000037.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 328.297175001353,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000038.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 324.35718899978383,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000039.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 325.3913759999705,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000040.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 324.7332530008862,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000041.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 329.67692500096746,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000042.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 325.0983779998933,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000043.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 323.0979310010298,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000044.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 324.4243909994111,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000045.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 331.0914950016013,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000046.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 325.78179700067267,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000047.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 322.9826820006565,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000048.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 322.4668470011238,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000049.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 327.0471619998716,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000050.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 326.2271719995624,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000051.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 322.610542001712,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000052.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 296.4505219988496,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000053.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 298.07664600048156,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000054.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 297.88067499976023,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000055.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 300.22164700130816,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000056.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 297.91905199999746,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000057.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 295.6107730005897,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000058.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 299.0072690008674,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000059.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 298.3248860000458,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/G/G-s68201-000060.png",
+      "code": "G",
+      "label": "SUPPORTED",
+      "truth": "SUPPORTED",
+      "prediction": "SUPPORTED",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 309.4853400016291,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000001.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 301.7719540002872,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000002.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 301.39475999931165,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000003.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 297.957402000975,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000004.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 299.6130030005588,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000005.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 297.50640600104816,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000006.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 299.93963000015356,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000007.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 291.9367399990733,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000008.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 297.11985100038873,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000009.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 301.32853600116505,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000010.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 297.7002360003098,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000011.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 295.4414150008233,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000012.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 324.5928020005522,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000013.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 295.15992300002836,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000014.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 296.99693600014143,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000015.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 299.20799899991835,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000016.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 297.8611210000963,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000017.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 294.8093939994578,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000018.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 293.17711899966525,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000019.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 310.03177399907145,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000020.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 293.24412499954633,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000021.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 294.7176389989181,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000022.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 296.05818100026227,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000023.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 292.8445039997314,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000024.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 296.9451900007698,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000025.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 322.6370489992405,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000026.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 297.2449190001498,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000027.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 294.8658559998876,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000028.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 295.5763489990204,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000029.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 300.6974439995247,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000030.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 291.05193199939094,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000031.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 299.442507999629,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000032.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 304.09549599971797,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000033.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 298.75408700172557,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000034.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 297.1947949990863,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000035.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 296.7642940002406,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000036.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 297.99415599882195,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000037.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 291.710489000252,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000038.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 306.310198000574,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000039.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 301.2205150007503,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000040.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 294.1347699998005,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000041.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 295.74306900030933,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000042.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 297.45712200019625,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000043.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 299.9599219983793,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000044.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 296.3702649994957,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000045.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 302.1448079998663,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000046.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 296.80467099933594,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000047.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 294.98398400028236,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000048.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 295.67548200066085,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000049.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 297.0229950005887,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000050.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 271.63900999948964,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000051.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 302.6160200006416,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000052.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 277.79856599954655,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000053.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 275.31848900071054,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000054.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 273.57348700024886,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000055.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 267.78527600072266,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000056.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 280.33388999938325,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000057.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 275.0979790016572,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000058.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 280.10916499988525,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000059.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 271.50347099996,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/A/A-s68201-000060.png",
+      "code": "A",
+      "label": "OVER_EDGE",
+      "truth": "OVER_EDGE",
+      "prediction": "OVER_EDGE",
+      "answer": "{\"fallen_test\":\"NO\",\"unstable_test\":\"YES\"}",
+      "parsed": {
+        "fallen_test": "NO",
+        "unstable_test": "YES"
+      },
+      "wall_ms": 274.8069450008188,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000001.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 272.8546420003113,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000002.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 273.1824749989755,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000003.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 274.9817740004801,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000004.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 270.5135510004766,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000005.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 271.8679120007437,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000006.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 277.596171001278,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000007.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 276.7845180005679,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000008.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 275.41382599883946,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000009.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 275.44857599968964,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000010.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 276.8042110001261,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000011.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 272.2026060000644,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000012.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 282.89979900000617,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000013.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 279.23797899893543,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000014.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 271.02244300112943,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000015.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 271.53323799939244,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000016.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 275.3235769996536,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000017.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 274.24580000115384,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000018.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 272.0869059994584,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000019.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 278.833342001235,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000020.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 278.0680769992614,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000021.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 270.453406001252,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000022.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 277.2519000009197,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000023.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 278.4086400006345,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000024.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 270.18663799935894,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000025.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 271.3811900011933,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000026.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 279.4332960002066,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000027.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 276.2034169991239,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000028.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 274.9307879985281,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000029.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 274.82005700039736,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000030.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 274.7768420013017,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000031.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 274.78869700098585,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000032.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 273.49630199933017,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000033.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 291.2250099998346,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000034.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 272.2505000001547,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000035.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 271.6358140005468,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000036.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 276.0698210004193,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000037.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 280.326382999192,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000038.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 279.53449199958413,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000039.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 274.4297529989126,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000040.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 276.79046699995524,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000041.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 274.70311600154673,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000042.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 275.2782440002193,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000043.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 275.12414299962984,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000044.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 272.0910730004107,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000045.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 271.6963780003425,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000046.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 277.01324400004523,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000047.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 275.3182119995472,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000048.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 272.66321900060575,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000049.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 274.1962099989905,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000050.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 274.6257329999935,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000051.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 275.9343589987111,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000052.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 272.576563000257,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000053.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 274.4000259990571,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000054.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 273.9604039998085,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000055.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 274.87928200025635,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000056.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 271.3832959998399,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000057.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 277.0688539985713,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000058.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 271.2944699997024,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000059.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 270.3003569986322,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "image": "/mnt/c/Users/eivho/AppData/Local/QaiConveyor/Saved/Diagnostics/ParcelEvaluation/reason2-ft-parcel-v22-render-synchronized-validation-r1/parcel-quarter-cell-occlusion-safe/exact-v1/validation/R/R-s68201-000060.png",
+      "code": "R",
+      "label": "FALLEN",
+      "truth": "FALLEN",
+      "prediction": "FALLEN",
+      "answer": "{\"fallen_test\":\"YES\",\"unstable_test\":\"NO\"}",
+      "parsed": {
+        "fallen_test": "YES",
+        "unstable_test": "NO"
+      },
+      "wall_ms": 273.6540830010199,
+      "server_ms": null,
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 1224,
+        "total_tokens": 1238,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    }
+  ]
+}

@@ -1,8 +1,7 @@
 param(
     [string]$EvkHost = "iq9075-evk",
     [string]$EvkUser = "ubuntu",
-    [string]$GenieRoot = "/home/ubuntu/geniex-cosmos-v0317-native-video-r1",
-    [string]$GenieData = "/home/ubuntu/geniex-cosmos-v0317-data",
+    [string]$GenieRoot = "/home/ubuntu/qai-conveyor/runtime/geniex-v0317-qairt245",
     [string]$Output = "",
     [string]$IdentityFile = ""
 )
@@ -10,13 +9,13 @@ param(
 $ErrorActionPreference = "Stop"
 $project = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($Output)) {
-    $Output = Join-Path $project "Build\ReleasePayloadSource\EVK\evk-geniex-cosmos-v0317.tar.gz"
+    $Output = Join-Path $project "Build\ReleasePayloadSource\EVK\evk-geniex-runtime-v0317-qairt245.tar.gz"
 }
 $outputPath = [IO.Path]::GetFullPath($Output)
 $outputParent = Split-Path -Parent $outputPath
 New-Item -ItemType Directory -Force -Path $outputParent | Out-Null
 
-foreach ($remotePath in @($GenieRoot, $GenieData)) {
+foreach ($remotePath in @($GenieRoot)) {
     if ($remotePath -notmatch '^/home/ubuntu/[A-Za-z0-9._/-]+$' -or $remotePath.Contains('..')) {
         throw "Remote paths must be normalized children of /home/ubuntu: $remotePath"
     }
@@ -36,13 +35,13 @@ if (-not [string]::IsNullOrWhiteSpace($IdentityFile)) {
 $identifier = [guid]::NewGuid().ToString('N')
 $remoteArchive = "/home/ubuntu/qai-conveyor-release-${identifier}.tar.gz"
 $rootName = Split-Path -Leaf $GenieRoot
-$dataName = Split-Path -Leaf $GenieData
+$rootParent = $GenieRoot.Substring(0, $GenieRoot.Length - $rootName.Length).TrimEnd('/')
 
 try {
-    & ssh @sshArgs $remote "set -e; test -x '$GenieRoot/geniex-grammar'; test -d '$GenieData'; curl -sf --max-time 5 http://127.0.0.1:18181/v1/models | grep -q 'local/cosmos-reason2-2b'"
+    & ssh @sshArgs $remote "set -e; test -x '$GenieRoot/geniex-grammar'; curl -sf --max-time 5 http://127.0.0.1:18183/v1/models | grep -q 'local/cosmos-reason2-2b'"
     if ($LASTEXITCODE -ne 0) { throw "EVK runtime/model preflight failed." }
 
-    $tarCommand = "set -e; tar -czf '$remoteArchive' --transform='s,^$rootName/,geniex/,' --transform='s,^$dataName/,data/,' -C /home/ubuntu '$rootName' '$dataName'; sha256sum '$remoteArchive'; du -h '$remoteArchive'"
+    $tarCommand = "set -e; tar -czf '$remoteArchive' --transform='s,^$rootName/,geniex/,' -C '$rootParent' '$rootName'; sha256sum '$remoteArchive'; du -h '$remoteArchive'"
     & ssh @sshArgs $remote $tarCommand
     if ($LASTEXITCODE -ne 0) { throw "EVK bundle creation failed." }
 
@@ -52,8 +51,8 @@ try {
     Move-Item -Force -LiteralPath $temporary -Destination $outputPath
 
     $entries = @(& tar -tzf $outputPath)
-    if ($LASTEXITCODE -ne 0 -or -not ($entries -contains 'geniex/geniex-grammar') -or -not ($entries | Where-Object { $_ -like 'data/*' } | Select-Object -First 1)) {
-        throw "Collected EVK archive does not have the required geniex/ and data/ layout."
+    if ($LASTEXITCODE -ne 0 -or -not ($entries -contains 'geniex/geniex-grammar')) {
+        throw "Collected EVK archive does not have the required geniex/ runtime layout."
     }
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $outputPath).Hash.ToLowerInvariant()
     Write-Host "EVK release bundle: $outputPath"

@@ -124,6 +124,10 @@ def _record_calibration_provenance(
         payload["veg_paired_calibration_manifest_sha256"] = hashlib.sha256(
             paired_manifest.read_bytes()
         ).hexdigest()
+        manifest_payload = json.loads(paired_manifest.read_text(encoding="utf-8"))
+        payload["vision_calibration_temporal_mode"] = manifest_payload.get(
+            "temporal_mode", "distinct_frames"
+        )
     if fp16_last_block_activations:
         if not fp16_activation_quantizer_names:
             raise RuntimeError(

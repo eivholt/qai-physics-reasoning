@@ -1,0 +1,32 @@
+[Unit]
+Description=QAI Conveyor speed-v1 Reason2 GenieX QAIRT worker
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+UMask=0022
+WorkingDirectory=/home/ubuntu/qai-conveyor/geniex-data/cosmos-reason2-parcel-speed-v1
+ExecStartPre=/usr/bin/test -x /home/ubuntu/qai-conveyor/runtime/geniex-v0317-qairt245/geniex-grammar
+ExecStartPre=/usr/bin/test -d /home/ubuntu/qai-conveyor/geniex-data/cosmos-reason2-parcel-speed-v1
+ExecStart=/home/ubuntu/qai-conveyor/runtime/geniex-v0317-qairt245/geniex-grammar --skip-update serve --host 0.0.0.0:18183 --keepalive 3600 --compute npu --nctx 512 --ngl -1
+Restart=always
+RestartSec=5
+TimeoutStartSec=120
+TimeoutStopSec=30
+KillMode=control-group
+Environment=GENIEX_DATADIR=/home/ubuntu/qai-conveyor/geniex-data/cosmos-reason2-parcel-speed-v1
+Environment=GENIEX_PLUGIN_PATH=/home/ubuntu/qai-conveyor/runtime/geniex-v0317-qairt245
+Environment=PATH=/opt/qairt/2.45.0.260326/bin/aarch64-oe-linux-gcc11.2:/opt/qairt/2.45.0.260326/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=LD_LIBRARY_PATH=/home/ubuntu/qai-conveyor/runtime/geniex-v0317-qairt245:/home/ubuntu/qai-conveyor/runtime/geniex-v0317-qairt245/qairt:/home/ubuntu/qai-conveyor/runtime/geniex-v0317-qairt245/llama_cpp:/opt/qairt/2.45.0.260326/lib/aarch64-oe-linux-gcc11.2:/usr/lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu
+Environment=ADSP_LIBRARY_PATH=/opt/qairt/2.45.0.260326/lib/hexagon-v73/unsigned
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=qai-conveyor-geniex
+
+[Install]
+WantedBy=multi-user.target

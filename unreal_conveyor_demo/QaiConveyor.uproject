@@ -17,14 +17,14 @@
     },
     {
       "Name": "USDImporter",
-      "Enabled": true,
+      "Enabled": false,
       "TargetAllowList": [
         "Editor"
       ]
     },
     {
       "Name": "DatasmithCADImporter",
-      "Enabled": true,
+      "Enabled": false,
       "PlatformAllowList": [
         "Win64"
       ],
@@ -52,6 +52,10 @@
       "SupportedTargetPlatforms": [
         "Win64"
       ]
+    },
+    {
+      "Name": "ProceduralMeshComponent",
+      "Enabled": true
     },
     {
       "Name": "PythonScriptPlugin",

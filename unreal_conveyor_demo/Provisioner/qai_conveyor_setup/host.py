@@ -17,10 +17,12 @@ from .logging_support import InstallLogger, user_data_dir
 from .payload import Payload, model_search_paths, sha256
 
 
-HOST_MODEL_NAME = "Cosmos-Reason2-2B-BF16.gguf"
-PROJECTOR_NAME = "mmproj-Cosmos-Reason2-2B-F16.gguf"
-HOST_PORT = 18080
-HOST_IMAGE_TOKENS = 1024
+HOST_MODEL_NAME = "Cosmos-Reason2-2B-Parcel-Speed-v1-Q8_0.gguf"
+PROJECTOR_NAME = "mmproj-Cosmos-Reason2-2B-Parcel-Speed-v1-F16.gguf"
+HOST_MODEL_ID = "Cosmos-Reason2-2B-Parcel-Speed-v1"
+HOST_PORT = 18084
+HOST_CONTEXT_SIZE = 512
+HOST_IMAGE_TOKENS = 112
 
 
 def endpoint_ready(url: str, expected_model: str | None = None, timeout: float = 2.0) -> bool:
@@ -135,12 +137,12 @@ def is_cpu_runtime(executable: Path) -> bool:
 def ensure_host_models(payload: Payload, logger: InstallLogger) -> tuple[Path, Path]:
     model_dir = user_data_dir() / "Models"
     model = payload.ensure_file(
-        "host-model-bf16",
+        "host-parcel-speed-v1-q8",
         model_dir / HOST_MODEL_NAME,
         model_search_paths(HOST_MODEL_NAME),
     )
     projector = payload.ensure_file(
-        "vision-projector-f16",
+        "host-parcel-speed-v1-projector-f16",
         model_dir / PROJECTOR_NAME,
         model_search_paths(PROJECTOR_NAME),
     )
@@ -154,7 +156,7 @@ def start_host_server(
     logger: InstallLogger,
 ) -> str:
     url = f"http://127.0.0.1:{HOST_PORT}"
-    if endpoint_ready(url, HOST_MODEL_NAME):
+    if endpoint_ready(url, HOST_MODEL_ID):
         logger.event("host_server_reused", url=url)
         return url
 
@@ -170,19 +172,22 @@ def start_host_server(
         "-ngl",
         "0" if is_cpu_runtime(executable) else "all",
         "-c",
-        "4096",
+        str(HOST_CONTEXT_SIZE),
         "--host",
         "127.0.0.1",
         "--port",
         str(HOST_PORT),
+        "--alias",
+        HOST_MODEL_ID,
         "--image-min-tokens",
         str(HOST_IMAGE_TOKENS),
         "--image-max-tokens",
         str(HOST_IMAGE_TOKENS),
+        "--flash-attn",
+        "on",
         "--no-cache-prompt",
         "--slot-prompt-similarity",
         "0",
-        "--no-warmup",
     ]
     logger.event("host_server_start", argv=args, log=server_log)
     stream = server_log.open("ab", buffering=0)
@@ -207,7 +212,7 @@ def start_host_server(
         if process.poll() is not None:
             tail = server_log.read_text(encoding="utf-8", errors="replace")[-12000:]
             raise RuntimeError(f"Host Reason2 server exited with {process.returncode}:\n{tail}")
-        if endpoint_ready(url, HOST_MODEL_NAME, timeout=3.0):
+        if endpoint_ready(url, HOST_MODEL_ID, timeout=3.0):
             logger.event("host_server_ready", url=url, pid=process.pid)
             return url
         time.sleep(1.0)
@@ -216,11 +221,12 @@ def start_host_server(
 
 
 def write_runtime_config(host_url: str, evk_url: str | None, logger: InstallLogger) -> Path:
+    configured_evk_url = evk_url or "http://127.0.0.1:18183"
     config = {
         "schema_version": 1,
         "host_server_url": host_url,
-        "host_model": HOST_MODEL_NAME,
-        "evk_server_url": evk_url or "http://127.0.0.1:18181",
+        "host_model": HOST_MODEL_ID,
+        "evk_server_url": configured_evk_url,
         "evk_model": "local/cosmos-reason2-2b",
         "backend": "host",
         "auto_inference": True,

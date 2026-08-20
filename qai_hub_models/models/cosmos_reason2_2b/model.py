@@ -466,6 +466,38 @@ class Cosmos_Reason2_2B_VisionEncoder(Qwen3VLVisionEncoderBase):
     default_image_width = DEFAULT_IMAGE_WIDTH
     quant_presplit_cls = Cosmos_Reason2_2B_QuantizablePreSplit
 
+    def get_hub_compile_options(
+        self,
+        target_runtime,
+        precision,
+        other_compile_options: str = "",
+        device=None,
+        context_graph_name: str | None = None,
+    ) -> str:
+        """Keep quantized vision I/O quantized in the linked EVK context.
+
+        The mixed W8-text/FP16-activation checkpoint is classified as W4 by
+        QAIHM's generic checkpoint detector.  Its generic option builder then
+        omitted ``--quantize_io`` for the vision graph, exposing FLOAT32 I/O
+        and doubling the pixel buffer expected by GenieX.  The checkpoint's
+        fail-closed W4/FP16 marker is stronger provenance than that inferred
+        enum, so force quantized external I/O whenever the marker is present.
+        """
+        options = super().get_hub_compile_options(
+            target_runtime,
+            precision,
+            other_compile_options,
+            device,
+            context_graph_name,
+        )
+        checkpoint = Path(str(getattr(self, "_checkpoint", ""))).expanduser()
+        if (
+            (checkpoint / W4_FP16_MARKER).is_file()
+            and "--quantize_io" not in options.split()
+        ):
+            options += " --quantize_io"
+        return options
+
     @classmethod
     def from_pretrained(
         cls,
