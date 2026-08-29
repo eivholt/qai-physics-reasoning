@@ -121,7 +121,7 @@ void AQaiConveyorHUD::DrawHUD()
     // whenever the operator is actively driving or moving the camera.
     const float H = 158.0f * Scale;
     DrawRect(FLinearColor(0.015f, 0.02f, 0.025f, 0.704f), X, Y, W, H);
-    // The bar and physical lamps use the confirmed Reason2 presentation state;
+    // The bar and physical lamps use the latest valid Reason2 presentation state;
     // the full answer panel continues to expose the newest raw response.
     DrawRect(SignalColor(Runtime->GetModelSignal()), X, Y, 8.0f * Scale, H);
 

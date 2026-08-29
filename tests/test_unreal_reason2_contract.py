@@ -309,21 +309,25 @@ class UnrealReason2ContractTests(unittest.TestCase):
         self.assertIn("RollerComponent->SetVisibility(false, true)", world)
         self.assertIn("straight_a08_replacement_source=single_known_good_omniverse_a08", world)
         self.assertIn("straight_a08_replacement_rollers=%d", world)
+        self.assertIn('TEXT("Plastic_Blue")', world)
+        self.assertIn("straight_a08_secondary_blue_frame_slots=%d", world)
+        self.assertIn("bridge_secondary_blue_frame_slots=%d", world)
         self.assertIn("CameraPreset.Equals(TEXT(\"conveyorseam\")", PAWN_SOURCE.read_text(encoding="utf-8"))
         self.assertNotIn("Bridge->SetMaterial(0, LowProfileFrameMaterial)", world)
 
-    def test_worker_routes_bypass_pallets_and_join_shelf_to_conveyor(self) -> None:
+    def test_worker_routes_stay_in_front_half_clear_of_conveyor_seam(self) -> None:
         source = WORLD_SOURCE.read_text(encoding="utf-8")
 
-        self.assertIn("closed_pallet_bypass_shelf_sorting_belt", source)
-        self.assertIn("worker1_cross_aisle_min_y_cm=-185", source)
-        self.assertNotIn("FVector(-315.0f, -260.0f, 0.0f)", source)
-        self.assertIn("upper_shelf_to_sensor_edge_shuttle", source)
-        self.assertIn("FVector(-555.0f, 260.0f, 0.0f)", source)
-        self.assertIn("FVector(190.0f, 190.0f, 0.0f)", source)
-        self.assertIn("FVector(150.0f, 0.0f, 0.0f)", source)
-        self.assertIn("worker2_sensor_dwell_seconds=4.0", source)
-        self.assertIn("worker2_inference_role=visible_context_not_parcel_target", source)
+        self.assertIn("worker1_route=front_half_lower_loop", source)
+        self.assertIn("worker1_min_y_cm=145", source)
+        self.assertIn("worker2_route=front_half_shelf_shuttle", source)
+        self.assertIn("worker2_min_y_cm=295", source)
+        self.assertIn("conveyor_curve_straight_seam_y_cm=108", source)
+        self.assertIn("route_clearance_boundary_y_cm=145", source)
+        self.assertIn("manipulation_aisle_entry=false", source)
+        self.assertIn("FVector(-500.0f, 145.0f, 0.0f)", source)
+        self.assertIn("FVector(55.0f, 295.0f, 0.0f)", source)
+        self.assertNotIn("FVector(150.0f, 0.0f, 0.0f)", source)
         self.assertIn("Worker.Waypoints.Num() - 2", source)
         self.assertIn("GetWorkerLoosePalletClearanceCm", source)
         self.assertIn("minimum_loose_pallet_clearance_cm", source)
@@ -401,17 +405,35 @@ class UnrealReason2ContractTests(unittest.TestCase):
         self.assertIn("CarriageVelocity.Z += VerticalVelocityCorrection", source)
         self.assertIn("forklift_vertical_stabilizer", source)
 
-    def test_operator_signal_requires_two_matching_observations(self) -> None:
+    def test_operator_signal_applies_every_valid_observation(self) -> None:
         source = WORLD_SOURCE.read_text(encoding="utf-8")
         hud = GAME_MODE_SOURCE.with_name("QaiConveyorHUD.cpp").read_text(
             encoding="utf-8"
         )
 
-        self.assertIn("ModelSignalCandidateCount >= 2", source)
-        self.assertIn("model_signal_confirmed", source)
-        self.assertIn("reason2_confirmed", source)
+        self.assertNotIn("ModelSignalCandidateCount", source)
+        self.assertIn("ModelSignal = Proposed", source)
+        self.assertIn("model_signal_applied", source)
+        self.assertIn("policy=every_valid_result", source)
+        self.assertIn("reason2_latest", source)
         self.assertIn("GetSubmittedGroundTruthSignal()", hud)
         self.assertIn("GetModelSignal()", hud)
+
+    def test_simulator_amber_recovery_is_temporal_not_globally_latched(self) -> None:
+        source = WORLD_SOURCE.read_text(encoding="utf-8")
+
+        self.assertIn("ParcelAmberSupportFraction = 0.82f", source)
+        self.assertNotIn("ParcelAmberRecoverySupportFraction", source)
+        self.assertNotIn("bAmberLatched", source)
+        self.assertIn(
+            "SupportFraction < ConveyorTuning::ParcelAmberSupportFraction",
+            source,
+        )
+        self.assertIn(
+            "policy=temporal_debounce_no_global_amber_latch",
+            source,
+        )
+        self.assertIn("InstantSignal == TEXT(\"A\") ? 0.12f : 0.35f", source)
 
     def test_redundant_runtime_switches_are_removed(self) -> None:
         runtime_text = "\n".join(
@@ -552,7 +574,7 @@ class UnrealReason2ContractTests(unittest.TestCase):
         self.assertNotIn("DashDutyCycle", world)
         self.assertIn("Capture->HiddenComponents.Add(SensorViewProjectionLines)", world)
         self.assertIn("inference_capture=excluded", world)
-        self.assertIn("bDrawSensorViewOverlay = true", world_header)
+        self.assertIn("bDrawSensorViewOverlay = false", world_header)
         self.assertIn("r.RayTracing.EnableOnDemand=True", windows_config)
 
     def test_shipping_workaround_is_limited_to_the_cook(self) -> None:

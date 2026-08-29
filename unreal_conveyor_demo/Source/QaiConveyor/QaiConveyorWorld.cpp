@@ -161,6 +161,11 @@ namespace ConveyorTuning
     // slimmer authored appearance and terminate inside the blue side rails.
     constexpr float ConveyorVisualRollerRadiusCm = 2.90f;
     constexpr float ConveyorVisualRollerHalfLengthCm = 47.0f;
+    // Safety labels describe what the audience and Reason2 can see, not the
+    // deliberately wider hidden Chaos support used to keep parcels stable.
+    // Judge overhang against the rendered silver roller endpoints.
+    constexpr float ParcelVisibleSupportHalfWidthCm =
+        ConveyorVisualRollerHalfLengthCm;
     // A checkout-style guide sits behind the monitored (west) portal. Cargo
     // enters this straight in +Y after the lower return turn, so its outside
     // drift is toward -X. The straight taper retains generous centre clearance
@@ -219,7 +224,12 @@ namespace ConveyorTuning
     // bounded slip friction is still needed to follow the curved roller bed.
     constexpr float ConveyorLateralSlipResponseSeconds = 0.25f;
     constexpr float ConveyorMaximumLateralSlipAccelerationCm = 80.0f;
-    constexpr float ParcelAmberSupportFraction = 0.68f;
+    // The image classifier consistently begins reporting AMBER before the
+    // analytic footprint reaches the prompt's nominal one-third-over-edge
+    // boundary. Treat roughly one fifth over the rendered roller edge as
+    // unstable so simulator truth tracks that visible decision boundary.
+    // Transition stability remains time-based; this is not a recovery latch.
+    constexpr float ParcelAmberSupportFraction = 0.82f;
     // Red means the parcel has actually lost the conveyor, not merely that a
     // low corner has dipped below the roller crown while the box is tipping.
     constexpr float ParcelRedSupportFraction = 0.05f;
@@ -227,6 +237,10 @@ namespace ConveyorTuning
     constexpr float ParcelFallenDropCm = 15.0f;
     constexpr float ParcelDangerPredictionSeconds = 0.65f;
     constexpr float ParcelDangerTiltDegrees = 16.0f;
+    // Reason2 generally stops treating a clipped carton as an observed target
+    // once about half of its projected body has left the sensor image. Apply
+    // the same evidence boundary to deterministic simulator truth.
+    constexpr float ParcelMinimumProjectedVisibleFraction = 0.50f;
     // Chaos forklift tuning uses centimetres, kilograms and seconds, matching
     // Unreal's rigid-body force units (kg*cm/s^2).
     // Keep the compact demo controllable: provide strong low-speed tractive
@@ -5101,6 +5115,7 @@ bool AQaiConveyorWorld::ConfigureConveyorLayout()
     };
 
     int32 AddedA08FrameOverlays = 0;
+    int32 ReboundA08SecondaryBlueFrameSlots = 0;
     for (UStaticMeshComponent* FrameComponent : OmniverseA08FrameComponents)
     {
         if (!IsValid(FrameComponent))
@@ -5114,6 +5129,34 @@ bool AQaiConveyorWorld::ConfigureConveyorLayout()
         else if (LowProfileFrameMaterial)
         {
             FrameComponent->SetMaterial(0, LowProfileFrameMaterial);
+        }
+        if (LowProfileFrameMaterial)
+        {
+            // A08 splits small connected portions of the same blue side frame
+            // into additional Plastic_Blue material groups. Leaving those on
+            // their authored plastic shader makes an otherwise continuous
+            // straight section alternate between gray/blue finishes. Bind the
+            // secondary blue groups to the same clipped painted-metal finish;
+            // the clip still removes their tall seam-upright islands.
+            for (int32 MaterialIndex = 1;
+                 MaterialIndex < FrameComponent->GetNumMaterials();
+                 ++MaterialIndex)
+            {
+                const UMaterialInterface* Material =
+                    FrameComponent->GetMaterial(MaterialIndex);
+                const FString MaterialPath = Material
+                    ? Material->GetPathName()
+                    : FString();
+                if (MaterialPath.Contains(
+                        TEXT("Plastic_Blue"),
+                        ESearchCase::IgnoreCase))
+                {
+                    FrameComponent->SetMaterial(
+                        MaterialIndex,
+                        LowProfileFrameMaterial);
+                    ++ReboundA08SecondaryBlueFrameSlots;
+                }
+            }
         }
     }
     int32 ReboundA05RollerLayerSlots = 0;
@@ -5266,6 +5309,7 @@ bool AQaiConveyorWorld::ConfigureConveyorLayout()
             - ConveyorTuning::ConveyorStraightHalfCm
             - ConveyorTuning::ConveyorCurveRadiusCm};
     int32 AddedBridgeFrames = 0;
+    int32 ReboundBridgeSecondaryBlueFrameSlots = 0;
     for (int32 BridgeIndex = 0; BridgeIndex < 2; ++BridgeIndex)
     {
         UStaticMeshComponent* Bridge = NewObject<UStaticMeshComponent>(
@@ -5289,6 +5333,31 @@ bool AQaiConveyorWorld::ConfigureConveyorLayout()
             // Use the same opaque, two-sided Omniverse blue PBR copy as the
             // cropped A11 quarters for this visible frame slot.
             Bridge->SetMaterial(0, A11TwoSidedFrameMaterial);
+        }
+        if (LowProfileFrameMaterial)
+        {
+            // Match the two inserted A08 bridges to the normalized authored
+            // A08 straights. Slots four and seven are disconnected portions
+            // of the blue rail in the current Omniverse asset.
+            for (int32 MaterialIndex = 1;
+                 MaterialIndex < Bridge->GetNumMaterials();
+                 ++MaterialIndex)
+            {
+                const UMaterialInterface* Material =
+                    Bridge->GetMaterial(MaterialIndex);
+                const FString MaterialPath = Material
+                    ? Material->GetPathName()
+                    : FString();
+                if (MaterialPath.Contains(
+                        TEXT("Plastic_Blue"),
+                        ESearchCase::IgnoreCase))
+                {
+                    Bridge->SetMaterial(
+                        MaterialIndex,
+                        LowProfileFrameMaterial);
+                    ++ReboundBridgeSecondaryBlueFrameSlots;
+                }
+            }
         }
         Bridge->SetMobility(EComponentMobility::Movable);
         Bridge->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -5697,7 +5766,7 @@ bool AQaiConveyorWorld::ConfigureConveyorLayout()
     RuntimeConveyorTurnRollers->SetMobility(EComponentMobility::Static);
     bConveyorLayoutConfigured = true;
     SimulatorLog(FString::Printf(
-        TEXT("conveyor_layout status=ready monitored_lane_x_cm=%.1f return_lane_old_x_cm=%.1f return_lane_new_x_cm=%.1f shift_cm=%.1f end_turn=quarter_arc+straight+quarter_arc transverse_cm=%.1f visual_source=omniverse_nvidia_a11+a08 engine_basic_shapes=false a11_native_scale=1.0 legacy_usd_scale_ignored=true a11_frame_material=omniverse_blue_opaque_two_sided a11_frame_slot_overrides=%d a11_roller_layer_material=visual_finish_anisotropic_steel a11_roller_layer_slot_overrides=%d bridge_frame_material=omniverse_blue_opaque_two_sided bridge_roller_radius_cm=2.90 bridge_roller_half_length_cm=47.0 bridge_roller_material=uniform_opaque_pbr_steel_instancing_safe bridge_roller_material_slots=%d straight_a08_authored_rollers_hidden=%d straight_a08_replacement_source=single_known_good_omniverse_a08 straight_a08_replacement_rollers=%d straight_frame_geometry=omniverse_connected_islands straight_upright_islands_removed=6 straight_a08_frame_overlays=%d straight_a05_roller_layer_overrides=%d straight_a05_frame_overlays=%d flange_material=omniverse_blue_opaque_two_sided source_collision_unchanged=true centering_arm=checkout_diverter centering_arm_placement=portal_backside centering_arm_sensor_visibility=hidden centering_arm_visual_source=omniverse_nvidia_a08_visual_finish_steel centering_arm_length_cm=%.1f centering_arm_start=(%.1f,%.1f) centering_arm_end=(%.1f,%.1f) return_roots=%d old_curve_roots_hidden=%d omniverse_quarter_meshes=%d omniverse_bridge_frames=%d omniverse_bridge_rollers=%d outfeed_portal_parts_moved=%d wall_parts_extended=%d portal_depth_parts_extended=%d portal_face_parts_moved=%d portal_protrusion_cm=100.0 portal_stack_lights_moved=%d portal_stack_base_to_top_cm=0.0 portal_stack_depth_position=center north_wall_colliders_replaced=%d divider=removed"),
+        TEXT("conveyor_layout status=ready monitored_lane_x_cm=%.1f return_lane_old_x_cm=%.1f return_lane_new_x_cm=%.1f shift_cm=%.1f end_turn=quarter_arc+straight+quarter_arc transverse_cm=%.1f visual_source=omniverse_nvidia_a11+a08 engine_basic_shapes=false a11_native_scale=1.0 legacy_usd_scale_ignored=true a11_frame_material=omniverse_blue_opaque_two_sided a11_frame_slot_overrides=%d a11_roller_layer_material=visual_finish_anisotropic_steel a11_roller_layer_slot_overrides=%d bridge_frame_material=omniverse_blue_opaque_two_sided bridge_secondary_blue_frame_slots=%d bridge_roller_radius_cm=2.90 bridge_roller_half_length_cm=47.0 bridge_roller_material=uniform_opaque_pbr_steel_instancing_safe bridge_roller_material_slots=%d straight_a08_authored_rollers_hidden=%d straight_a08_replacement_source=single_known_good_omniverse_a08 straight_a08_replacement_rollers=%d straight_frame_geometry=omniverse_connected_islands straight_upright_islands_removed=6 straight_a08_frame_overlays=%d straight_a08_secondary_blue_frame_slots=%d straight_a05_roller_layer_overrides=%d straight_a05_frame_overlays=%d flange_material=omniverse_blue_opaque_two_sided source_collision_unchanged=true centering_arm=checkout_diverter centering_arm_placement=portal_backside centering_arm_sensor_visibility=hidden centering_arm_visual_source=omniverse_nvidia_a08_visual_finish_steel centering_arm_length_cm=%.1f centering_arm_start=(%.1f,%.1f) centering_arm_end=(%.1f,%.1f) return_roots=%d old_curve_roots_hidden=%d omniverse_quarter_meshes=%d omniverse_bridge_frames=%d omniverse_bridge_rollers=%d outfeed_portal_parts_moved=%d wall_parts_extended=%d portal_depth_parts_extended=%d portal_face_parts_moved=%d portal_protrusion_cm=100.0 portal_stack_lights_moved=%d portal_stack_base_to_top_cm=0.0 portal_stack_depth_position=center north_wall_colliders_replaced=%d divider=removed"),
         ConveyorTuning::ConveyorLeftStraightX,
         ConveyorTuning::BeltCenterX + ConveyorTuning::ConveyorCurveRadiusCm,
         ConveyorTuning::ConveyorRightStraightX,
@@ -5705,10 +5774,12 @@ bool AQaiConveyorWorld::ConfigureConveyorLayout()
         ConveyorTuning::ConveyorReturnLaneShiftCm,
         ReboundA11TwoSidedFrameSlots,
         ReboundA11RollerLayerSlots,
+        ReboundBridgeSecondaryBlueFrameSlots,
         ReboundBridgeRollerSlots,
         HiddenA08AuthoredRollers,
         AddedA08ReplacementRollers,
         AddedA08FrameOverlays,
+        ReboundA08SecondaryBlueFrameSlots,
         ReboundA05RollerLayerSlots,
         AddedA05FrameOverlays,
         CenteringArmLengthCm,
@@ -9436,50 +9507,42 @@ void AQaiConveyorWorld::BindNativeComponents()
     SimulatorLog(TEXT("conveyor_contact_model support=distributed_powered_roller_normal_forces drive=bounded_roller_traction_resultant lateral_position_centering=none lateral_contact=zero-slip-friction edge_overhang=physical fixed_step_hz=120"));
 
     Workers[0].Root = FindTaggedComponent(TEXT("Qai.Worker1"));
-    // The hard-hat worker follows a clockwise inner patrol: down the storage
-    // rack, around the room-side face of the loose pallet stack and sorting
-    // table, alongside the monitored conveyor, then back through the central
-    // aisle. Keep the entire cross-aisle at Y >= -185; the pallet stack at
-    // (-311,-303) then retains more than a capsule radius of clearance.
+    // Keep both workers in the audience-facing half of the warehouse. The
+    // curve-to-straight join ends near Y=108 cm; this lower patrol retains at
+    // least 37 cm beyond that seam before the worker capsule, so neither actor
+    // can enter the forklift parcel-manipulation aisle.
     Workers[0].Waypoints = {
         FVector(-500.0f, 145.0f, 0.0f),
-        FVector(-520.0f, 90.0f, 0.0f),
-        FVector(-525.0f, 10.0f, 0.0f),
-        FVector(-515.0f, -75.0f, 0.0f),
-        FVector(-480.0f, -140.0f, 0.0f),
-        FVector(-420.0f, -175.0f, 0.0f),
-        FVector(-330.0f, -185.0f, 0.0f),
-        FVector(-220.0f, -185.0f, 0.0f),
-        FVector(-100.0f, -180.0f, 0.0f),
-        FVector(20.0f, -160.0f, 0.0f),
-        FVector(105.0f, -120.0f, 0.0f),
-        FVector(165.0f, -55.0f, 0.0f),
-        FVector(170.0f, 35.0f, 0.0f),
-        FVector(135.0f, 95.0f, 0.0f),
-        FVector(55.0f, 125.0f, 0.0f),
-        FVector(-80.0f, 140.0f, 0.0f),
-        FVector(-250.0f, 150.0f, 0.0f),
-        FVector(-410.0f, 155.0f, 0.0f)};
+        FVector(-525.0f, 180.0f, 0.0f),
+        FVector(-520.0f, 220.0f, 0.0f),
+        FVector(-485.0f, 245.0f, 0.0f),
+        FVector(-420.0f, 250.0f, 0.0f),
+        FVector(-345.0f, 245.0f, 0.0f),
+        FVector(-270.0f, 230.0f, 0.0f),
+        FVector(-200.0f, 205.0f, 0.0f),
+        FVector(-145.0f, 175.0f, 0.0f),
+        FVector(-170.0f, 150.0f, 0.0f),
+        FVector(-250.0f, 145.0f, 0.0f),
+        FVector(-340.0f, 145.0f, 0.0f),
+        FVector(-430.0f, 150.0f, 0.0f)};
     Workers[0].DwellSeconds.Init(0.0f, Workers[0].Waypoints.Num());
     Workers[0].bClosedLoop = true;
     Workers[1].Root = FindTaggedComponent(TEXT("Qai.Worker2"));
-    // The helmetless worker performs a distinct upper-aisle shuttle from the
-    // west rack to the lower-left edge of the sensor footprint. The final two
-    // points enter only shallowly: his upper body becomes visible to Reason2,
-    // demonstrating that people are context rather than parcel-safety targets,
-    // without walking him into the monitored roller lane.
+    // The helmetless worker uses a separate shelf-side shuttle. Its nearest
+    // point remains another 75 cm behind the lower patrol, which prevents the
+    // workers from bunching up while the foreground manipulation area stays
+    // completely clear.
     Workers[1].Waypoints = {
-        FVector(-555.0f, 260.0f, 0.0f),
-        FVector(-430.0f, 275.0f, 0.0f),
-        FVector(-250.0f, 278.0f, 0.0f),
-        FVector(-70.0f, 268.0f, 0.0f),
-        FVector(80.0f, 240.0f, 0.0f),
-        FVector(190.0f, 190.0f, 0.0f),
-        FVector(150.0f, 145.0f, 0.0f),
-        FVector(125.0f, 95.0f, 0.0f),
-        FVector(150.0f, 0.0f, 0.0f)};
+        FVector(-555.0f, 350.0f, 0.0f),
+        FVector(-470.0f, 365.0f, 0.0f),
+        FVector(-370.0f, 375.0f, 0.0f),
+        FVector(-265.0f, 375.0f, 0.0f),
+        FVector(-160.0f, 365.0f, 0.0f),
+        FVector(-65.0f, 345.0f, 0.0f),
+        FVector(10.0f, 320.0f, 0.0f),
+        FVector(55.0f, 295.0f, 0.0f)};
     Workers[1].DwellSeconds = {
-        1.30f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 4.00f};
+        1.30f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.50f};
     Workers[1].bClosedLoop = false;
     int32 BoundWorkers = 0;
     for (int32 WorkerIndex = 0; WorkerIndex < UE_ARRAY_COUNT(Workers); ++WorkerIndex)
@@ -9540,7 +9603,7 @@ void AQaiConveyorWorld::BindNativeComponents()
         ++BoundWorkers;
     }
     SimulatorLog(FString::Printf(
-        TEXT("worker_motion_ready workers=%d worker1_route=closed_pallet_bypass_shelf_sorting_belt worker1_waypoints=%d worker1_cross_aisle_min_y_cm=-185 worker2_route=upper_shelf_to_sensor_edge_shuttle worker2_waypoints=%d worker2_sensor_edge_endpoint_cm=(150,0) worker2_sensor_dwell_seconds=4.0 worker2_inference_role=visible_context_not_parcel_target loose_pallet_avoidance=live_obb visual_turn_rate_deg_s=%.1f heading_commit_ms=%.0f reversal_cooldown_ms=%.0f personal_space_cm=%.1f reserved_lanes=true deterministic_right_of_way=true"),
+        TEXT("worker_motion_ready workers=%d worker1_route=front_half_lower_loop worker1_waypoints=%d worker1_min_y_cm=145 worker2_route=front_half_shelf_shuttle worker2_waypoints=%d worker2_min_y_cm=295 conveyor_curve_straight_seam_y_cm=108 route_clearance_boundary_y_cm=145 manipulation_aisle_entry=false loose_pallet_avoidance=live_obb visual_turn_rate_deg_s=%.1f heading_commit_ms=%.0f reversal_cooldown_ms=%.0f personal_space_cm=%.1f reserved_lanes=true deterministic_right_of_way=true"),
         BoundWorkers,
         Workers[0].Waypoints.Num(),
         Workers[1].Waypoints.Num(),
@@ -10899,8 +10962,6 @@ void AQaiConveyorWorld::ResetScene()
     FMemory::Memzero(InferenceConfusionMatrix, sizeof(InferenceConfusionMatrix));
     RawModelSignal = TEXT("-");
     ModelSignal = TEXT("-");
-    ModelSignalCandidate = TEXT("-");
-    ModelSignalCandidateCount = 0;
     GroundTruthSignal = TEXT("G");
     ParcelSafetyCandidateSignal = TEXT("G");
     ParcelSafetyCandidateSeconds = 0.0f;
@@ -10951,8 +11012,6 @@ void AQaiConveyorWorld::ToggleBackend()
     LastInferenceSummaryLogSeconds = -60.0;
     RawModelSignal = TEXT("-");
     ModelSignal = TEXT("-");
-    ModelSignalCandidate = TEXT("-");
-    ModelSignalCandidateCount = 0;
     UpdateStackLights();
     BackendStatus = TEXT("checking");
     const bool bEvkCapture = ActiveBackend == TEXT("evk");
@@ -18656,11 +18715,72 @@ FString AQaiConveyorWorld::EvaluateParcelSafetySignal(
                     }
                 }
             }
+            float ProjectedMinimumY = BIG_NUMBER;
+            float ProjectedMaximumY = -BIG_NUMBER;
+            float ProjectedMinimumZ = BIG_NUMBER;
+            float ProjectedMaximumZ = -BIG_NUMBER;
+            bool bHasProjectedCorner = false;
+            if (bHasValidProjection)
+            {
+                for (float ForwardSign : {-1.0f, 1.0f})
+                {
+                    for (float RightSign : {-1.0f, 1.0f})
+                    {
+                        for (float UpSign : {-1.0f, 1.0f})
+                        {
+                            const FVector Corner = Location
+                                + ParcelForward * HalfExtent.X * ForwardSign
+                                + ParcelRight * HalfExtent.Y * RightSign
+                                + ParcelUp * HalfExtent.Z * UpSign;
+                            const FVector CornerCameraSpace =
+                                InferenceCameraTransform.InverseTransformPosition(Corner);
+                            if (CornerCameraSpace.X <= GNearClippingPlane)
+                            {
+                                continue;
+                            }
+                            const float ProjectedY = CornerCameraSpace.Y
+                                / (CornerCameraSpace.X * InferenceHorizontalTangent);
+                            const float ProjectedZ = CornerCameraSpace.Z
+                                / (CornerCameraSpace.X * InferenceVerticalTangent);
+                            ProjectedMinimumY = FMath::Min(ProjectedMinimumY, ProjectedY);
+                            ProjectedMaximumY = FMath::Max(ProjectedMaximumY, ProjectedY);
+                            ProjectedMinimumZ = FMath::Min(ProjectedMinimumZ, ProjectedZ);
+                            ProjectedMaximumZ = FMath::Max(ProjectedMaximumZ, ProjectedZ);
+                            bHasProjectedCorner = true;
+                        }
+                    }
+                }
+            }
+            float ProjectedVisibleFraction = 0.0f;
+            if (bHasProjectedCorner)
+            {
+                const float ProjectedWidth = FMath::Max(
+                    UE_SMALL_NUMBER,
+                    ProjectedMaximumY - ProjectedMinimumY);
+                const float ProjectedHeight = FMath::Max(
+                    UE_SMALL_NUMBER,
+                    ProjectedMaximumZ - ProjectedMinimumZ);
+                const float VisibleWidth = FMath::Max(
+                    0.0f,
+                    FMath::Min(ProjectedMaximumY, 1.0f)
+                        - FMath::Max(ProjectedMinimumY, -1.0f));
+                const float VisibleHeight = FMath::Max(
+                    0.0f,
+                    FMath::Min(ProjectedMaximumZ, 1.0f)
+                        - FMath::Max(ProjectedMinimumZ, -1.0f));
+                ProjectedVisibleFraction = FMath::Clamp(
+                    (VisibleWidth * VisibleHeight)
+                        / (ProjectedWidth * ProjectedHeight),
+                    0.0f,
+                    1.0f);
+            }
             if (!bHasValidProjection
                 || CameraSpace.X + ParcelRadius <= GNearClippingPlane
                 || !bInsideHorizontalFrustum
                 || !bInsideVerticalFrustum
-                || !bInsideRequiredSafeCrop)
+                || !bInsideRequiredSafeCrop
+                || ProjectedVisibleFraction
+                    < ConveyorTuning::ParcelMinimumProjectedVisibleFraction)
             {
                 ++OutOfViewParcelCount;
                 continue;
@@ -18834,8 +18954,12 @@ FString AQaiConveyorWorld::EvaluateParcelSafetySignal(
         const float ParcelMaximum = SignedLateralOffset + HalfAcrossRollers;
         const float SupportedWidth = FMath::Max(
             0.0f,
-            FMath::Min(ParcelMaximum, ConveyorTuning::BeltHalfWidth)
-                - FMath::Max(ParcelMinimum, -ConveyorTuning::BeltHalfWidth));
+            FMath::Min(
+                ParcelMaximum,
+                ConveyorTuning::ParcelVisibleSupportHalfWidthCm)
+                - FMath::Max(
+                    ParcelMinimum,
+                    -ConveyorTuning::ParcelVisibleSupportHalfWidthCm));
         const float SupportFraction = FMath::Clamp(
             SupportedWidth / (2.0f * HalfAcrossRollers),
             0.0f,
@@ -18861,8 +18985,12 @@ FString AQaiConveyorWorld::EvaluateParcelSafetySignal(
         const float PredictedMaximum = PredictedOffset + HalfAcrossRollers;
         const float PredictedSupportedWidth = FMath::Max(
             0.0f,
-            FMath::Min(PredictedMaximum, ConveyorTuning::BeltHalfWidth)
-                - FMath::Max(PredictedMinimum, -ConveyorTuning::BeltHalfWidth));
+            FMath::Min(
+                PredictedMaximum,
+                ConveyorTuning::ParcelVisibleSupportHalfWidthCm)
+                - FMath::Max(
+                    PredictedMinimum,
+                    -ConveyorTuning::ParcelVisibleSupportHalfWidthCm));
         const float PredictedSupportFraction = FMath::Clamp(
             PredictedSupportedWidth / (2.0f * HalfAcrossRollers),
             0.0f,
@@ -18926,7 +19054,9 @@ FString AQaiConveyorWorld::EvaluateParcelSafetySignal(
 void AQaiConveyorWorld::UpdateSafetySignal(float EvaluationSeconds)
 {
     FString Details;
-    const FString InstantSignal = EvaluateParcelSafetySignal(&Details);
+    const FString InstantSignal = EvaluateParcelSafetySignal(
+        &Details,
+        true);
     if (InstantSignal != ParcelSafetyCandidateSignal)
     {
         ParcelSafetyCandidateSignal = InstantSignal;
@@ -18940,6 +19070,9 @@ void AQaiConveyorWorld::UpdateSafetySignal(float EvaluationSeconds)
         ParcelSafetyCandidateSeconds += FMath::Clamp(EvidenceSeconds, 0.0f, 0.20f);
     }
 
+    // Debounce transitions in time rather than imposing a global spatial
+    // recovery latch. A previous AMBER parcel must not force every other
+    // normally supported parcel to exceed an artificial 96% support bar.
     const float RequiredEvidenceSeconds = InstantSignal == TEXT("R")
         ? 0.06f
         : (InstantSignal == TEXT("A") ? 0.12f : 0.35f);
@@ -18947,7 +19080,7 @@ void AQaiConveyorWorld::UpdateSafetySignal(float EvaluationSeconds)
         && ParcelSafetyCandidateSeconds >= RequiredEvidenceSeconds)
     {
         SimulatorLog(FString::Printf(
-            TEXT("ground_truth_transition from=%s to=%s focus=conveyor_parcel_support %s"),
+            TEXT("ground_truth_transition from=%s to=%s focus=conveyor_parcel_support policy=temporal_debounce_no_global_amber_latch %s"),
             *GroundTruthSignal,
             *InstantSignal,
             *Details));
@@ -18957,12 +19090,12 @@ void AQaiConveyorWorld::UpdateSafetySignal(float EvaluationSeconds)
 
 void AQaiConveyorWorld::UpdateStackLights()
 {
-    // The physical lamps expose the confirmed model answer. Raw output remains
+    // The physical lamps expose the latest valid model answer. Raw output remains
     // visible in diagnostics and is never replaced with physics ground truth.
     FString DisplaySignal = (ModelSignal == TEXT("G")
         || ModelSignal == TEXT("A")
         || ModelSignal == TEXT("R")) ? ModelSignal : TEXT("-");
-    FString SignalSource = TEXT("reason2_confirmed");
+    FString SignalSource = TEXT("reason2_latest");
     FString ForcedSignal;
     if (FParse::Value(FCommandLine::Get(), TEXT("QaiVisualSignal="), ForcedSignal))
     {
@@ -21564,42 +21697,16 @@ void AQaiConveyorWorld::HandleModelResponse(const FString& Body, bool bSucceeded
         }
     }
     RawModelSignal = Proposed;
-    // Keep raw output available for evaluation and the answer panel, while the
-    // operator-facing lamps reject an isolated one-frame class glitch. This is
-    // model-only temporal confirmation; physics truth never changes an answer.
-    if (ModelSignal == TEXT("-") || ModelSignal.IsEmpty())
+    // Apply every valid model result immediately. Simulator ground truth remains
+    // diagnostic-only and never changes the model-driven presentation state.
+    if (ModelSignal != Proposed)
     {
-        ModelSignal = Proposed;
-        ModelSignalCandidate = Proposed;
-        ModelSignalCandidateCount = 0;
+        SimulatorLog(FString::Printf(
+            TEXT("model_signal_applied from=%s to=%s policy=every_valid_result raw_preserved=true"),
+            *ModelSignal,
+            *Proposed));
     }
-    else if (Proposed == ModelSignal)
-    {
-        ModelSignalCandidate = Proposed;
-        ModelSignalCandidateCount = 0;
-    }
-    else
-    {
-        if (Proposed != ModelSignalCandidate)
-        {
-            ModelSignalCandidate = Proposed;
-            ModelSignalCandidateCount = 1;
-        }
-        else
-        {
-            ++ModelSignalCandidateCount;
-        }
-        if (ModelSignalCandidateCount >= 2)
-        {
-            SimulatorLog(FString::Printf(
-                TEXT("model_signal_confirmed from=%s to=%s consecutive_observations=%d raw_preserved=true"),
-                *ModelSignal,
-                *Proposed,
-                ModelSignalCandidateCount));
-            ModelSignal = Proposed;
-            ModelSignalCandidateCount = 0;
-        }
-    }
+    ModelSignal = Proposed;
     UpdateStackLights();
     BackendStatus = FString::Printf(TEXT("ready, %.0f ms"), LastInferenceMilliseconds);
     bBackendHealthy = true;

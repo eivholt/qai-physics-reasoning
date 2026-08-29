@@ -576,8 +576,6 @@ private:
     float ParcelSafetyCandidateSeconds = 0.0f;
     FString RawModelSignal = TEXT("-");
     FString ModelSignal = TEXT("-");
-    FString ModelSignalCandidate = TEXT("-");
-    int32 ModelSignalCandidateCount = 0;
     FString BackendStatus = TEXT("not checked");
     FString ActiveBackend = TEXT("host");
     FString ActiveModel;
@@ -644,7 +642,7 @@ private:
     int32 CaptureFrameCount = 0;
     bool bCommandBrake = false;
     bool bDrawCollisionDebug = false;
-    bool bDrawSensorViewOverlay = true;
+    bool bDrawSensorViewOverlay = false;
     UPROPERTY(Transient)
     TObjectPtr<ULineBatchComponent> CollisionDebugLineBuffer;
     UPROPERTY(Transient)
