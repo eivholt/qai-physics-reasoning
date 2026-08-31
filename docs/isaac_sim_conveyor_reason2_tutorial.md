@@ -10,6 +10,9 @@
 
 Physics-aware Vision Language Models for robotics and safety enables vision agents to reason like humans, using prior knowledge, physics understanding, cause and effect to understand, plan and act in real-life situations. This tutorial covers deploying and running a physics-aware VLM on edge device, benchmarking on video clips, creating static and interactive simulations, fine-tuning the model on automatically generated synthetic data and increasing inference time tenfolds with a few tricks.
 
+![Unreal demo](media/unreal-short-demo-intro.gif)
+
+
 ## What separates physics-aware VLMs from traditional VLMs
 A physics-aware VLM such as NVIDIA Cosmos Reason2 is not a fundamentally different species of model; it' i's a VLM deliberately specialized for reasoning about the physical world. Rather than merely recognizing objects or describing scenes, it is optimized to infer spatial and temporal relationships, object permanence, physical affordances, action consequences, and the next sensible action from video or images. Training is the main differentiator. Cosmos uses curated physical-AI datasets, supervised fine-tuning, and reinforcement learning with verifiable tasks built around space, time, intuitive physics, and embodied decision-making.
 
