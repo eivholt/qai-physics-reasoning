@@ -8,27 +8,32 @@
 
 **VLM Model:** [nvidia/Cosmos-Reason2-2B](https://huggingface.co/nvidia/Cosmos-Reason2-2B) Q4_0 GGUF running on device NPU
 
-Physics-aware Vision Language Models for robotics and safety enables vision agents to reason like humans, using prior knowledge, physics understanding, cause and effect to understand, plan and act in real-life situations. This tutorial covers deploying and running a physics-aware VLM on edge device, benchmarking on video clips, creating static and interactive simulations, fine-tuning the model on automatically generated synthetic data and increasing inference time tenfolds with a few tricks.
+Physics-aware Vision Language Models for robotics and safety enables vision agents to reason like humans, using prior knowledge, physics understanding, cause and effect to understand, plan and act in real-life situations. This tutorial covers 
+- deploying and running a physics-aware VLM on edge devices
+- benchmarking on video clips
+- creating static and interactive simulations
+- fine-tuning models on automatically generated synthetic data
+- increasing inference time tenfolds with a few tricks.
 
 ![Unreal demo](media/unreal-short-demo-intro.gif)
 
 
 ## What separates physics-aware VLMs from traditional VLMs
-A physics-aware VLM such as NVIDIA Cosmos Reason2 is not a fundamentally different species of model; it' i's a VLM deliberately specialized for reasoning about the physical world. Rather than merely recognizing objects or describing scenes, it is optimized to infer spatial and temporal relationships, object permanence, physical affordances, action consequences, and the next sensible action from video or images. Training is the main differentiator. Cosmos uses curated physical-AI datasets, supervised fine-tuning, and reinforcement learning with verifiable tasks built around space, time, intuitive physics, and embodied decision-making.
+A *physics-aware* VLM such as NVIDIA Cosmos Reason2 is not a fundamentally different species of model; it's a VLM deliberately specialized for reasoning about the physical world. Rather than merely recognizing objects or describing scenes, it is optimized to infer spatial and temporal relationships, physical affordances, action consequences, and the next sensible action from video or image. Training is the main differentiator. Cosmos uses curated physical-AI datasets, supervised fine-tuning, and reinforcement learning with verifiable tasks built around space, time, intuitive physics, and embodied decision-making.
 
 ## Tutorial contents
-This tutorial explains how physics-aware VLMs open new possibilities compared to traditional Object Detection models, Object Tracking and the traditional type of VLMs. First this is demonstrated on a practical video clip, then on a planning supervisor for robotic vehicles in a virtual simulation. Finally an optimized demonstration is presented in the form of an interactive demo implemented in Unreal Engine. Throughout the article the model is run on both a QualComm IQ9 EVK and on a host GPU for comparison of both speed and accuracy.
+This tutorial explains how physics-aware VLMs open new possibilities compared to traditional Object Detection models, Object Tracking and the traditional type of VLMs. This is demonstrated on a practical *video clip*, then on a planning supervisor for robotic vehicles in a *static virtual simulation*. Finally an *optimized* demonstration is presented in the form of an *interactive demo* implemented in Unreal Engine. Throughout the article the model is run on both a QualComm IQ9 EVK and on a host GPU for comparison of both speed and accuracy.
 
 ## 1. Real-video case study: forklift proximity at a conveyor opening
-This small case study uses a random YouTube clip, [Damon Retractable Conveyor Forklift Access Gate video](https://www.youtube.com/watch?v=M788xHT0QNM) as a real-camera test.
+This small case study uses a random YouTube clip, [Damon Retractable Conveyor Forklift Access Gate video](https://www.youtube.com/watch?v=M788xHT0QNM) as a real-world camera test. In the video we see a demonstration of a conveyor belt that's able to split in half and retract, allowing a forklift to pass through, like a warehouse Moses. This proved an interesting challenge, as the model needs to distinguish an unusually behaving conveyor from a forklift.
 
-> **Lossless preprocessing boundary:** the downloaded YouTube source is an H.264/yuv420p MP4, so information already absent from that source cannot be recovered. Every added inference-preparation step is lossless: GPU frames and storyboards are PNG, and EVK videos use RGB H.264 at CRF 0. The delivery MP4/GIF demonstrations are compressed separately and are never model input.
+Our challenge to to model is to detect when the forklift is moving **and** in close vicinity to the conveyor, about 50cm/a foot.
+
+> **Lossy input matters:** the downloaded YouTube source is an H.264/yuv420p MP4, so pixel information is lost from the source. This degrades accuracy, as discussed later in the tutorial. To reduce further degradation, videos and images fed to the model are compressed losslessy (PNG/RGB H.264 at CRF 0).
+
+The 42.18-second video source was divided into 21 non-overlapping two-second windows. Each window contains eight chronological frames at 4 FPS. The prompt is deliberately narrow:
 
 ![Video clip rolling window storyboard](media/storyboard_009.png)
-
-
-The 42.18-second source was divided into 21 non-overlapping two-second
-windows. Each window contains eight chronological frames at 4 FPS. The prompt is deliberately narrow:
 
 ```text
 SYSTEM PROMPT: You are a physical-AI observer. Use visible evidence only.
@@ -36,20 +41,12 @@ Put brief reasoning in <think> and the requested fields in <answer>.
 ```
 
 ```text
-USER PROMPT: The supplied image is a 4-by-2 storyboard containing eight consecutive video
-frames over two seconds. Read the top row from left to right, then the bottom
-row from left to right.
+USER PROMPT: The supplied image is a 4-by-2 storyboard containing eight consecutive video frames over two seconds. Read the top row from left to right, then the bottom row from left to right.
 
-Classify the event as ACTIVE only when the same foreground red-and-black Toyota
-forklift visibly changes position across the tiles AND it is immediately next
-to, or passes through, the narrow opening between the two low conveyor ends.
-That opening is the fixed-camera proxy for <=50 cm. Classify it as INACTIVE if
-no foreground forklift is visible, the forklift is stationary, or it remains
-outside the opening. Motion of the retractable conveyor does not count. Ignore
-small machinery behind the rear mesh fence.
+Classify the event as ACTIVE only when the same foreground red-and-black Toyota forklift visibly changes position across the tiles AND it is immediately next to, or passes through, the narrow opening between the two low conveyor ends.
+That opening is the fixed-camera proxy for <=50 cm. Classify it as INACTIVE if no foreground forklift is visible, the forklift is stationary, or it remains outside the opening. Motion of the retractable conveyor does not count.
 
-Briefly verify both motion and proximity from visible tiles in <think>. Inside
-<answer>, write exactly one semantic label: ACTIVE or INACTIVE.
+Briefly verify both motion and proximity from visible tiles in <think>. Inside <answer>, write exactly one semantic label: ACTIVE or INACTIVE.
 ```
 ```python
 Model settings: 
@@ -62,58 +59,31 @@ enable_think: true
 
 ### GPU BF16
 
-The host run sends one lossless 1546 × 438 PNG storyboard per request. The
-storyboard contains all eight lossless 384 × 216 frames in a 4-by-2 layout.
-The overlay displays the latest raw semantic result and the end-to-end request
-time.
+The experiment was first run on a host computer with a RTX 5090 GPU. In this setting we can run the full non-quantized model version, [BF16](https://en.wikipedia.org/wiki/Bfloat16_floating-point_format) (Brain Floating Point 16, bfloat16). This is an exploratory stage before running the same experiment on edge device. The host run sends one lossless 1546 × 438 PNG storyboard per request. The storyboard contains all eight lossless 384 × 216 frames in a 4-by-2 layout. The overlay in the animated gif below displays the latest raw classification result and the end-to-end request time.
 
 ![GPU BF16 latest-result inference](media/gpu_latest.gif)
 
-This raw run detects three of the four active windows. It also produces four
-isolated false-active decisions, giving 16/21 overall accuracy. All 21 replies
-contain an unambiguous semantic label, although only one uses the requested
-`<answer>` wrapper.
+This raw run correctly detects three of the four `ACTIVE` windows. It also produces four isolated false-`ACTIVE` decisions, giving 16/21 overall accuracy. All 21 replies contain an unambiguous semantic label, although only one uses the requested `<answer>` wrapper. Further prompt-tuning didn't consistently succeed in increasing output structure, this is likely due to the 2B model size. As we'll see later, spending compute on output formatting on these kinds of bounded classifications on edge devices is a waste. 
 
 ### GPU BF16: rolling average of three results
 
-The second presentation uses the same GPU requests and keeps the latest three
-inference attempts as a means to smooth out intermittent false classifications. Green is inactive, red is active, and grey is
-inconclusive. The fourth square is active when the mean of the available votes
-is at least 0.5. Its `AVG` time is the sum of the three displayed request
-times.
+The second presentation uses the same GPU requests and keeps the latest three inference attempts as a means to smooth out intermittent false classifications. Green is `INACTIVE`, red is `ACTIVE`, and grey is `inconclusive`. The fourth square is `ACTIVE` when the mean of the available votes is at least 0.5. Its `AVG` time is the sum of the three displayed request times.
 
 ![GPU BF16 rolling three-result average](media/gpu_rolling_average.gif)
 
-The four raw false positives are isolated, while the missed active window is
-adjacent to three correct active results. AVG-3 therefore scores 21/21 on this
-small frozen sequence. This is a favorable error pattern, not evidence that
-averaging is universally correct; the filter still adds temporal memory and
-can delay or extend a state transition on other sequences.
+The four raw false positives are isolated, while the missed `ACTIVE` window is adjacent to three correct `ACTIVE` results. AVG-3 therefore scores 21/21 on this small frozen sequence. In this experiment this adds temporal memory but it also delays or extends a state transition.
 
-### IQ9 EVK: latest full-NPU result
+### IQ9 EVK: NPU result
 
-The EVK cannot use the host storyboard unchanged. Submitting the 1546 × 438
-image to this full-NPU GenieX build reproduces the known
-`dspqueue_read failed: 0x0000002e` large-image failure. The successful EVK run
-therefore sends each same two-second window as a pixel-lossless RGB H.264 MP4
-at 384 × 216. `libx264rgb`, CRF 0, and RGB24 avoid quantization and chroma
-subsampling. All 168 decoded RGB frames were compared with their PNG inputs
-and matched byte for byte. The patched service gives the model eight ordered
-frames through its native-video path and runs `local/cosmos-reason2-2b:Q4_0`
-with GenieX `--compute npu --ngl -1`.
+The IQ9 EVK cannot use the host storyboard unchanged. Submitting the 1546 × 438 image to this full-NPU GenieX build reproduces a known `dspqueue_read failed: 0x0000002e` large-image failure. The successful EVK run therefore sends each same two-second window as a pixel-lossless RGB H.264 MP4 at 384 × 216. `libx264rgb`, CRF 0, and RGB24 avoid image quantization and chroma subsampling. All 168 decoded RGB frames were compared with their PNG inputs and matched byte for byte. The patched service gives the model eight ordered frames through its native-video path and runs `local/cosmos-reason2-2b:Q4_0` with GenieX `--compute npu --ngl -1`.
 
 ![IQ9 EVK NPU latest-result inference](media/evk_npu_latest.gif)
 
-The lossless EVK run marks 22–24 seconds active and produces one false-active
-decision at 38–40 seconds. It misses the other three reference-active windows,
-reaching 17/21 overall accuracy with 50% active precision and 25% active recall
-on this small sequence.
+The lossless EVK run marks 22–24 seconds state `ACTIVE` and produces one false `ACTIVE` decision at 38–40 seconds. It misses the other three `ACTIVE` windows, reaching 17/21 overall accuracy with 50% `ACTIVE` precision and 25% `ACTIVE` recall on this small sequence.
 
 ### Accuracy and latency
 
-The small sample is useful for debugging a deployment profile, not for
-estimating production accuracy. `TP` and `FN` refer to the four reference
-active windows; `TN` and `FP` refer to the 17 inactive windows.
+This small experiment is useful for learning to use Reason2, not for estimating production accuracy. `TP` and `FN` refer to the four reference active windows; `TN` and `FP` refer to the 17 inactive windows.
 
 | Presentation | Correct | Overall accuracy | TP / TN / FP / FN | Inconclusive | Active precision / recall | Mean / median / P95 request time |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -121,9 +91,7 @@ active windows; `TN` and `FP` refer to the 17 inactive windows.
 | GPU BF16, average of three | 21/21 | 100% | 4 / 17 / 0 / 0 | 0 | 100% / 100% | same 21 underlying GPU requests |
 | IQ9 EVK Q4_0 NPU, latest | 17/21 | 81.0% | 1 / 16 / 1 / 3 | 0 | 50% / 25% | 4.767 / 4.012 / 6.565 s |
 
-After the first three results are available, the average presentation's
-displayed three-request total ranges from 2.26 to 3.61 seconds and averages
-3.05 seconds.
+After the first three results are available, the *average presentation's* displayed three-request total ranges from 2.26 to 3.61 seconds and averages 3.05 seconds.
 
 ### What lossless media changed
 
@@ -136,15 +104,18 @@ The first iteration of this experiment used lossy JPEG/default-H.264 inputs. Esp
 | EVK lossy H.264/yuv420p control | 18/21 | 18/21 | baseline control |
 | EVK lossless RGB H.264 | 17/21 | 17/21 | false positives 2 → 1; true positives 3 → 1 |
 
-## 2. Composable simulation: Warehouse supervisor made with Omniverse Isaac Sim
+### Real-video case study takeaway
+Pixel loss in the source video reduces model accuracy, we'll rectify this in the following demonstrations. Mean processing time of 1s on GPU is more than usable. 4-5s on IQ9 can be a problem for many scenarios, but in the final demo we'll hack the process to significantly return the same results.
 
-With mature simulation tools at our disposal, almost any scenario can be simulated. NVIDIA Omniverse Isaac Sim for instance, can the run a live simulation where we can stress test our application. We can connect our application or bare model hosted on an edge device to a simulation by sending a video feed (or any modality) to a device. Inference results can be returned and affect the simulation.
+## 2. Warehouse supervisor simulation made in Omniverse Isaac Sim
 
-This tutorial runs a live warehouse in Isaac Sim 6.0.1, continuously sends clean security-camera images to Cosmos-Reason2-2B on a Dragonwing IQ-9075 EVK, and lets model output change a simulated robot's active navigation route.
+With mature simulation tools at our disposal, almost any scenario can be simulated. NVIDIA Omniverse Isaac Sim for instance, can run a live simulation where we can stress test our application. We can connect our model, hosted on an edge device, to a simulation by sending a video feed over LAN or USB. Inference results can be returned and affect the simulation.
 
-In this demonstration the model running on EVK only ever sees camera feed and a prompt, it has no other knowledge about placement of actors in the simulation.
+This demonstration runs a live warehouse in Isaac Sim 6.0.1, continuously sends security-camera images to Cosmos-Reason2-2B on a Dragonwing IQ-9075 EVK, and lets model output change a simulated robot's active navigation route.
 
-### Demo
+The model running on EVK only ever sees camera feed and a prompt, it has no other knowledge about placement of actors in the simulation.
+
+### Demo setup
 
 In this demo we explore if an AI supervisor, extra eyes in the sky, could optimize autonomous logistics vehicles by communicating potential congestions or hazards the Autonomous Mobile Robots (AMR) are unable to detect in time. The supervisor could have as many cameras as needed, placed at strategic point. To test this out a rudamentary warehouse was constructed in Isaac Sim, using standard assets. An autonomous vehicle, RobotBlue, was placed in an aisle and configured to use path finding to reach an endpoint. Several alternatice paths were defined and the supervisor is able to signal that an alternative route is better, if it sees a potential congestion in the standard route.
 
@@ -152,83 +123,50 @@ This tutorial does not cover steps in creating a simulation in Omniverse. One ma
 
 The Omniverse simulation does not contact Reason2 directly; `scripts/run_live_isaac_evk_supervisor.py` acts as the bridge, capturing timestamped frames from the selected Isaac Sim supervisor camera through MCP, maintaining a rolling window, encoding its latest frames as a short chronological video clip, and sending that clip with the visual supervisor prompt to the resident GenieX Reason2 service on the EVK through its OpenAI-compatible HTTP endpoint. The EVK returns structured actor and passage-state observations, which the local gateway validates and deterministically translates into commands such as CONTINUE_CURRENT_ROUTE or REROUTE_NORTH_BYPASS; those commands are then applied back in Isaac Sim through MCP to update RobotBlue’s navigation graph while simulation and camera capture continue.
 
-Why does the Omniverse-to-EVK bridge use MCP? MCP is only the control bridge into the already-running Isaac Sim process—not the transport to the EVK. Isaac Sim’s USD stage, cameras, timeline, and navigation graph live inside its Kit Python runtime, so MCP gives Codex and the external runner a validated interface for capturing frames and applying commands without embedding all orchestration in an Omniverse extension. The images and prompts travel directly from the runner to GenieX on the EVK over HTTP. For a production system, we could remove MCP from the live loop by moving capture, EVK requests, and command application into a native Omniverse extension; MCP would then remain only for setup, inspection, and debugging.
+Why does the Omniverse-to-EVK bridge use MCP? MCP is only the control bridge into the already-running Isaac Sim process—not the transport to the EVK. Isaac Sim’s USD stage, cameras, timeline, and navigation graph live inside its Kit Python runtime, so MCP gives coding agents such as Codex and the external runner a validated interface for capturing frames and applying commands without embedding all orchestration in an Omniverse extension. The images and prompts travel directly from the runner to GenieX on the EVK over HTTP. For a production system, we could remove MCP from the live loop by moving capture, EVK requests, and command application into a native Omniverse extension; MCP would then remain only for setup, inspection, and debugging.
 
 ![Blind-corner EVK reroute](media/blind_corner_east_wall_evk.gif)
 
-The demo consists of 2 scenarios: `Clear-route` feeds the model with a camera view where nothing appears to block the robots planned route. In both scenarios the robot has 3 routes to choose from. In scenario `Blind-corner congestion` the same route is gradually blocked by an approaching forklift. The scenario is relevant because the forklift is occluded in the robot's field-of-view. Without the supervisors input it would be forced to retreat before continuing on another route.
+The demo consists of two scenarios: `Clear-route` feeds the model with a camera view where nothing appears to block the robots planned route. In both scenarios the robot has 3 routes to choose from. In scenario `Blind-corner congestion` the same route is gradually blocked by an approaching forklift. The scenario is relevant because the forklift is occluded in the robot's field-of-view. Without the supervisors input it would be forced to retreat before continuing on another route.
 
 ### What Reason2 actually sees
 
-Each request now contains every frame from a rolling eight-frame
-tactical-camera window. Frames remain in chronological order and are encoded
-at 2 FPS, so each request contains four seconds of visible motion. No
-`EARLIER`/`NOW` labels, side-by-side layout, timestamps, route lines, or UI
-overlays are burned into the 384 × 216 input.
+Each request contains a rolling eight-frame tactical-camera window. Frames remain in chronological order and are encoded at 2 FPS, so each request contains four seconds of visible motion. No `EARLIER`/`NOW` labels, side-by-side layout, timestamps, route lines, or UI overlays are burned into the 384 × 216 input.
 
-The model frames come from a fixed 1280 × 720 offscreen sensor as lossless PNG
-files. They are downsampled to 384 × 216, so both are 16:9 and no stretch or
-crop is applied. The runner then uses `libx264rgb` at CRF 0 with RGB24: decoded
-video pixels exactly match those resized RGB frames. Do not replace this with
-JPEG or default `libx264`/`yuv420p`; quantization and 4:2:0 chroma subsampling
-can remove small safety-relevant details before the model sees them.
+The model frames come from a fixed 1280 × 720 offscreen sensor as lossless PNG files. They are downsampled to 384 × 216, so both are 16:9 and no stretch or crop is applied. The runner then uses `libx264rgb` at CRF 0 with RGB24: decoded video pixels exactly match those resized RGB frames. Do not replace this with JPEG or default `libx264`/`yuv420p`; quantization and 4:2:0 chroma subsampling can remove small safety-relevant details before the model sees them.
 
-The resize is still destructive preprocessing: 384 × 216 contains only 9%
-of the 1280 × 720 sensor pixels.
+The resize is still destructive preprocessing: 384 × 216 contains only 9% of the 1280 × 720 sensor pixels.
 
 ![Exact live-002 chronological frames](media/model_input_live002_contact_sheet.png)
 
-The following two images are synchronized at route application. They show what
-the two cameras saw when the already-completed EVK response was applied; they
-are not a substitute for the earlier eight-frame model input shown below.
+The following two images are synchronized at route application. They show what the two cameras saw when the EVK response was applied, demonstrating that only the supervisor field-of-view sees the forklift, the robot is still in the blind.
 
 ![Supervisor sees both actors](media/supervisor_at_reroute.png)
 
 ![RobotBlue still cannot see the forklift](media/robot_pov_at_reroute.png)
 
-### Prompt
+### Prompts
 
-The cyan, white, and orange route lines are presentation-only. Before capturing
-the model frames, the runner hides all route and transient planner geometry.
-The operator panel is also excluded.
-
-The current first-stage prompt is a compact two-actor inventory:
+The demo uses a two-stage prompt: the primary prompt is a compact two-actor inventory:
 
 ```text
-Inspect every frame of the attached warehouse image or video using only visible
-pixels, then report each traffic-actor category once. RobotBlue is the compact
-white low-profile mobile robot. A forklift is a larger industrial
-counterbalance vehicle with long front forks, an upright mast, and an
-operator cage. Shelving, cartons, pallets, cones, barriers, floors, and walls
-are not traffic actors.
-Reply with exactly these two lines, replacing STATUS with PRESENT, ABSENT, or
-UNCERTAIN:
+Inspect every frame of the attached warehouse image or video using only visible pixels, then report each traffic-actor category once. RobotBlue is the compact white low-profile mobile robot. A forklift is a larger industrial counterbalance vehicle with long front forks, an upright mast, and an operator cage. Shelving, cartons, pallets, cones, barriers, floors, and walls
+are not traffic actors. Reply with exactly these two lines, replacing STATUS with PRESENT, ABSENT, or UNCERTAIN:
 mobile robot: STATUS
 forklift: STATUS
-Do not list individual frames or add other categories, descriptions, motion,
-or intent.
+Do not list individual frames or add other categories, descriptions, motion, or intent.
 ```
 
-The gateway parses both category lines. Unless both `mobile robot:` and
-`forklift:` are explicitly `PRESENT`, the bounded result is
+The gateway parses both category lines. Unless both `mobile robot:` and `forklift:` are explicitly `PRESENT`, the bounded result is
 `CONTINUE_CURRENT_ROUTE` and route reasoning is skipped.
 
-When a forklift is reported, the second request uses this exact prompt:
+When a forklift is reported, the second request uses this prompt:
 
 ```text
-Watch the complete fixed warehouse-camera video in chronological order, from
-its first frame through its final frame. RobotBlue is the compact white
-low-profile robot. A forklift is a larger industrial counterbalance vehicle
-with long front forks, an upright mast, and an operator cage. Shelves, cartons,
-pallets, cones, barriers, floors, and walls are static objects, not traffic
-actors.
+Watch the complete fixed warehouse-camera video in chronological order, from its first frame through its final frame. RobotBlue is the compact white low-profile robot. A forklift is a larger industrial counterbalance vehicle with long front forks, an upright mast, and an operator cage. Shelves, cartons, pallets, cones, barriers, floors, and walls are static objects, not traffic actors.
 
-Reply RobotBlue REROUTE_NORTH_BYPASS only when visible motion across the video
-shows the forklift and RobotBlue converging on the same narrow passage and
-their nearest-body gap clearly decreases from earlier frames to later frames.
-If no forklift is visible, either actor is unclear, their gap does not clearly
-decrease, or the evidence is uncertain, reply
-RobotBlue CONTINUE_CURRENT_ROUTE.
+Reply RobotBlue REROUTE_NORTH_BYPASS only when visible motion across the video shows the forklift and RobotBlue converging on the same narrow passage and their nearest-body gap clearly decreases from earlier frames to later frames.
+If no forklift is visible, either actor is unclear, their gap does not clearly decrease, or the evidence is uncertain, reply RobotBlue CONTINUE_CURRENT_ROUTE.
 Reply with exactly one of those two commands and no explanation.
 ```
 
@@ -247,7 +185,7 @@ The table shows how Reason2 on the EVK correctly refrained from suggesting route
 
 In the final demo Reason2 is put to the test in an interactive simulation. It'll cover
 - Creating an high-fidelity interactive simulation using game engine principles, with game controller input and physics simulation.
-- Streaming virtual sensor camera to Reason2 running on an EVK on the LAN.
+- Streaming virtual sensor camera to Reason2 running on an EVK on the LAN or over USB.
 - Reacting to model classification by simulationg a stack light.
 - Generating automatically labeled synthetic training data.
 - Fine-tuning Reason2 to increase model accuracy.
@@ -263,7 +201,7 @@ The scenario is a busy warehouse with workers, forklifts, parcels and a conveyor
 ![Omniverse](media/omniverse-demo.png)
 ![Omniverse](media/omniverse-physics.png)
 
-The project began as a live Omniverse Isaac Sim 6.0.1 warehouse experiment. A 3D demo scene was quickly composed using readily available Isaac Sim 3D assets. Physics was implemented using simple bounding boxes with `PhysX`. Controller input was read on each Kit update through the `carb.input` SDK. Combining ray tracing, physics calculations, input polling and model interaction with inappropriate work distribution, brought the demo to a painful < 10 FPS performance, even on a RTX 5090 GPU. The prototype was therefore ported to Unreal Engine 5.8, using native Chaos physics and Lumen rendering engine. Isaac Sim is a great alternative for a first proof-of-concept, while Unreal Engine can squeeze resource intensive sub-systems into an acceptable performing end-product.
+The simulator began as an interactive Omniverse Isaac Sim 6.0.1 warehouse experiment, as in part 2 of this tutorial. A 3D demo scene was quickly composed using readily available Isaac Sim 3D assets. Physics was implemented using simple bounding boxes with `PhysX`. Controller input was read on each Kit update through the `carb.input` SDK. Combining ray tracing, physics calculations, input polling and model interaction with inappropriate work distribution, brought the demo to a painful < 10 FPS performance, even on a RTX 5090 GPU. The prototype was therefore ported to Unreal Engine 5.8, using native Chaos physics and Lumen rendering engine. Isaac Sim is a great alternative for a first proof-of-concept, while Unreal Engine can squeeze resource intensive sub-systems into an acceptable performing end-product.
 
 ![Unreal Engine](media/unreal-editor1.png)
 ![Unreal Engine](media/unreal-editor2.png)
@@ -272,18 +210,16 @@ The project began as a live Omniverse Isaac Sim 6.0.1 warehouse experiment. A 3D
 
 | Part | Current implementation |
 |---|---|
-| Interactive client | Unreal Engine 5.8.1, Win64 Shipping |
-| Scene source | NVIDIA Omniverse warehouse, forklift, worker, rack, and conveyor assets |
-| Monitored area | One central silver straight conveyor lane |
-| Input | One lossless 448 × 256 PNG from a fixed 62-degree end-oblique camera |
+| Interactive client | Unreal Engine 5.8.1 |
+| Model visual input | One lossless 448 × 256 PNG from a fixed 62-degree end-oblique camera |
 | Task | `G` fully supported, `A` over-edge/tipping, `R` fallen |
 | Host | `Cosmos-Reason2-2B-Parcel-Speed-v1`, llama.cpp, port 18084 |
 | EVK | `local/cosmos-reason2-2b`, GenieX + QAIRT on the NPU, port 18183 |
 | Inference strategy | Read one trained next-token decision instead of generating a reasoned answer |
-| Rendering | D3D12, hardware Lumen and ray tracing enabled by default |
-| Default window | 1600 × 900 windowed; F11 or Alt+Enter toggles fullscreen |
+| Rendering | D3D12, hardware Lumen and ray tracing |
 | Release executable | `unreal_conveyor_demo/Saved/Packaged/Win64/Windows/QaiConveyor.exe` |
 
+In this demo the model is able to predict it's task without temporal information, so we only pass a single image, in contrast to our previous use of storyboards.
 
 ### Architecture
 
@@ -296,7 +232,7 @@ flowchart LR
     H[Host llama.cpp<br/>RTX GPU :18084]
     E[GenieX + QAIRT<br/>IQ-9075 NPU :18183]
     T[One token: G, A, or R]
-    M[Deterministic UI and stack-light mapping]
+    M[UI and stack-light mapping]
 
     U --> C --> P --> R
     R --> H --> T
@@ -306,7 +242,7 @@ flowchart LR
 
 The capture, prompt, parser, class mapping, and operator presentation are identical when using either EVK or GPU hosted Reason2 models. Pressing B or Start changes only the endpoint and model identity. This makes the comparison about execution hardware rather than prompt drift.
 
-Live capture is demand-driven and pauses while the model is busy. The client allows up to 1.5 new host GPU observations per second or 0.75 EVK observations per second. Simulation and presentation rendering continue independently.
+Live capture is demand-driven and pauses while the model is busy. The client allows up to 1.5 new host GPU observations per second or 0.75 EVK observations per second.
 
 ### Parcel-safety policy
 
@@ -318,7 +254,7 @@ The client classifies the most unsafe monitored carton:
 | `A` | AMBER / UNSTABLE_PARCEL | A carton still touches the rollers, but roughly one third or more extends beyond a blue rail, or the carton is visibly tipping. |
 | `R` | RED / FALLEN_PARCEL | A carton is on the adjacent floor below roller-top height. RED has priority over AMBER. |
 
-Workers, the forklift, wooden pallets, shelving, lights, and the separated return lane are not classification targets. The helmetless worker deliberately walks partly through the sensor view to demonstrate that ordinary scene context is ignored.
+Workers, the forklift, wooden pallets, shelving, lights, and the separated return lane are not classification targets. The workers deliberately walks through the sensor view to demonstrate that ordinary scene context is ignored.
 
 The HUD shows two states:
 
@@ -328,7 +264,7 @@ The HUD shows two states:
 
 ### Prompt
 
-Both GPU and EVK receive this exact user message:
+Both GPU and EVK receive this user message:
 
 ```text
 Classify cartons at the central silver conveyor lane. Ignore all other objects and lanes. Answer one letter only: G=fully supported; A=touching rollers but at least one-third beyond a blue rail or tipping; R=on the adjacent floor below the rollers.
@@ -393,11 +329,9 @@ The tradeoff is deliberate specialization. This SpeedV1 fine-tune should answer 
 
 #### What speed did this buy?
 
-There is no perfectly controlled answer-length-only benchmark: SpeedV1 also uses a shorter prompt, fewer visual tokens, a new fine-tuned checkpoint, and a new EVK serving path. The following measurements are therefore best read as
-**closest practical comparisons**, not as proof that every millisecond came from choosing one logit.
+There is no perfectly controlled answer-length-only benchmark: SpeedV1 also uses a shorter prompt, fewer visual tokens, a new fine-tuned checkpoint, and a new EVK serving path. The following measurements are therefore best read as **closest practical comparisons**, not as proof that every millisecond came from choosing one logit.
 
-The closest host comparison used the same Cosmos Reason2 2B family, BF16
-weights, synchronized 180-image validation task, and perfect 180/180 accuracy:
+The closest host comparison used the same Cosmos Reason2 2B family, BF16 weights, synchronized 180-image validation task, and perfect 180/180 accuracy:
 
 | Host validation path | Output | Image | Warm mean | Approx. serial throughput |
 |---|---:|---:|---:|---:|
