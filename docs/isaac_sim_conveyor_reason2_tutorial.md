@@ -382,38 +382,146 @@ At the measured EVK decode rate, every additional serial output token would cost
 | F11 or Alt+Enter | Toggle fullscreen |
 
 
-### Model training and measured result
+### How SpeedV1 was created and served on the EVK
 
-SpeedV1 was trained on synthetic labeled images, randomly generated in the same Unreal Engine demo:
+SpeedV1 is a task-specific fine-tune of Cosmos-Reason2-2B. Instead of teaching the model to describe the warehouse, the training objective teaches one fixed mapping:
 
-- 3,000 balanced training images: 1,000 GREEN, 1,000 AMBER, and 1,000 RED;
-- matched scene triplets that change support geometry while preserving parcel identity, camera, lighting, and distractors;
-- domain randomization; random changes to objects
-- 448 × 256 image input, user-only prompt, and one-token completion (G/A/R).
+```text
+lossless conveyor image + production prompt -> G, A, or R
+```
 
-This training is what makes the one-token optimization reliable: the model learned to place the correct class token at the top of its next-token logits instead of learning to compose a long answer whose fields happen to contain the same decision.
+#### Generate matched synthetic training data
 
-The adapter completed one epoch with training loss 0.0275541. Frozen host gates passed 180/180 validation and 90/90 independent test images, with perfect per-class recall. The Q8 host GPU conversion retained those gates and is smaller than BF16.
+The Unreal client generated 3,000 balanced 448 × 256 lossless PNG images: 1,000 GREEN, 1,000 AMBER, and 1,000 RED.
 
-The final full-DeepStack CL512/W8 QAIRT bundle passed:
+The images were organized as 1,000 matched G/A/R triplets. Within each triplet, parcel identity, camera position, lighting, and scene distractors remain synchronized while the parcel-support geometry changes. This reduces the chance that the model learns incidental correlations such as a particular carton texture, worker position, or lighting condition instead of the physical distinction between supported, overhanging, and fallen parcels.
+
+The retained [dataset capture script](https://github.com/eivholt/qai-physics-reasoning/blob/main/scripts/reason2_finetune/generate_unreal_dataset.ps1) supports matched triplets and unsafe cases on both sides of the conveyor. For example, from the repository root in PowerShell:
+
+```powershell
+.\scripts\reason2_finetune\generate_unreal_dataset.ps1 `
+  -Split train `
+  -CasesPerClass 1000 `
+  -MatchedBoundarySweeps `
+  -Bilateral
+```
+
+This illustrates the capture entry point; reproducing the accepted run requires the synchronized-v22 datasets referenced by the training and evaluation wrappers. Validation and independent test images were generated separately with different deterministic seeds. These frozen sets were not used for training.
+
+#### Fine-tune the visual and language projections
+
+Every training record contains the same user-only production prompt used by the Unreal client. There is no system prompt, hidden-reasoning target, explanatory answer, or secondary request. The completion is exactly one tokenizer token: `G`, `A`, or `R`.
+
+The production [training wrapper](https://github.com/eivholt/qai-physics-reasoning/blob/main/scripts/reason2_finetune/train_evk_speed_v1.sh) runs from the repository root in Bash:
+
+```bash
+bash scripts/reason2_finetune/train_evk_speed_v1.sh
+```
+
+It performs one epoch of BF16 LoRA supervised fine-tuning with:
+
+- 3,000 matched images, balanced across the three classes;
+- 448 × 256 inputs, corresponding to 112 visual tokens;
+- LoRA rank 32 over both visual and language projections;
+- batch size 4 with two gradient-accumulation steps;
+- learning rate `1e-4` and deterministic seed `20260819`;
+- completion-only loss, so the model is trained on the answer rather than the repeated prompt.
+
+Adapting the vision projections matters here: the difficult boundary is geometric—whether the carton bottom is still supported by the rollers—not merely linguistic.
+
+The adapter completed with a training loss of `0.0275541`. Before export it passed the frozen host gates:
 
 | Gate | Result |
 |---|---:|
-| GPU validation | 180/180 |
-| GPU independent test | 90/90 |
-| EVK direct-image gate | 90/90 |
+| Validation | 180/180 |
+| Independent test | 90/90 |
+| Per-class recall | 100% for G, A, and R |
+
+The reproducible [evaluation wrapper](https://github.com/eivholt/qai-physics-reasoning/blob/main/scripts/reason2_finetune/evaluate_evk_speed_v1.sh) runs both frozen sets:
+
+```bash
+bash scripts/reason2_finetune/evaluate_evk_speed_v1.sh
+```
+
+See the [fine-tuning README](https://github.com/eivholt/qai-physics-reasoning/blob/main/scripts/reason2_finetune/README.md) for the retained workflow. The wrappers reference local datasets, checkpoints, and prepared Python environments; these large artifacts are stored outside Git, and their paths must be configured for another workstation.
+
+#### Convert the adapter into an EVK bundle
+
+The LoRA adapter cannot be served directly by the production EVK runtime. The export pipeline therefore:
+
+1. merges the adapter into the Cosmos-Reason2-2B checkpoint;
+2. prepares task-matched 448 × 256 vision calibration data;
+3. builds a context-length-512 QAIRT checkpoint;
+4. retains the complete Qwen3-VL DeepStack interface;
+5. converts the text matrices to the accepted W8 precision;
+6. exports the five QAIRT contexts required by GenieX: one vision encoder and four text partitions;
+7. packages the graphs, tokenizer metadata, and compatibility manifest.
+
+The retained [EVK build script](https://github.com/eivholt/qai-physics-reasoning/blob/main/scripts/reason2_finetune/build_evk_speed_v1.sh) checks the host accuracy gates before exporting:
+
+```bash
+bash scripts/reason2_finetune/build_evk_speed_v1.sh
+```
+
+Its production output is:
+
+```text
+cosmos-reason2-parcel-speed-v1-cl512-256x448-w8text-geniex-qairt245-os19-r1
+```
+
+The bundle targets the Dragonwing IQ-9075 EVK, QAIRT 2.45, Hexagon v73, and EVK OS 1.9. The context length is deliberately limited to 512 because the application supplies only one compact prompt, one image, and one output token. This is a compiled QAIRT bundle; the host Q8 GGUF is a separate export of the same fine-tune.
+
+#### Serve it with one resident GenieX worker
+
+The production provisioner imports the bundle into the GenieX data directory:
+
+```text
+/home/ubuntu/qai-conveyor/geniex-data/cosmos-reason2-parcel-speed-v1
+```
+
+The [systemd service](https://github.com/eivholt/qai-physics-reasoning/blob/main/unreal_conveyor_demo/Provisioner/evk-services/qai-conveyor-geniex.service) keeps one GenieX v0.3.17 QAIRT worker resident. Its launch arguments are:
+
+```bash
+geniex-grammar --skip-update serve \
+  --host 0.0.0.0:18183 \
+  --keepalive 3600 \
+  --compute npu \
+  --nctx 512 \
+  --ngl -1
+```
+
+The service also sets the model data directory, runtime plugin paths, matching QAIRT 2.45 libraries, and Hexagon v73 DSP library path. These settings are part of deployment; the command above shows the worker arguments rather than a standalone installation procedure.
+
+Keeping the worker resident avoids reloading the model and reacquiring the HTP device for every observation. Exactly one worker is allowed to own the model: the [candidate-gate script](https://github.com/eivholt/qai-physics-reasoning/blob/main/scripts/run_evk_geniex_candidate_gate.sh) stops the production service, tests a candidate on a temporary port, and restores production afterward.
+
+At runtime the Unreal client sends the lossless PNG directly inside the OpenAI-compatible `/v1/chat/completions` request as a `data:image/png;base64,...` item, followed by the production prompt. GenieX decodes the embedded image and runs the resident QAIRT graphs. There is no media bridge, shared-file polling, or per-request GenieX process.
+
+The returned assistant content is one letter:
+
+```text
+G
+```
+
+The client then maps that token to GREEN, AMBER, or RED. Longer labels and UI fields are constructed deterministically without another model call.
+
+#### Promotion gates
+
+The final bundle passed every frozen class gate and a sustained resident-service soak:
+
+| Gate | Result |
+|---|---:|
+| Host validation | 180/180 |
+| Host independent test | 90/90 |
+| EVK direct embedded-image test | 90/90 |
 | EVK sustained soak | 360/360 |
 | Packaged EVK in-scene smoke | 9/9 |
 | Packaged host in-scene smoke | 9/9 |
 
-Representative warm performance:
+The EVK direct-image test measured a 685.4 ms warm mean and 694.0 ms p95. Across the 360-request soak, the warm mean was 687.3 ms and p95 was 691.0 ms, with no classification failures. The soak repeats the frozen 90-image panel four times to test sustained operation; it is not a separate set of 360 unique images.
 
-| Backend | Measured latency |
-|---|---:|
-| Host Q8 direct model | about 66.7 ms mean |
-| Packaged host client | about 113 ms client-observed mean |
-| EVK GenieX direct-image test | 685.4 ms mean, 694.0 ms p95 |
-| EVK 360-request soak | 687.3 ms mean, 691.0 ms p95 |
+The canonical records are the [90-image EVK gate](https://github.com/eivholt/qai-physics-reasoning/blob/main/docs/evidence/results/geniex_speed_v1_direct_stream_test90_20260819.json), [360-request soak](https://github.com/eivholt/qai-physics-reasoning/blob/main/docs/evidence/results/geniex_speed_v1_direct_stream_soak360_20260819.json), and [packaged production smoke](https://github.com/eivholt/qai-physics-reasoning/blob/main/docs/evidence/results/packaged_speed_v1_production_defaults_smoke9_20260819.json).
+
+SpeedV1 should therefore be treated as a specialized visual classifier, not as a replacement for general Cosmos Reason2. Its accuracy and speed depend on preserving the frozen camera, image geometry, prompt, and G/A/R contract.
 
 # Appendix
 
@@ -445,12 +553,12 @@ The main code references are:
 
 | Component | Purpose |
 | --- | --- |
-| [`.codex/config.toml`](../.codex/config.toml) | Registers the local stdio MCP process when a Codex task starts. |
-| [`server.py`](../integrations/isaac_sim_mcp/server.py#L98) | Implements the loopback TCP client, MCP tool schemas, argument validation, dispatch, and stdio JSON-RPC loop. |
-| [`live_aisle_supervisor.py`](../integrations/isaac_sim_mcp/live_aisle_supervisor.py#L163) | Builds the bounded USD, camera, navigation, capture, and advisory operations used by this demo. |
-| [`edge_supervisor.py`](../integrations/isaac_sim_mcp/edge_supervisor.py#L900) | Builds the lightweight warehouse and related camera operations. |
-| [`launch_isaac_sim_poc.ps1`](../integrations/isaac_sim_mcp/launch_isaac_sim_poc.ps1#L26) | Starts Isaac Sim with the localhost Python server and tutorial extensions enabled. |
-| [`qai.edge_ai_supervisor`](../isaac_sim_supervisor_omniverse/exts/qai.edge_ai_supervisor/qai/edge_ai_supervisor/extension.py#L89) | Implements the in-viewport supervisor panel; it is loaded into Kit but is not the MCP transport. |
+| [`.codex/config.toml`](https://github.com/eivholt/qai-physics-reasoning/blob/main/.codex/config.toml) | Registers the local stdio MCP process when a Codex task starts. |
+| [`server.py`](https://github.com/eivholt/qai-physics-reasoning/blob/main/integrations/isaac_sim_mcp/server.py#L98) | Implements the loopback TCP client, MCP tool schemas, argument validation, dispatch, and stdio JSON-RPC loop. |
+| [`live_aisle_supervisor.py`](https://github.com/eivholt/qai-physics-reasoning/blob/main/integrations/isaac_sim_mcp/live_aisle_supervisor.py#L163) | Builds the bounded USD, camera, navigation, capture, and advisory operations used by this demo. |
+| [`edge_supervisor.py`](https://github.com/eivholt/qai-physics-reasoning/blob/main/integrations/isaac_sim_mcp/edge_supervisor.py#L900) | Builds the lightweight warehouse and related camera operations. |
+| [`launch_isaac_sim_poc.ps1`](https://github.com/eivholt/qai-physics-reasoning/blob/main/integrations/isaac_sim_mcp/launch_isaac_sim_poc.ps1#L26) | Starts Isaac Sim with the localhost Python server and tutorial extensions enabled. |
+| [`qai.edge_ai_supervisor`](https://github.com/eivholt/qai-physics-reasoning/blob/main/isaac_sim_supervisor_omniverse/exts/qai.edge_ai_supervisor/qai/edge_ai_supervisor/extension.py#L89) | Implements the in-viewport supervisor panel; it is loaded into Kit but is not the MCP transport. |
 
 To reproduce the setup, register the server in the repository's
 `.codex/config.toml`. Replace `<REPO ROOT>` with the absolute checkout path:
@@ -480,7 +588,7 @@ Codex reads MCP configuration when a task starts, so open a new Codex task or
 restart the current one after changing the configuration. A useful first
 request is: “Ping Isaac Sim, report the stage status, and list the prims under
 `/World/CodexPoC`.” The complete tool inventory and a minimal scene exercise
-are in the [bridge README](../integrations/isaac_sim_mcp/README.md).
+are in the [bridge README](https://github.com/eivholt/qai-physics-reasoning/blob/main/integrations/isaac_sim_mcp/README.md).
 
 Keep the Isaac Python server bound to `127.0.0.1`. Its native protocol can
 execute Python inside Kit and must not be exposed directly to a LAN. The MCP
