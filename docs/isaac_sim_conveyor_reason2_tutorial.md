@@ -262,6 +262,16 @@ The HUD shows two states:
 - **Reason2** is the model decision that drives the presentation stack lights.
 
 
+### Adapting NVIDIA's prompting guidance
+
+NVIDIA's [Warehouse Blueprint prompting guidance](https://docs.nvidia.com/vss/3.2.0/warehouse-docs/alerting-service.html#prompt-tuning) recommends explicit violation criteria, exclusions for common false positives, fixed labels, and evaluation against labeled examples. The conveyor demo follows these principles. Its [earlier prompt](https://github.com/eivholt/qai-physics-reasoning/blob/main/scripts/reason2_finetune/generative_common.py) also used an inspector role, separate inspection steps, and JSON containing the classification and supporting evidence.
+
+SpeedV1 retains the physical criteria but replaces the longer instructions and generated JSON with the compact prompt below. This reduces prompt processing and sequential decoding for a task whose UI needs only one classification. That choice aligns with NVIDIA's [latency-critical screening option](https://docs.nvidia.com/vss/3.2.0/warehouse-docs/alerting-service.html#format-1-cosmos-reason-think-verdict), which permits a bare verdict with reasoning disabled. Targeted fine-tuning is also an [explicitly recommended next step](https://docs.nvidia.com/vss/3.2.0/warehouse-docs/alerting-service.html#overview) when the general model misses accuracy targets.
+
+The main departures concern task scope and integration. NVIDIA's [load-quality example](https://docs.nvidia.com/vss/3.2.0/warehouse-docs/alerting-service.html#damaged-unstable-falling-boxes) uses an 8B model and video, and distinguishes fallen cargo from staged floor items using motion, scatter, or a traceable source. SpeedV1 uses a fine-tuned 2B model and defines a monitored carton on the floor beside the conveyor as RED, even when stationary. A single image therefore suffices for this demo's policy; it does not establish how or when the carton fell.
+
+The three-class `G/A/R` response is application-specific: NVIDIA's built-in bare-verdict parser accepts `YES/NO/A/B`, so integration with its Alerting Service would require translation. The Unreal client supplies its own mapping. The resulting tradeoff is a specialized classifier without a generated explanation, validated against the frozen conveyor task.
+
 ### Prompt
 
 Both GPU and EVK receive this user message:
