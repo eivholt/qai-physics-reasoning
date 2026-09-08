@@ -396,6 +396,8 @@ The Unreal client generated 3,000 balanced 448 × 256 lossless PNG images: 1,000
 
 The images were organized as 1,000 matched G/A/R triplets. Within each triplet, parcel identity, camera position, lighting, and scene distractors remain synchronized while the parcel-support geometry changes. This reduces the chance that the model learns incidental correlations such as a particular carton texture, worker position, or lighting condition instead of the physical distinction between supported, overhanging, and fallen parcels.
 
+![Domain randomization](media/domain-randomization-short-10fps.gif)
+
 The retained [dataset capture script](https://github.com/eivholt/qai-physics-reasoning/blob/main/scripts/reason2_finetune/generate_unreal_dataset.ps1) supports matched triplets and unsafe cases on both sides of the conveyor. For example, from the repository root in PowerShell:
 
 ```powershell
