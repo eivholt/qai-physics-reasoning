@@ -400,6 +400,24 @@ SpeedV1 is a task-specific fine-tune of Cosmos-Reason2-2B. Instead of teaching t
 lossless conveyor image + production prompt -> G, A, or R
 ```
 
+#### Model fine-tuning and LoRA adapters
+
+Fine-tuning means continuing the training of a pretrained model on examples for a particular task. An adapter stores a compact set of learned adjustments to that model. Training an adapter is therefore a form of fine-tuning; the relevant comparison is full fine-tuning versus parameter-efficient fine-tuning.
+
+| Aspect | Full fine-tuning | LoRA adapter training |
+|---|---|---|
+| Parameters updated | All base-model weights | Small added matrices; base weights stay frozen |
+| Saved training result | A complete model checkpoint | Adapter weights and configuration, requiring the matching base model |
+| Main cost | Gradients and optimizer state for all weights | Much less training state, although the base model must still run |
+
+[LoRA (Low-Rank Adaptation)](https://arxiv.org/abs/2106.09685) represents each selected weight adjustment as the product of two smaller matrices. This reduces the number of trainable parameters and makes task-specific variants cheaper to train and store. The adapter alone cannot perform inference.
+
+SpeedV1 uses LoRA across both visual and language projections, with the base model loaded in BF16. The [training script](https://github.com/eivholt/qai-physics-reasoning/blob/main/scripts/reason2_finetune/train_generative.py) learns the parcel task through those added parameters. The resulting adapter contains the learned changes, while Cosmos-Reason2-2B supplies the underlying model.
+
+After training, a compatible runtime can load the base model and adapter separately, allowing adapters to be switched. Alternatively, LoRA adjustments can be merged into the base weights to produce a standalone checkpoint, as described in the [PEFT merging guide](https://huggingface.co/docs/peft/main/en/conceptual_guides/lora#merge-lora-weights-into-the-base-model). SpeedV1 takes this route: the [merge script](https://github.com/eivholt/qai-physics-reasoning/blob/main/scripts/reason2_finetune/merge_adapter.py) incorporates the adapter before host GGUF conversion and EVK QAIRT export. Production inference therefore requires no separate adapter or PEFT runtime.
+
+Quantization is a separate operation that reduces numerical precision. SpeedV1's host Q8 and EVK W8 text exports are produced after merging; they describe deployment precision, not the fine-tuning method. A small adapter file also does not make the complete deployed model small or automatically accelerate its forward pass.
+
 #### Generate matched synthetic training data
 
 The Unreal client generated 3,000 balanced 448 × 256 lossless PNG images: 1,000 GREEN, 1,000 AMBER, and 1,000 RED.
