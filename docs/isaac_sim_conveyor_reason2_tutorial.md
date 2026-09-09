@@ -8,7 +8,7 @@
 
 **VLM Model:** [nvidia/Cosmos-Reason2-2B](https://huggingface.co/nvidia/Cosmos-Reason2-2B) Q4_0 GGUF running on device NPU
 
-Physics-aware Vision Language Models for robotics and safety enables vision agents to reason like humans, using prior knowledge, physics understanding, cause and effect to understand, plan and act in real-life situations. This tutorial covers 
+Physics-aware Vision Language Models for robotics and safety enables *vision agents* to reason like humans, using prior knowledge, physics understanding, cause and effect to understand, plan and act in real-life situations. This tutorial covers 
 - deploying and running a physics-aware VLM on edge devices
 - benchmarking on video clips
 - creating static and interactive simulations
@@ -19,19 +19,19 @@ Physics-aware Vision Language Models for robotics and safety enables vision agen
 
 
 ## What separates physics-aware VLMs from traditional VLMs
-A *physics-aware* VLM such as NVIDIA Cosmos Reason2 is not a fundamentally different species of model; it's a VLM deliberately specialized for reasoning about the physical world. Rather than merely recognizing objects or describing scenes, it is optimized to infer spatial and temporal relationships, physical affordances, action consequences, and the next sensible action from video or image. Training is the main differentiator. Cosmos uses curated physical-AI datasets, supervised fine-tuning, and reinforcement learning with verifiable tasks built around space, time, intuitive physics, and embodied decision-making.
+A *physics-aware* VLM such as NVIDIA Cosmos Reason2 is not a fundamentally diferent species of model; it's a VLM deliberately spescialized for reasoning about the physical world. Rather than merely recognizing objects or describing scenes, it is optimized to infer spatial and temporal relationships, physical affordances, action consequences, and the next sensible action from video or image. Training is the main differentiator. Cosmos uses curated physical-AI datasets, supervised fine-tuning, and reinforcement learning with verifiable tasks built around space, time, intuitive physics, and embodied decision-making.
 
 ## Tutorial contents
-This tutorial explains how physics-aware VLMs open new possibilities compared to traditional Object Detection models, Object Tracking and the traditional type of VLMs. This is demonstrated on a practical *video clip*, then on a planning supervisor for robotic vehicles in a *static virtual simulation*. Finally an *optimized* demonstration is presented in the form of an *interactive demo* implemented in Unreal Engine. Throughout the article the model is run on both a QualComm IQ9 EVK and on a host GPU for comparison of both speed and accuracy.
+This tutorial explains how physics-aware VLMs open new possibilities compared to traditional Object Detection models, Object Tracking and traditional VLMs. This is demonstrated on a practical *video clip*, then on a planning supervisor for robotic vehicles in a *static virtual simulation*. Finally an *optimized* demonstration is presented in the form of an *interactive demo* implemented in Unreal Engine. Throughout the article the model is run on both a QualComm IQ9 EVK and on a host GPU for comparison of both speed and accuracy.
 
-## 1. Real-video case study: forklift proximity at a conveyor opening
-This small case study uses a random YouTube clip, [Damon Retractable Conveyor Forklift Access Gate video](https://www.youtube.com/watch?v=M788xHT0QNM) as a real-world camera test. In the video we see a demonstration of a conveyor belt that's able to split in half and retract, allowing a forklift to pass through, like a warehouse Moses. This proved an interesting challenge, as the model needs to distinguish an unusually behaving conveyor from a forklift.
+## 1. Real-video experiment: forklift proximity at a conveyor opening
+This small experiment uses a random YouTube clip, [Damon Retractable Conveyor Forklift Access Gate video](https://www.youtube.com/watch?v=M788xHT0QNM) as a real-world camera test. In the video we see a demonstration of a conveyor belt that's able to split in half and retract, allowing a forklift to pass through, like a warehouse Moses. This proved an interesting challenge, as the model needs to distinguish an unusually behaving conveyor from a forklift.
 
-Our challenge to to model is to detect when the forklift is moving **and** in close vicinity to the conveyor, about 50cm/a foot.
-
-> **Lossy input matters:** the downloaded YouTube source is an H.264/yuv420p MP4, so pixel information is lost from the source. This degrades accuracy, as discussed later in the tutorial. To reduce further degradation, videos and images fed to the model are compressed losslessy (PNG/RGB H.264 at CRF 0).
+Our challenge to the model is to detect when the forklift is moving **and** in close vicinity to the conveyor, about 50cm/1ft.
 
 The 42.18-second video source was divided into 21 non-overlapping two-second windows. Each window contains eight chronological frames at 4 FPS. The prompt is deliberately narrow:
+
+> **Lossy input matters:** the downloaded YouTube source is an H.264/yuv420p MP4, so pixel information is lost from the source. This degrades accuracy, as discussed later in the tutorial. To reduce further degradation, videos and images fed to the model are compressed losslessy (PNG/RGB H.264 at CRF 0).
 
 ![Video clip rolling window storyboard](media/storyboard_009.png)
 
@@ -83,7 +83,7 @@ The lossless EVK run marks 22–24 seconds state `ACTIVE` and produces one false
 
 ### Accuracy and latency
 
-This small experiment is useful for learning to use Reason2, not for estimating production accuracy. `TP` and `FN` refer to the four reference active windows; `TN` and `FP` refer to the 17 inactive windows.
+This small experiment is useful for learning to use Reason2, not for estimating production accuracy. `TP` (True Positive) and `FN` (False Positive) refer to the four reference active windows; `TN` (True Negative) and `FP` (False Negative) refer to the 17 inactive windows.
 
 | Presentation | Correct | Overall accuracy | TP / TN / FP / FN | Inconclusive | Active precision / recall | Mean / median / P95 request time |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -95,7 +95,7 @@ After the first three results are available, the *average presentation's* displa
 
 ### What lossless media changed
 
-The first iteration of this experiment used lossy JPEG/default-H.264 inputs. Especially for the BF16 model, lossless replacements improved accuracy. The source YouTube video clip already suffers greatly from information loss, this probably could have improved significantly had a lossless original clip been available. This is a reminder when configuring video input - make sure to avoid lossy image and video compression!
+The first iteration of this experiment used lossy JPEG/default-H.264 inputs. Especially for the BF16 model, lossless replacements improved accuracy. The source YouTube video clip already suffers greatly from information loss, this probably could have improved significantly had a lossless original clip been available. This is a reminder when configuring video input - **make sure to avoid lossy image and video compression!**
 
 | Current-service input | Latest | AVG-3 | Main change after going lossless |
 | --- | ---: | ---: | --- |
@@ -104,8 +104,8 @@ The first iteration of this experiment used lossy JPEG/default-H.264 inputs. Esp
 | EVK lossy H.264/yuv420p control | 18/21 | 18/21 | baseline control |
 | EVK lossless RGB H.264 | 17/21 | 17/21 | false positives 2 → 1; true positives 3 → 1 |
 
-### Real-video case study takeaway
-Pixel loss in the source video reduces model accuracy, we'll rectify this in the following demonstrations. Mean processing time of 1s on GPU is more than usable. 4-5s on IQ9 can be a problem for many scenarios, but in the final demo we'll hack the process to significantly return the same results.
+### Real-video experiment takeaway
+Pixel loss in the source video reduces model accuracy, we'll rectify this in the following demonstrations. Mean processing time of 1s on GPU is more than usable. 4-5s on IQ9 can be a problem for many scenarios, but in the final demo we'll hack the process to significantly speed up inference, while still returning the same results.
 
 ## 2. Warehouse supervisor simulation made in Omniverse Isaac Sim
 
@@ -117,13 +117,13 @@ The model running on EVK only ever sees camera feed and a prompt, it has no othe
 
 ### Demo setup
 
-In this demo we explore if an AI supervisor, extra eyes in the sky, could optimize autonomous logistics vehicles by communicating potential congestions or hazards the Autonomous Mobile Robots (AMR) are unable to detect in time. The supervisor could have as many cameras as needed, placed at strategic point. To test this out a rudamentary warehouse was constructed in Isaac Sim, using standard assets. An autonomous vehicle, RobotBlue, was placed in an aisle and configured to use path finding to reach an endpoint. Several alternatice paths were defined and the supervisor is able to signal that an alternative route is better, if it sees a potential congestion in the standard route.
+In this demo we explore if an AI supervisor, extra eyes in the sky, could optimize autonomous logistics vehicles by communicating potensial congestions or hazards the Autonomous Mobile Robots (AMR) are unable to detect in time. The supervisor could have as many cameras as needed, placed at strategic point. To test this out a rudamentary warehouse was constructed in Isaac Sim, using standard assets. An autonomous vehicle, `RobotBlue`, was placed in an aisle and configured to use path finding to reach an endpoint. Several alternatice paths were defined and the supervisor is able to signal that an alternative route is better, if it sees a potential congestion in the standard route.
 
-This tutorial does not cover steps in creating a simulation in Omniverse. One may opt to leave this to a coding agent, see appendix for setting up a MCP bridge with Omniverse APIs.
+>This tutorial does not cover steps in creating a simulation in Omniverse. One may opt to leave this to a coding agent, see appendix for setting up a MCP bridge with Omniverse APIs.
 
-The Omniverse simulation does not contact Reason2 directly; `scripts/run_live_isaac_evk_supervisor.py` acts as the bridge, capturing timestamped frames from the selected Isaac Sim supervisor camera through MCP, maintaining a rolling window, encoding its latest frames as a short chronological video clip, and sending that clip with the visual supervisor prompt to the resident GenieX Reason2 service on the EVK through its OpenAI-compatible HTTP endpoint. The EVK returns structured actor and passage-state observations, which the local gateway validates and deterministically translates into commands such as CONTINUE_CURRENT_ROUTE or REROUTE_NORTH_BYPASS; those commands are then applied back in Isaac Sim through MCP to update RobotBlue’s navigation graph while simulation and camera capture continue.
+The Omniverse simulation does not contact Reason2 directly; `scripts/run_live_isaac_evk_supervisor.py` acts as the bridge, capturing timestamped frames from the selected Isaac Sim supervisor camera through MCP, maintaining a rolling window, encoding its latest frames as a short chronological video clip, and sending that clip with the visual supervisor prompt to the resident GenieX Reason2 service on the EVK through its OpenAI-compatible HTTP endpoint. The EVK returns structured actor and passage-state observations, which the local gateway validates and deterministically translates into commands such as `CONTINUE_CURRENT_ROUTE` or `REROUTE_NORTH_BYPASS`; those commands are then applied back in Isaac Sim through MCP to update `RobotBlue’s` navigation graph while simulation and camera capture continue.
 
-Why does the Omniverse-to-EVK bridge use MCP? MCP is only the control bridge into the already-running Isaac Sim process—not the transport to the EVK. Isaac Sim’s USD stage, cameras, timeline, and navigation graph live inside its Kit Python runtime, so MCP gives coding agents such as Codex and the external runner a validated interface for capturing frames and applying commands without embedding all orchestration in an Omniverse extension. The images and prompts travel directly from the runner to GenieX on the EVK over HTTP. For a production system, we could remove MCP from the live loop by moving capture, EVK requests, and command application into a native Omniverse extension; MCP would then remain only for setup, inspection, and debugging.
+>Why does the Omniverse-to-EVK bridge use MCP? MCP is only the control bridge into the already-running Isaac Sim process—not the transport to the EVK. Isaac Sim’s USD stage, cameras, timeline, and navigation graph live inside its Kit Python runtime, so MCP gives coding agents such as Codex and the external runner a validated interface for capturing frames and applying commands without embedding all orchestration in an Omniverse extension. The images and prompts travel directly from the runner to GenieX on the EVK over HTTP. For a production system, we could remove MCP from the live loop by moving capture, EVK requests, and command application into a native Omniverse extension; MCP would then remain only for setup, inspection, and debugging.
 
 ![Blind-corner EVK reroute](media/blind_corner_east_wall_evk.gif)
 
@@ -147,7 +147,7 @@ The following two images are synchronized at route application. They show what t
 
 ### Prompts
 
-The demo uses a two-stage prompt: the primary prompt is a compact two-actor inventory:
+The demo uses a two-stage prompt: the primary prompt is a compact status of the two actors:
 
 ```text
 Inspect every frame of the attached warehouse image or video using only visible pixels, then report each traffic-actor category once. RobotBlue is the compact white low-profile mobile robot. A forklift is a larger industrial counterbalance vehicle with long front forks, an upright mast, and an operator cage. Shelving, cartons, pallets, cones, barriers, floors, and walls
@@ -196,7 +196,7 @@ In the final demo Reason2 is put to the test in an interactive simulation. It'll
 ![Omniverse](media/omniverse-forklift-driver.png)
 ![Omniverse](media/omniverse-shelf.png)
 
-The scenario is a busy warehouse with workers, forklifts, parcels and a conveyor belt. A fixed sensor camera observes a conveyor lane and asks whether its cartons are safe, over an edge, or fallen. The same image and prompt run on an RTX host GPU and a Dragonwing IQ-9075 EVK NPU, for comparison of accuracy and speed.
+The scenario is a busy warehouse with workers, forklifts, parcels and a conveyor belt. A fixed sensor camera observes a conveyor lane and asks whether its cartons are safe, over an edge, or fallen. Imagine what implementing this detection system with traditional sensors would involve, even with object detection! The same image and prompt run on an RTX host GPU and a Dragonwing IQ-9075 EVK NPU, for comparison of accuracy and speed.
 
 ![Omniverse](media/omniverse-demo.png)
 ![Omniverse](media/omniverse-physics.png)
@@ -534,6 +534,9 @@ The EVK direct-image test measured a 685.4 ms warm mean and 694.0 ms p95. Across
 The canonical records are the [90-image EVK gate](https://github.com/eivholt/qai-physics-reasoning/blob/main/docs/evidence/results/geniex_speed_v1_direct_stream_test90_20260819.json), [360-request soak](https://github.com/eivholt/qai-physics-reasoning/blob/main/docs/evidence/results/geniex_speed_v1_direct_stream_soak360_20260819.json), and [packaged production smoke](https://github.com/eivholt/qai-physics-reasoning/blob/main/docs/evidence/results/packaged_speed_v1_production_defaults_smoke9_20260819.json).
 
 SpeedV1 should therefore be treated as a specialized visual classifier, not as a replacement for general Cosmos Reason2. Its accuracy and speed depend on preserving the frozen camera, image geometry, prompt, and G/A/R contract.
+
+# Conclusion
+As demonstrated, edge-deployable physics-aware VLMs push computer vision to the next level, enabling applications hardly imaginable only a few years ago. These VLMs are easy to experiment with using generic prompts, and they can be specialized for improved performance and speed before deployment. Custom built simulations, by hand or by coding agents, makes experimentation quick and cheap and can smoke out many problems before meeting the real world.
 
 # Appendix
 
