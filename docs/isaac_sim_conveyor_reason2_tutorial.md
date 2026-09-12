@@ -555,7 +555,7 @@ SpeedV1 should therefore be treated as a specialized visual classifier, not as a
 
 **Watch the demo on YouTube:**
 
-[![Watch the demo on YouTube](https://img.youtube.com/vi/t5t9_izbAMc/hqdefault.jpg)](https://youtu.be/t5t9_izbAMc)
+[![Watch the demo on YouTube](https://img.youtube.com/vi/Yk3Bbb9OXPQ/hqdefault.jpg)](https://youtu.be/Yk3Bbb9OXPQ)
 
 # Conclusion
 As demonstrated, edge-deployable physics-aware VLMs push computer vision to the next level, enabling applications hardly imaginable only a few years ago. These VLMs are easy to experiment with using generic prompts, and they can be specialized for improved performance and speed before deployment. Custom built simulations, by hand or by coding agents, makes experimentation quick and cheap and can smoke out many problems before meeting the real world.
