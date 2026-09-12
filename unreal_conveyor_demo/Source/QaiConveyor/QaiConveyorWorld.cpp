@@ -1,5 +1,7 @@
 #include "QaiConveyorWorld.h"
 #include "QaiConveyorGameMode.h"
+#include "QaiPhysicsBody.h"
+#include "Physics/Experimental/PhysScene_Chaos.h"
 
 #include "Async/Async.h"
 #include "Components/PointLightComponent.h"
@@ -1681,6 +1683,21 @@ void AQaiConveyorWorld::BeginPlay()
     ApplyForkliftPaintVariant();
     ApplyResolutionDatasetVariant();
     SetupInferenceCapture();
+    bPhysicsStepForces = FParse::Param(FCommandLine::Get(), TEXT("QaiPhysicsStepForces"));
+    if (bPhysicsStepForces && GetWorld()->GetPhysicsScene())
+    {
+        GetWorld()->GetPhysicsScene()->RegisterAsyncPhysicsTickActor(this);
+    }
+    FParse::Value(FCommandLine::Get(), TEXT("QaiPhysicsRateTest="), PhysicsRateTestDuration);
+    FParse::Value(FCommandLine::Get(), TEXT("QaiPhysicsRateCap="), PhysicsRateTestCap);
+    if (GEngine && PhysicsRateTestCap > 0.0f)
+    {
+        GEngine->SetMaxFPS(PhysicsRateTestCap);
+    }
+    SimulatorLog(FString::Printf(
+        TEXT("physics_force_mode mode=%s max_step_ms=8.333 render_cap=%.1f"),
+        bPhysicsStepForces ? TEXT("solver_step") : TEXT("game_frame"),
+        PhysicsRateTestCap));
     if (bInferenceEnabled)
     {
         ProbeBackend();
@@ -1689,6 +1706,10 @@ void AQaiConveyorWorld::BeginPlay()
 
 void AQaiConveyorWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    if (bPhysicsStepForces && GetWorld() && GetWorld()->GetPhysicsScene())
+    {
+        GetWorld()->GetPhysicsScene()->UnregisterAsyncPhysicsTickActor(this);
+    }
     // Render readback and PNG compression finish on other threads. Mark the
     // runtime unavailable before cancelling HTTP or releasing textures so no
     // late game-thread continuation can recreate a transient render resource
@@ -2492,13 +2513,25 @@ void AQaiConveyorWorld::Tick(float DeltaSeconds)
         SafetyEvaluationAccumulator += SchedulingDelta;
         if (bChaosPhysicsActive)
         {
-            // Forces are submitted exactly once per rendered frame; Chaos's
-            // configured 120 Hz substeps perform the actual integration.
-            // Re-submitting them through this actor's legacy fixed loop made
-            // force magnitude frame-rate dependent.
-            SimulateChaosForklifts(DeltaSeconds);
-            SimulateChaosConveyor(DeltaSeconds);
+            // Candidate feedback runs once per real solver step, never in a
+            // game-thread catch-up loop. Body creation/activation stays here.
+            // Snapshot at the original force-submission point: later pawn
+            // ticks must not replace benchmark/input commands mid-frame.
+            PhysicsCommandThrottle = CommandThrottle;
+            PhysicsCommandSteer = CommandSteer;
+            PhysicsCommandLift = CommandLift;
+            bPhysicsCommandBrake = bCommandBrake;
+            if (!bPhysicsStepForces)
+            {
+                SimulateChaosForklifts(DeltaSeconds);
+                SimulateChaosConveyor(DeltaSeconds);
+            }
+            else if (!bChaosConveyorBodiesActivated)
+            {
+                SimulateChaosConveyor(DeltaSeconds);
+            }
             SyncChaosTelemetry();
+            TickPhysicsStepDiagnostics(DeltaSeconds);
             if (WorkerDecisionAccumulator >= ConveyorTuning::WorkerDecisionStep)
             {
                 const float WorkerElapsed = FMath::Min(WorkerDecisionAccumulator, 0.10f);
@@ -13887,6 +13920,95 @@ void AQaiConveyorWorld::ConfigureBlackBeltVisual()
         BeltMaterial ? *BeltMaterial->GetPathName() : TEXT("none")));
 }
 
+void AQaiConveyorWorld::AsyncPhysicsTickActor(float DeltaSeconds, float SimTime)
+{
+    // UE 5.8's actor callback is a Presimulate / RunOnFrozenGameThread
+    // callback. Input and output fields cannot race normal Tick. Scene queries
+    // select PTDataWithGTObjects in this context (see SceneQuery.cpp).
+    if (!bPhysicsStepForces || !bChaosPhysicsActive || !bStageReady
+        || bIsShuttingDown || DeltaSeconds <= UE_SMALL_NUMBER)
+    {
+        return;
+    }
+    TGuardValue<bool> StepScope(bInsidePhysicsForceStep, true);
+    ++PhysicsForceSteps;
+    PhysicsForceSeconds += DeltaSeconds;
+    PhysicsForceMaximumStep = FMath::Max(PhysicsForceMaximumStep, DeltaSeconds);
+    SimulateChaosForklifts(DeltaSeconds);
+    if (bChaosConveyorBodiesActivated)
+    {
+        SimulateChaosConveyor(DeltaSeconds);
+    }
+}
+
+void AQaiConveyorWorld::TickPhysicsStepDiagnostics(float DeltaSeconds)
+{
+    ++PhysicsRenderFrames;
+    PhysicsStatsElapsed += DeltaSeconds;
+    PhysicsRateTestElapsed += DeltaSeconds;
+    if (bPhysicsStepForces)
+    {
+        // Visual components are only changed on ordinary Tick, after telemetry
+        // has synchronized the vehicle root to the completed physics state.
+        for (FForkliftRuntime& Forklift : Forklifts)
+        {
+            for (int32 WheelIndex = 0; WheelIndex < 4; ++WheelIndex)
+            {
+                if (USceneComponent* Pivot = Forklift.WheelPivots[WheelIndex].Get())
+                {
+                    Pivot->SetWorldLocation(Forklift.PhysicsWheelHubWorld[WheelIndex]);
+                    const float Steer = WheelIndex >= 2
+                        ? FMath::DegreesToRadians(-Forklift.SteeringInput
+                            * ConveyorTuning::ForkliftMaximumSteerDegrees) : 0.0f;
+                    Pivot->SetRelativeRotation(Forklift.WheelPivotInitialRelative[WheelIndex]
+                        * FQuat(FVector::UpVector, Steer)
+                        * FQuat(FVector::RightVector, FMath::DegreesToRadians(Forklift.WheelAngleDegrees)));
+                }
+            }
+        }
+    }
+    if (PhysicsStatsElapsed >= 1.0f)
+    {
+        SimulatorLog(FString::Printf(
+            TEXT("physics_step_stats mode=%s frames=%llu steps=%llu simulated_s=%.4f max_step_ms=%.3f"),
+            bPhysicsStepForces ? TEXT("solver_step") : TEXT("game_frame"),
+            PhysicsRenderFrames, PhysicsForceSteps, PhysicsForceSeconds,
+            PhysicsForceMaximumStep * 1000.0f));
+        PhysicsStatsElapsed = 0.0f;
+    }
+    if (PhysicsRateTestDuration <= 0.0f)
+    {
+        return;
+    }
+    // A reproducible idle suspension test, sampled on the same game-thread
+    // boundary in both modes. Discard the first three seconds of settling.
+    if (PhysicsRateTestElapsed > 3.0f)
+    {
+        if (UBoxComponent* Chassis = Forklifts[0].ChaosChassis.Get())
+        {
+            const float Z = Chassis->GetComponentLocation().Z;
+            const float Vz = Chassis->GetPhysicsLinearVelocity().Z;
+            PhysicsRateSampleSeconds += DeltaSeconds;
+            PhysicsRateVelocitySquared += Vz * Vz * DeltaSeconds;
+            PhysicsRateMinZ = FMath::Min(PhysicsRateMinZ, Z);
+            PhysicsRateMaxZ = FMath::Max(PhysicsRateMaxZ, Z);
+        }
+    }
+    if (PhysicsRateTestElapsed >= PhysicsRateTestDuration)
+    {
+        SimulatorLog(FString::Printf(
+            TEXT("physics_rate_result mode=%s cap=%.1f elapsed_s=%.3f frames=%llu steps=%llu max_step_ms=%.3f z_range_cm=%.4f vz_rms_cm_s=%.4f samples_s=%.3f"),
+            bPhysicsStepForces ? TEXT("solver_step") : TEXT("game_frame"),
+            PhysicsRateTestCap, PhysicsRateTestElapsed, PhysicsRenderFrames,
+            PhysicsForceSteps, PhysicsForceMaximumStep * 1000.0f,
+            PhysicsRateMaxZ - PhysicsRateMinZ,
+            FMath::Sqrt(PhysicsRateVelocitySquared / FMath::Max(PhysicsRateSampleSeconds, 0.001)),
+            PhysicsRateSampleSeconds));
+        PhysicsRateTestDuration = 0.0f;
+        FPlatformMisc::RequestExit(false);
+    }
+}
+
 void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
 {
     if (!bChaosPhysicsActive || !GetWorld() || DeltaSeconds <= UE_SMALL_NUMBER)
@@ -13902,16 +14024,23 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
         FForkliftRuntime& Forklift = Forklifts[ForkliftIndex];
         UBoxComponent* Chassis = Forklift.ChaosChassis.Get();
         UBoxComponent* Carriage = Forklift.ChaosCarriage.Get();
-        if (!Chassis || !Carriage || !Chassis->IsSimulatingPhysics())
+        if (!Chassis || !Carriage || !Chassis->IsSimulatingPhysics()
+            || (bInsidePhysicsForceStep
+                && (!QaiPhysics::FBody(Chassis, true).HasSolverBody()
+                    || !QaiPhysics::FBody(Carriage, true).HasSolverBody())))
         {
             continue;
         }
 
         const bool bControlled = ForkliftIndex == ActiveForklift;
-        float Throttle = bControlled ? CommandThrottle : 0.0f;
-        const float RequestedSteer = bControlled ? CommandSteer : 0.0f;
-        const float LiftInput = bControlled ? CommandLift : 0.0f;
-        bool bBrake = bControlled ? bCommandBrake : true;
+        float Throttle = bControlled
+            ? (bInsidePhysicsForceStep ? PhysicsCommandThrottle : CommandThrottle) : 0.0f;
+        const float RequestedSteer = bControlled
+            ? (bInsidePhysicsForceStep ? PhysicsCommandSteer : CommandSteer) : 0.0f;
+        const float LiftInput = bControlled
+            ? (bInsidePhysicsForceStep ? PhysicsCommandLift : CommandLift) : 0.0f;
+        bool bBrake = !bControlled
+            || (bInsidePhysicsForceStep ? bPhysicsCommandBrake : bCommandBrake);
 
         // A physical steering rack cannot jump from centre to full lock. This
         // rate limit applies equally to keyboard and controller requests.
@@ -13923,7 +14052,7 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
         const float RearSteerRadians = FMath::DegreesToRadians(
             -Forklift.SteeringInput * ConveyorTuning::ForkliftMaximumSteerDegrees);
 
-        FTransform ChassisTransform = Chassis->GetComponentTransform();
+        FTransform ChassisTransform = QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetComponentTransform();
 
         // The collision-only wall at each visually open floor edge provides
         // ordinary Chaos contact. A fast, rotating compound vehicle can still
@@ -14000,21 +14129,21 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
                 if (bContainmentActive)
                 {
                     const FVector CorrectedChassisLocation =
-                        Chassis->GetComponentLocation() + Correction;
+                        QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetComponentLocation() + Correction;
                     const FVector CorrectedCarriageLocation =
-                        Carriage->GetComponentLocation() + Correction;
-                    Chassis->SetWorldLocation(
+                        QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).GetComponentLocation() + Correction;
+                    QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).SetWorldLocation(
                         CorrectedChassisLocation,
                         false,
                         nullptr,
                         ETeleportType::TeleportPhysics);
-                    Carriage->SetWorldLocation(
+                    QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).SetWorldLocation(
                         CorrectedCarriageLocation,
                         false,
                         nullptr,
                         ETeleportType::TeleportPhysics);
 
-                    FVector LinearVelocity = Chassis->GetPhysicsLinearVelocity();
+                    FVector LinearVelocity = QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetPhysicsLinearVelocity();
                     if ((Correction.X < 0.0f && LinearVelocity.X > 0.0f)
                         || (Correction.X > 0.0f && LinearVelocity.X < 0.0f))
                     {
@@ -14025,8 +14154,8 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
                     {
                         LinearVelocity.Y = 0.0f;
                     }
-                    Chassis->SetPhysicsLinearVelocity(LinearVelocity);
-                    FVector CarriageVelocity = Carriage->GetPhysicsLinearVelocity();
+                    QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).SetPhysicsLinearVelocity(LinearVelocity);
+                    FVector CarriageVelocity = QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).GetPhysicsLinearVelocity();
                     if ((Correction.X < 0.0f && CarriageVelocity.X > 0.0f)
                         || (Correction.X > 0.0f && CarriageVelocity.X < 0.0f))
                     {
@@ -14037,8 +14166,8 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
                     {
                         CarriageVelocity.Y = 0.0f;
                     }
-                    Carriage->SetPhysicsLinearVelocity(CarriageVelocity);
-                    ChassisTransform = Chassis->GetComponentTransform();
+                    QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).SetPhysicsLinearVelocity(CarriageVelocity);
+                    ChassisTransform = QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetComponentTransform();
 
                     // Do not let the tire model immediately reapply force into
                     // the boundary after projection. Reverse remains available
@@ -14074,7 +14203,7 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
         }
         const FVector ChassisUp = ChassisTransform.GetUnitAxis(EAxis::Z);
         const FVector ChassisForward = ChassisTransform.GetUnitAxis(EAxis::X);
-        FVector ChassisVelocity = Chassis->GetPhysicsLinearVelocity();
+        FVector ChassisVelocity = QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetPhysicsLinearVelocity();
 
         // Supplement the hard prismatic constraint with the finite stiffness
         // of the mast's opposed guide rollers. Only error perpendicular to the
@@ -14083,17 +14212,17 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
         const FVector CarriageBaseLocal = Forklift.ChaosCarriageLocalCenter
             - Forklift.ChaosChassisLocalCenter;
         const FVector CarriageLocal = ChassisTransform.InverseTransformPositionNoScale(
-            Carriage->GetComponentLocation());
+            QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).GetComponentLocation());
         const FVector RailErrorLocal(
             CarriageLocal.X - CarriageBaseLocal.X,
             CarriageLocal.Y - CarriageBaseLocal.Y,
             0.0f);
         const FVector RailErrorWorld = ChassisTransform.TransformVectorNoScale(
             RailErrorLocal);
-        const FVector ChassisVelocityAtCarriage = Chassis->GetPhysicsLinearVelocityAtPoint(
-            Carriage->GetComponentLocation());
+        const FVector ChassisVelocityAtCarriage = QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetPhysicsLinearVelocityAtPoint(
+            QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).GetComponentLocation());
         const FVector RelativeCarriageVelocity =
-            Carriage->GetPhysicsLinearVelocity() - ChassisVelocityAtCarriage;
+            QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).GetPhysicsLinearVelocity() - ChassisVelocityAtCarriage;
         const FVector RailRelativeVelocity = RelativeCarriageVelocity
             - ChassisUp * FVector::DotProduct(RelativeCarriageVelocity, ChassisUp);
         const FVector RailGuideForce = (
@@ -14102,10 +14231,10 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
             .GetClampedToMaxSize(ConveyorTuning::ForkliftLiftRailMaximumForce);
         if (!RailGuideForce.IsNearlyZero(1.0f))
         {
-            Carriage->AddForce(RailGuideForce);
-            Chassis->AddForceAtLocation(
+            QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).AddForce(RailGuideForce);
+            QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).AddForceAtLocation(
                 -RailGuideForce,
-                Carriage->GetComponentLocation());
+                QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).GetComponentLocation());
         }
         const float LongitudinalSpeed = FVector::DotProduct(ChassisVelocity, ChassisForward);
         const float TargetSpeed = Throttle >= 0.0f
@@ -14193,7 +14322,7 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
                     SuspensionRestCm + SuspensionDroopCm);
                 ResolvedHubWorld = SuspensionMount
                     - ChassisUp * ResolvedSpringLength;
-                const FVector PointVelocity = Chassis->GetPhysicsLinearVelocityAtPoint(
+                const FVector PointVelocity = QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetPhysicsLinearVelocityAtPoint(
                     Hit.ImpactPoint);
                 const float CompressionVelocity = -FVector::DotProduct(PointVelocity, ChassisUp);
                 const float DampingCoefficient = CompressionVelocity >= 0.0f
@@ -14214,12 +14343,12 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
                 SupportedNormalForce += NormalForce;
 
                 const FVector SuspensionForce = ChassisUp * NormalForce;
-                Chassis->AddForceAtLocation(SuspensionForce, Hit.ImpactPoint);
+                QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).AddForceAtLocation(SuspensionForce, Hit.ImpactPoint);
                 if (UPrimitiveComponent* SupportBody = Hit.GetComponent();
                     SupportBody && SupportBody->IsSimulatingPhysics())
                 {
-                    SupportBody->AddForceAtLocation(-SuspensionForce, Hit.ImpactPoint);
-                    SupportBody->WakeRigidBody();
+                    QaiPhysics::FBody(SupportBody, bInsidePhysicsForceStep).AddForceAtLocation(-SuspensionForce, Hit.ImpactPoint);
+                    QaiPhysics::FBody(SupportBody, bInsidePhysicsForceStep).WakeRigidBody();
                 }
 
                 const FQuat SteeringRotation(ChassisUp, bRearWheel ? RearSteerRadians : 0.0f);
@@ -14268,11 +14397,11 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
                     TireForward * LongitudinalForce + TireRight * LateralForce)
                     .GetClampedToMaxSize(FrictionLimit);
                 TotalPlanarTireForce += PlanarTireForce;
-                Chassis->AddForceAtLocation(PlanarTireForce, Hit.ImpactPoint);
+                QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).AddForceAtLocation(PlanarTireForce, Hit.ImpactPoint);
                 if (UPrimitiveComponent* SupportBody = Hit.GetComponent();
                     SupportBody && SupportBody->IsSimulatingPhysics())
                 {
-                    SupportBody->AddForceAtLocation(-PlanarTireForce, Hit.ImpactPoint);
+                    QaiPhysics::FBody(SupportBody, bInsidePhysicsForceStep).AddForceAtLocation(-PlanarTireForce, Hit.ImpactPoint);
                 }
             }
             else
@@ -14283,7 +14412,9 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
                     SafeDeltaSeconds,
                     8.0f);
             }
-            if (USceneComponent* WheelPivot = Forklift.WheelPivots[WheelIndex].Get())
+            Forklift.PhysicsWheelHubWorld[WheelIndex] = ResolvedHubWorld;
+            if (USceneComponent* WheelPivot = Forklift.WheelPivots[WheelIndex].Get();
+                WheelPivot && !bInsidePhysicsForceStep)
             {
                 // The imported wheel used to remain rigidly attached to the
                 // body while the raycast tire moved invisibly underneath it.
@@ -14316,7 +14447,7 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
                     .GetClampedToMaxSize(
                         SupportedNormalForce
                         * ConveyorTuning::ForkliftIdleMaximumDrag);
-                Chassis->AddForce(
+                QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).AddForce(
                     IdleDragForce,
                     NAME_None,
                     false);
@@ -14329,10 +14460,10 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
         // unconditional and therefore catches impulses from any source. Apply
         // exactly the same velocity correction to the constrained carriage so
         // the safeguard cannot inject relative mast motion or fight its drive.
-        FVector StabilizedChassisVelocity = Chassis->GetPhysicsLinearVelocity();
+        FVector StabilizedChassisVelocity = QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetPhysicsLinearVelocity();
         const float VerticalVelocityBefore = StabilizedChassisVelocity.Z;
         const bool bNearNormalRideHeight =
-            Chassis->GetComponentLocation().Z
+            QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetComponentLocation().Z
                 <= Forklift.InitialChaosChassis.GetLocation().Z
                     + ConveyorTuning::ForkliftRideHeightStabilizerRangeCm;
         const bool bGroundCoupled = SupportedWheelCount >= 2 || bNearNormalRideHeight;
@@ -14352,10 +14483,10 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
             StabilizedChassisVelocity.Z - VerticalVelocityBefore;
         if (FMath::Abs(VerticalVelocityCorrection) > UE_KINDA_SMALL_NUMBER)
         {
-            Chassis->SetPhysicsLinearVelocity(StabilizedChassisVelocity);
-            FVector CarriageVelocity = Carriage->GetPhysicsLinearVelocity();
+            QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).SetPhysicsLinearVelocity(StabilizedChassisVelocity);
+            FVector CarriageVelocity = QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).GetPhysicsLinearVelocity();
             CarriageVelocity.Z += VerticalVelocityCorrection;
-            Carriage->SetPhysicsLinearVelocity(CarriageVelocity);
+            QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).SetPhysicsLinearVelocity(CarriageVelocity);
         }
         const bool bSignificantStabilization = bUpwardCapApplied
             || FMath::Abs(VerticalVelocityCorrection)
@@ -14372,7 +14503,7 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
                 SupportedWheelCount,
                 bNearNormalRideHeight ? TEXT("true") : TEXT("false"),
                 bUpwardCapApplied ? TEXT("true") : TEXT("false"),
-                Chassis->GetComponentLocation().Z));
+                QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetComponentLocation().Z));
         }
         Forklift.bVerticalStabilizerActive = bSignificantStabilization;
         ChassisVelocity = StabilizedChassisVelocity;
@@ -14387,10 +14518,10 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
             if (PreviousStartupDampingSeconds > 0.0f
                 && Forklift.StartupDampingRemainingSeconds <= 0.0f)
             {
-                Chassis->SetLinearDamping(ConveyorTuning::ForkliftBaseLinearDamping);
-                Chassis->SetAngularDamping(ConveyorTuning::ForkliftBaseAngularDamping);
-                Carriage->SetLinearDamping(ConveyorTuning::ForkliftBaseLinearDamping);
-                Carriage->SetAngularDamping(ConveyorTuning::ForkliftBaseAngularDamping);
+                QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).SetLinearDamping(ConveyorTuning::ForkliftBaseLinearDamping);
+                QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).SetAngularDamping(ConveyorTuning::ForkliftBaseAngularDamping);
+                QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).SetLinearDamping(ConveyorTuning::ForkliftBaseLinearDamping);
+                QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).SetAngularDamping(ConveyorTuning::ForkliftBaseAngularDamping);
                 SimulatorLog(FString::Printf(
                     TEXT("forklift_startup_damping forklift=%d state=released elapsed_seconds=%.2f base_linear_damping=%.2f"),
                     ForkliftIndex + 1,
@@ -14464,23 +14595,23 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
             ChassisTransform.TransformPositionNoScale(CarriageBaseLocal);
         Forklift.ActualLiftCm = FMath::Clamp(
             FVector::DotProduct(
-                Carriage->GetComponentLocation() - ExpectedLoweredCarriageWorld,
+                QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).GetComponentLocation() - ExpectedLoweredCarriageWorld,
                 ChassisUp),
             0.0f,
             ConveyorTuning::ForkliftLiftTravelCm);
         Forklift.LiftDeltaCm = Forklift.ActualLiftCm - PreviousActualLift;
         if (FMath::Abs(LiftInput) > 0.01f)
         {
-            Carriage->WakeRigidBody();
-            Chassis->WakeRigidBody();
+            QaiPhysics::FBody(Carriage, bInsidePhysicsForceStep).WakeRigidBody();
+            QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).WakeRigidBody();
         }
 
         Forklift.SpeedCmPerSecond = LongitudinalSpeed;
         Forklift.SurfaceLinearVelocityCmPerSecond = ChassisVelocity;
         Forklift.SurfaceYawVelocityDegreesPerSecond =
-            Chassis->GetPhysicsAngularVelocityInDegrees().Z;
-        Forklift.BodyPitchDegrees = Chassis->GetComponentRotation().Pitch;
-        Forklift.BodyRollDegrees = Chassis->GetComponentRotation().Roll;
+            QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetPhysicsAngularVelocityInDegrees().Z;
+        Forklift.BodyPitchDegrees = QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetComponentRotation().Pitch;
+        Forklift.BodyRollDegrees = QaiPhysics::FBody(Chassis, bInsidePhysicsForceStep).GetComponentRotation().Roll;
         Forklift.MaximumAbsoluteTipDegrees = FMath::Max(
             Forklift.MaximumAbsoluteTipDegrees,
             FMath::Max(FMath::Abs(Forklift.BodyPitchDegrees), FMath::Abs(Forklift.BodyRollDegrees)));
@@ -14492,7 +14623,8 @@ void AQaiConveyorWorld::SimulateChaosForklifts(float DeltaSeconds)
             360.0f);
         for (int32 VisualWheelIndex = 0; VisualWheelIndex < 4; ++VisualWheelIndex)
         {
-            if (USceneComponent* WheelPivot = Forklift.WheelPivots[VisualWheelIndex].Get())
+            if (USceneComponent* WheelPivot = Forklift.WheelPivots[VisualWheelIndex].Get();
+                WheelPivot && !bInsidePhysicsForceStep)
             {
                 const float VisualSteer = VisualWheelIndex >= 2 ? RearSteerRadians : 0.0f;
                 const FQuat Steering(FVector::UpVector, VisualSteer);
@@ -14531,14 +14663,14 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
             {
                 continue;
             }
-            FVector Location = Body->GetComponentLocation();
+            FVector Location = QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetComponentLocation();
             const float HalfHeight = ParcelHalfExtents.IsValidIndex(ParcelIndex)
                 ? ParcelHalfExtents[ParcelIndex].Z
                 : 15.0f;
             Location.Z = ConveyorSurfaceZCm + HalfHeight + 1.0f;
             Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
             Body->SetSimulatePhysics(false);
-            Body->SetWorldLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
+            QaiPhysics::FBody(Body, bInsidePhysicsForceStep).SetWorldLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
             Body->SetSimulatePhysics(true);
             // Creating the Chaos body can recalculate box mass from its volume.
             // Reapply the authored carton properties after body creation so
@@ -14548,10 +14680,10 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
                 const FPropPhysicsProfile& Profile = ParcelPhysicsProfiles[ParcelIndex];
                 Body->SetMassOverrideInKg(NAME_None, Profile.MassKg, true);
                 Body->SetCenterOfMass(Profile.CenterOfMassLocalOffset);
-                Body->SetLinearDamping(Profile.AirLinearDamping);
-                Body->SetAngularDamping(Profile.AirAngularDamping);
+                QaiPhysics::FBody(Body, bInsidePhysicsForceStep).SetLinearDamping(Profile.AirLinearDamping);
+                QaiPhysics::FBody(Body, bInsidePhysicsForceStep).SetAngularDamping(Profile.AirAngularDamping);
             }
-            Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+            QaiPhysics::FBody(Body, bInsidePhysicsForceStep).SetPhysicsLinearVelocity(FVector::ZeroVector);
             Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
             Body->PutRigidBodyToSleep();
             Body->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
@@ -14570,6 +14702,10 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
     // all intervening collision, rotation and momentum. The distributed roller
     // traction below already follows both curves continuously, including the
     // portion naturally occluded by the machine wall.
+    if (bPhysicsStepForces && !bInsidePhysicsForceStep)
+    {
+        return;
+    }
     ChaosConveyorMotorRampSeconds = FMath::Min(
         10.0f,
         ChaosConveyorMotorRampSeconds + StepSeconds);
@@ -14601,15 +14737,16 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
         const FVector& HalfExtent,
         const FPropPhysicsProfile& Physics)
     {
-        if (!Body || !Body->IsSimulatingPhysics())
+        if (!Body || !Body->IsSimulatingPhysics()
+            || (bInsidePhysicsForceStep && !QaiPhysics::FBody(Body, true).HasSolverBody()))
         {
             return;
         }
         // A sleeping rigid body ignores the first force submitted by some
         // Chaos execution paths. Wake it before evaluating/applying powered
         // contact so a stationary parcel cannot remain latched asleep.
-        Body->WakeRigidBody();
-        const FVector Location = Body->GetComponentLocation();
+        QaiPhysics::FBody(Body, bInsidePhysicsForceStep).WakeRigidBody();
+        const FVector Location = QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetComponentLocation();
         float BeltDistance = 0.0f;
         float LateralDistance = 0.0f;
         FVector BeltPoint;
@@ -14621,7 +14758,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
             BeltTangent,
             LateralDistance);
         const float VerticalExtent = ConveyorTuning::ProjectedVerticalHalfExtent(
-            Body->GetComponentQuat(),
+            QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetComponentQuat(),
             HalfExtent);
         const float Bottom = Location.Z - VerticalExtent;
         // A carton bridges several cylindrical rollers. At a roller gap, or
@@ -14642,7 +14779,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
             return;
         }
         const FVector Tangent = BeltTangent.GetSafeNormal2D();
-        const FQuat BodyRotation = Body->GetComponentQuat();
+        const FQuat BodyRotation = QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetComponentQuat();
         int32 ContactCount = 0;
         const FVector BodyForward = BodyRotation.GetForwardVector();
         const FVector BodyRight = BodyRotation.GetRightVector();
@@ -14694,7 +14831,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
         const float BodyMassKg = FMath::Max(0.05f, Body->GetMass());
         const float ConveyorTargetSpeedCmPerSecond =
             ConveyorTuning::ConveyorSpeedCm * ConveyorSpeedScale;
-        const FVector RigidBodyLinearVelocity = Body->GetPhysicsLinearVelocity();
+        const FVector RigidBodyLinearVelocity = QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetPhysicsLinearVelocity();
         FVector CenterLinearVelocity = RigidBodyLinearVelocity;
         CenterLinearVelocity.Z = 0.0f;
         // Treat the powered rollers beneath the footprint as one traction
@@ -14732,7 +14869,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
             TangentialAcceleration,
             -MaximumFrictionAcceleration,
             MaximumFrictionAcceleration) * MotorRamp;
-        Body->AddForce(
+        QaiPhysics::FBody(Body, bInsidePhysicsForceStep).AddForce(
             Tangent * TangentialAcceleration * BodyMassKg,
             NAME_None,
             false);
@@ -14751,7 +14888,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
             -ConveyorTuning::ConveyorMaximumLateralSlipAccelerationCm,
             ConveyorTuning::ConveyorMaximumLateralSlipAccelerationCm)
             * MotorRamp;
-        Body->AddForce(
+        QaiPhysics::FBody(Body, bInsidePhysicsForceStep).AddForce(
             ContactNormal * LateralSlipAcceleration * BodyMassKg,
             NAME_None,
             false);
@@ -14798,7 +14935,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
                         * ConveyorTuning::ConveyorCenteringAssistDampingPerSecond,
                 -ConveyorTuning::ConveyorCenteringAssistMaximumAccelerationCm,
                 0.0f) * MotorRamp * CenteringGuideEnvelope;
-            Body->AddForce(
+            QaiPhysics::FBody(Body, bInsidePhysicsForceStep).AddForce(
                 ContactNormal * CenteringGuideAcceleration * BodyMassKg,
                 NAME_None,
                 false);
@@ -14830,7 +14967,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
             HeadingErrorDegrees += 180.0f;
         }
         const float CurrentYawSpeedDegrees =
-            Body->GetPhysicsAngularVelocityInDegrees().Z;
+            QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetPhysicsAngularVelocityInDegrees().Z;
         const float DesiredYawAccelerationDegrees = FMath::Clamp(
             HeadingErrorDegrees * 5.0f
                 - CurrentYawSpeedDegrees * ConveyorTuning::ConveyorYawDampingPerSecond,
@@ -14839,7 +14976,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
         const float YawInertiaKgCmSquared = FMath::Max(
             1.0f,
             Body->GetInertiaTensor().Z);
-        Body->AddTorqueInRadians(
+        QaiPhysics::FBody(Body, bInsidePhysicsForceStep).AddTorqueInRadians(
             FVector::UpVector
                 * FMath::DegreesToRadians(DesiredYawAccelerationDegrees)
                 * YawInertiaKgCmSquared,
@@ -14890,7 +15027,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
         // resultant through the rigid body's COM. ContactCount still reduces
         // the total reaction at an overhang, so an unsupported parcel remains
         // free to tip and fall under Chaos gravity.
-        Body->AddForce(
+        QaiPhysics::FBody(Body, bInsidePhysicsForceStep).AddForce(
             FVector::UpVector * NormalForcePerSample
                 * static_cast<float>(ContactCount),
             NAME_None,
@@ -14911,7 +15048,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
             FVector TiltAxis = FVector::CrossProduct(BodyUp, FVector::UpVector);
             TiltAxis = TiltAxis.GetSafeNormal();
             const FVector AngularVelocityWorld =
-                Body->GetPhysicsAngularVelocityInRadians();
+                QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetPhysicsAngularVelocityInRadians();
             const FVector PitchRollAngularVelocity = AngularVelocityWorld
                 - FVector::UpVector
                     * FVector::DotProduct(AngularVelocityWorld, FVector::UpVector);
@@ -14931,7 +15068,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
                 LocalAngularAcceleration.X * LocalInertia.X,
                 LocalAngularAcceleration.Y * LocalInertia.Y,
                 LocalAngularAcceleration.Z * LocalInertia.Z);
-            Body->AddTorqueInRadians(
+            QaiPhysics::FBody(Body, bInsidePhysicsForceStep).AddTorqueInRadians(
                 BodyRotation.RotateVector(LocalTorque),
                 NAME_None,
                 false);
@@ -14968,7 +15105,7 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
             TangentialAcceleration;
         TotalLateralSlipAccelerationCmPerSecondSquared +=
             FMath::Abs(LateralSlipAcceleration);
-        Body->WakeRigidBody();
+        QaiPhysics::FBody(Body, bInsidePhysicsForceStep).WakeRigidBody();
     };
 
     for (int32 ParcelIndex = 0; ParcelIndex < RuntimeChaosConveyorBodies.Num(); ++ParcelIndex)
@@ -15005,13 +15142,13 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
             FVector BeltPoint;
             FVector BeltTangent;
             ConveyorTuning::ProjectToConveyor(
-                Body->GetComponentLocation(),
+                QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetComponentLocation(),
                 BeltDistance,
                 BeltPoint,
                 BeltTangent,
                 LateralDistance);
-            const FVector Velocity = Body->GetPhysicsLinearVelocity();
-            const FRotator Rotation = Body->GetComponentRotation();
+            const FVector Velocity = QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetPhysicsLinearVelocity();
+            const FRotator Rotation = QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetComponentRotation();
             const float TangentSpeed = FVector::DotProduct(
                 Velocity,
                 BeltTangent.GetSafeNormal2D());
@@ -15021,9 +15158,9 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
             SimulatorLog(FString::Printf(
                 TEXT("chaos_conveyor_body parcel=%d continuous_path=1 position=(%.1f,%.1f,%.1f) distance_cm=%.1f lateral_cm=%.1f tangent_speed_cm_s=%.2f rotation=(%.1f,%.1f,%.1f) heading_error_deg=%.1f angular_velocity_deg_s=(%.1f,%.1f,%.1f) mass_kg=%.2f awake=%d collision=%d"),
                 ParcelIndex + 1,
-                Body->GetComponentLocation().X,
-                Body->GetComponentLocation().Y,
-                Body->GetComponentLocation().Z,
+                QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetComponentLocation().X,
+                QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetComponentLocation().Y,
+                QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetComponentLocation().Z,
                 BeltDistance,
                 LateralDistance,
                 TangentSpeed,
@@ -15031,9 +15168,9 @@ void AQaiConveyorWorld::SimulateChaosConveyor(float StepSeconds)
                 Rotation.Yaw,
                 Rotation.Roll,
                 HeadingError,
-                Body->GetPhysicsAngularVelocityInDegrees().X,
-                Body->GetPhysicsAngularVelocityInDegrees().Y,
-                Body->GetPhysicsAngularVelocityInDegrees().Z,
+                QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetPhysicsAngularVelocityInDegrees().X,
+                QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetPhysicsAngularVelocityInDegrees().Y,
+                QaiPhysics::FBody(Body, bInsidePhysicsForceStep).GetPhysicsAngularVelocityInDegrees().Z,
                 Body->GetMass(),
                 Body->IsAnyRigidBodyAwake() ? 1 : 0,
                 static_cast<int32>(Body->GetCollisionEnabled())));

@@ -12,6 +12,7 @@ public class QaiConveyor : ModuleRules
             "CoreUObject",
             "Engine",
             "PhysicsCore",
+            "Chaos",
             "InputCore",
             "HTTP",
             "Json",

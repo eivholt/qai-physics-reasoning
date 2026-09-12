@@ -42,6 +42,7 @@ public:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void Tick(float DeltaSeconds) override;
+    virtual void AsyncPhysicsTickActor(float DeltaSeconds, float SimTime) override;
 
     void DriveActiveForklift(float Throttle, float Steer, float Lift, bool bBrake, float DeltaSeconds);
     void SelectForklift(int32 Index);
@@ -168,6 +169,7 @@ private:
         FVector ChaosCarriageLocalCenter = FVector::ZeroVector;
         float SuspensionCompressionCm[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         float WheelNormalLoads[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        FVector PhysicsWheelHubWorld[4] = {};
         int32 PalletDynamicBody = INDEX_NONE;
         int32 CartonDynamicBody = INDEX_NONE;
         float SpeedCmPerSecond = 0.0f;
@@ -345,6 +347,21 @@ private:
     void ConfigureStaticRenderOptimizations();
     void ConfigureChaosPhysics();
     void SimulateChaosForklifts(float DeltaSeconds);
+    void TickPhysicsStepDiagnostics(float DeltaSeconds);
+    bool bPhysicsStepForces = false;
+    bool bInsidePhysicsForceStep = false;
+    uint64 PhysicsForceSteps = 0;
+    uint64 PhysicsRenderFrames = 0;
+    float PhysicsForceSeconds = 0.0f;
+    float PhysicsForceMaximumStep = 0.0f;
+    float PhysicsStatsElapsed = 0.0f;
+    float PhysicsRateTestDuration = 0.0f;
+    float PhysicsRateTestElapsed = 0.0f;
+    float PhysicsRateTestCap = 0.0f;
+    double PhysicsRateSampleSeconds = 0.0;
+    double PhysicsRateVelocitySquared = 0.0;
+    float PhysicsRateMinZ = TNumericLimits<float>::Max();
+    float PhysicsRateMaxZ = -TNumericLimits<float>::Max();
     void SimulateChaosConveyor(float StepSeconds);
     void SimulateChaosForkContacts(float StepSeconds);
     void MaintainChaosGravity();
@@ -609,6 +626,10 @@ private:
     FString SubmittedGroundTruthDetails;
     FString PendingPrimaryParcelLocation;
     float CommandThrottle = 0.0f;
+    float PhysicsCommandThrottle = 0.0f;
+    float PhysicsCommandSteer = 0.0f;
+    float PhysicsCommandLift = 0.0f;
+    bool bPhysicsCommandBrake = false;
     float CommandSteer = 0.0f;
     float CommandLift = 0.0f;
     float WorkerDecisionAccumulator = 0.0f;

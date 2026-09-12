@@ -10,7 +10,8 @@ param(
     [string]$HostModel = "Cosmos-Reason2-2B-Parcel-Speed-v1",
     [string]$Output = "",
     [int]$TimeoutSeconds = 240,
-    [switch]$UseRuntimeDefaults
+    [switch]$UseRuntimeDefaults,
+    [switch]$PhysicsStepForces
 )
 
 $ErrorActionPreference = "Stop"
@@ -75,7 +76,10 @@ try {
             )
         }
     }
-    $Process = Start-Process -FilePath $ClientExecutable -ArgumentList $Arguments -PassThru
+    if ($PhysicsStepForces) {
+        $Arguments += "-QaiPhysicsStepForces"
+    }
+    $Process = Start-Process -FilePath $ClientExecutable -ArgumentList $Arguments -PassThru -WindowStyle Hidden
     $Deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while (-not $Process.HasExited -and [DateTime]::UtcNow -lt $Deadline) {
         Start-Sleep -Milliseconds 500
@@ -135,6 +139,7 @@ try {
         image_width = 448
         image_height = 256
         runtime_defaults = [bool]$UseRuntimeDefaults
+        physics_step_forces = [bool]$PhysicsStepForces
         cases = $Results.Count
         correct = $Results.Count - $Incorrect.Count
         simulator_log = $Log.FullName
